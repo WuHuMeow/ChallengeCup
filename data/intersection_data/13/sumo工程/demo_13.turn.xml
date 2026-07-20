@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgeRelations>
+    <interval begin="0" end="3600">
+        <!-- 东进口 -E1：直行向西，右转向北 -->
+        <edgeRelation from="-E1" to="-E0" probability="0.639"/>   <!-- 直行 306/479≈0.639 -->
+        <edgeRelation from="-E1" to="E2" probability="0.361"/>    <!-- 右转 173/479≈0.361 -->
+
+        <!-- 西进口 E0：直行向东，左转向北 -->
+        <edgeRelation from="E0" to="E1" probability="0.684"/>     <!-- 直行 389/569≈0.684 -->
+        <edgeRelation from="E0" to="E2" probability="0.316"/>     <!-- 左转 180/569≈0.316 -->
+
+        <!-- 北进口 -E2：左转向东，右转向西 -->
+        <edgeRelation from="-E2" to="E1" probability="0.578"/>    <!-- 左转 189/327≈0.578 -->
+        <edgeRelation from="-E2" to="-E0" probability="0.422"/>   <!-- 右转 142/327≈0.422 -->
+    </interval>
+
+    <turns>
+        <!-- 允许车辆从这些出口离开路网 -->
+        <sink edges="-E0 E1 E2"/>
+    </turns>
+</edgeRelations>

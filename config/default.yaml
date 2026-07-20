@@ -1,0 +1,46 @@
+project:
+  name: "雄安新区城市大脑车路云一体化协同感知算法平台"
+  version: "0.1.0"
+
+paths:
+  # 数据根目录。路口数据已随仓库提交，位于 data/intersection_data/。
+  # 如需使用本地其他路径，可通过环境变量 CC_DATA_ROOT 覆盖。
+  data_root: "./data/intersection_data"
+  output_root: "./output"
+  model_path: "./ml/model.pkl"
+
+sumo:
+  # 批量跑批推荐用命令行版 sumo；需要可视化观察时改为 sumo-gui。
+  binary: "sumo"
+  step_length: 1.0
+  default_simulation_steps: 3600
+
+scene:
+  # 20 路口 × 3 流量等级 = 60 个变体
+  default_traffic_levels:
+    low: 0.5
+    normal: 1.0
+    high: 3.0
+
+algorithms:
+  fixed_time:
+    # true：从 Excel 读取配时方案并写入 SUMO；
+    # false：使用 SUMO 路网中自带的默认配时程序。
+    use_excel_timing: false
+
+  rule_adaptive:
+    min_green: 10
+    max_green: 60
+    queue_threshold: 5
+
+  ml_enhanced:
+    # 预测未来 5 分钟流量（300 秒）
+    prediction_horizon: 300
+
+metrics:
+  # 每 60 仿真秒记录一次快照，降低 CSV 体积。
+  snapshot_interval: 60
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

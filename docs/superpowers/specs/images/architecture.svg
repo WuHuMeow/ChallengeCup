@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 380" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/></filter>
+  </defs>
+
+  <!-- Top: Visualization -->
+  <rect x="20" y="8" width="760" height="48" rx="8" fill="#667eea" filter="url(#s)"/>
+  <text x="400" y="30" text-anchor="middle" fill="white" font-size="14" font-weight="bold">📊 可视化与报告层（Matplotlib + 轻量 Web）</text>
+  <text x="400" y="46" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="10">指标对比曲线 · 流量预测 vs 真实 · 统计报告 · 简易控制面板</text>
+
+  <!-- API line -->
+  <rect x="20" y="62" width="760" height="24" rx="4" fill="#2d3436"/>
+  <text x="400" y="79" text-anchor="middle" fill="white" font-size="10" font-weight="bold">REST API（FastAPI）← 轻量实验控制接口</text>
+
+  <!-- Middle: Core Platform -->
+  <rect x="20" y="94" width="760" height="150" rx="10" fill="#11998e" filter="url(#s)"/>
+  <text x="400" y="116" text-anchor="middle" fill="white" font-size="14" font-weight="bold">算法实验平台</text>
+
+  <!-- Three columns in platform -->
+  <rect x="35" y="128" width="230" height="105" rx="6" fill="rgba(255,255,255,0.18)"/>
+  <text x="150" y="150" text-anchor="middle" fill="white" font-size="12" font-weight="bold">🚦 仿真引擎</text>
+  <text x="60" y="170" fill="rgba(255,255,255,0.9)" font-size="10">• SUMO 引擎封装</text>
+  <text x="60" y="186" fill="rgba(255,255,255,0.9)" font-size="10">• 20 路口场景管理</text>
+  <text x="60" y="202" fill="rgba(255,255,255,0.9)" font-size="10">• 场景变体生成</text>
+  <text x="60" y="218" fill="rgba(255,255,255,0.9)" font-size="10">• TraCI 数据采集 → CSV</text>
+
+  <rect x="285" y="128" width="230" height="105" rx="6" fill="rgba(255,255,255,0.18)"/>
+  <text x="400" y="150" text-anchor="middle" fill="white" font-size="12" font-weight="bold">🧠 算法运行器</text>
+  <text x="310" y="170" fill="rgba(255,255,255,0.9)" font-size="10">• 标准算法接口（ABC）</text>
+  <text x="310" y="186" fill="rgba(255,255,255,0.9)" font-size="10">• 固定配时基线（对照组）</text>
+  <text x="310" y="202" fill="rgba(255,255,255,0.9)" font-size="10">• 规则自适应算法</text>
+  <text x="310" y="218" fill="rgba(255,255,255,0.9)" font-size="10">• ML 增强算法（主打）</text>
+
+  <rect x="535" y="128" width="230" height="105" rx="6" fill="rgba(255,255,255,0.18)"/>
+  <text x="650" y="150" text-anchor="middle" fill="white" font-size="12" font-weight="bold">📈 实验分析框架</text>
+  <text x="560" y="170" fill="rgba(255,255,255,0.9)" font-size="10">• 多场景 × 多算法跑批</text>
+  <text x="560" y="186" fill="rgba(255,255,255,0.9)" font-size="10">• 指标自动采集</text>
+  <text x="560" y="202" fill="rgba(255,255,255,0.9)" font-size="10">• 统计显著性检验</text>
+  <text x="560" y="218" fill="rgba(255,255,255,0.9)" font-size="10">• 对比报告生成</text>
+
+  <!-- Bottom: ML Module -->
+  <rect x="20" y="252" width="760" height="52" rx="8" fill="#e17055" filter="url(#s)"/>
+  <text x="400" y="274" text-anchor="middle" fill="white" font-size="14" font-weight="bold">🤖 ML 模型模块（赛道 B 核心）</text>
+  <text x="400" y="294" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11">XGBoost 流量预测模型：离线训练脚本 → model.pkl → 算法运行时推理 → 预测未来流量 → 优化配时参数</text>
+
+  <!-- Feature labels -->
+  <rect x="28" y="316" width="120" height="22" rx="4" fill="#fce4ec"/>
+  <text x="88" y="332" text-anchor="middle" fill="#c0392b" font-size="9" font-weight="bold">功能一：仿真场景</text>
+  <rect x="158" y="316" width="130" height="22" rx="4" fill="#e8f4fd"/>
+  <text x="223" y="332" text-anchor="middle" fill="#2471a3" font-size="9" font-weight="bold">功能二：算法实现</text>
+  <rect x="298" y="316" width="150" height="22" rx="4" fill="#e17055"/>
+  <text x="373" y="332" text-anchor="middle" fill="white" font-size="9" font-weight="bold">功能三：ML优化·赛道B</text>
+  <text x="550" y="332" text-anchor="middle" fill="#666" font-size="9">← 三位一体，通过算法接口 + REST API 协作</text>
+</svg>

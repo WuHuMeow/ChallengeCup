@@ -1,25 +1,35 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
+# Python virtual environment
 .venv/
 venv/
-*.egg-info/
+env/
 
-# Experiment outputs
-experiments/results/
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-# Raw intersection data (use data/intersection_data.zip)
-intersection_data/
-
-# Editor/IDE
-.obsidian/
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# System files
+# OS
 .DS_Store
 Thumbs.db
 
-# Environment
-.env
+# SUMO outputs (generated during simulation)
+*.tripinfo.xml
+*fcd.xml
+*traj.xml
+*stats.xml
+
+# Experiment outputs
+output/
+experiments/results/
+*.csv
+!data/intersection_data/metadata/*.csv
+
+# Subagent-driven development scratch files
+.superpowers/sdd/

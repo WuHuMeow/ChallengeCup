@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgeRelations>
+    <interval begin="0" end="3600">
+        <!-- 西进口 E0 -->
+        <edgeRelation from="E0" to="E1" probability="0.38"/>   <!-- 直行向东 -->
+        <edgeRelation from="E0" to="E2" probability="0.285"/>  <!-- 右转向南 -->
+        <edgeRelation from="E0" to="E3" probability="0.334"/>  <!-- 左转向北 -->
+
+        <!-- 东进口 -E1 -->
+        <edgeRelation from="-E1" to="-E0" probability="0.38"/> <!-- 直行向西 -->
+        <edgeRelation from="-E1" to="E3" probability="0.285"/>  <!-- 右转向北 -->
+        <edgeRelation from="-E1" to="E2" probability="0.334"/>  <!-- 左转向南 -->
+
+        <!-- 南进口 -E2 -->
+        <edgeRelation from="-E2" to="E3" probability="0.406"/>  <!-- 直行向北 -->
+        <edgeRelation from="-E2" to="E1" probability="0.305"/>  <!-- 右转向东 -->
+        <edgeRelation from="-E2" to="-E0" probability="0.289"/> <!-- 左转向西 -->
+
+        <!-- 北进口 -E3 -->
+        <edgeRelation from="-E3" to="E2" probability="0.406"/>  <!-- 直行向南 -->
+        <edgeRelation from="-E3" to="-E0" probability="0.305"/> <!-- 右转向西 -->
+        <edgeRelation from="-E3" to="E1" probability="0.289"/>  <!-- 左转向东 -->
+    </interval>
+
+    <turns>
+        <sink edges="-E0 E1 E2 E3"/>
+    </turns>
+</edgeRelations>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <input>
+        <net-file value="demo_20.net.xml"/>
+        <route-files value="demo_20.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="0.1"/>
+    </time>
+    <processing>
+        <ignore-route-errors value="true"/>
+    </processing>
+    <output>
+        <tripinfo-output value="tripinfo.xml"/>
+        <fcd-output value="traj.xml"/>
+        <summary-output value="stats.xml"/>
+        <queue-output value="queues.xml"/>
+    </output>
+    <report>
+        <verbose value="true"/>
+    </report>
+    <!--gui_only>
+        <start value="true"/>
+
+    </gui_only-->
+</configuration>
