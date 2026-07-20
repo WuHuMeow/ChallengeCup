@@ -41,6 +41,8 @@ algorithms:
     max_green: 90
     # EWMA 平滑系数
     ewma_alpha: 0.3
+    # 云端流量预测时域（秒）
+    prediction_horizon: 300
 
 metrics:
   # 每 60 仿真秒记录一次快照，降低 CSV 体积。

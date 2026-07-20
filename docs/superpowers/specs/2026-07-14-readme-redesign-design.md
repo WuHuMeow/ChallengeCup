@@ -218,7 +218,7 @@ ChallengeCup/
 | 文档 | 说明 | 路径 |
 |------|------|------|
 | 完整设计文档 | 架构、模块、分工、里程碑 | `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md` |
-| 团队分工 | 8 人详细任务 | `docs/team/README.md` |
+| 团队分工 | 8 人详细任务 | `docs/tasks/README.md` |
 | API 接口文档 | 功能一产出 | `docs/api-spec.md`（待创建） |
 | 实验报告 | 180 次仿真分析 | `docs/experiment-report.md`（待创建） |
 
@@ -228,7 +228,7 @@ ChallengeCup/
 
 #### 团队分工
 
-用表格展示 4 组 8 人，链接到 `docs/team/README.md` 和个人任务书。
+用表格展示 4 组 8 人，链接到 `docs/tasks/README.md` 和个人任务书。
 
 #### 评分对标
 
@@ -272,7 +272,7 @@ ChallengeCup/
 |------|----------|
 | `README.md` | 按本设计完全重写。 |
 | `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md` | 修正「目录结构」章节，使其与实际目录一致；说明源码目录已创建为骨架，具体实现按开发阶段填充。 |
-| `docs/team/README.md` | 检查并修正目录链接，确保个人任务书路径正确。 |
+| `docs/tasks/README.md` | 检查并修正目录链接，确保个人任务书路径正确。 |
 
 ### 5.3 不修改的文件
 
@@ -289,7 +289,7 @@ ChallengeCup/
 3. `requirements.txt` 已创建且依赖合理。
 4. `engine/`、`scenes/`、`algorithms/`、`ml/`、`api/`、`experiments/`、`visualization/`、`config/`、`docker/`、`output/` 目录骨架已创建，每个目录包含说明 `README.md`。
 5. `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md` 中的目录结构描述与实际一致。
-6. `docs/team/README.md` 中的链接路径与实际文件一致。
+6. `docs/tasks/README.md` 中的链接路径与实际文件一致。
 7. 无 TBD/TODO 占位符（除非明确标注为后续工作）。
 
 ---

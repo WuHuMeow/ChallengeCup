@@ -24,7 +24,7 @@ class RuleAdaptiveAlgorithm(BaseControlAlgorithm):
         max_green: float | None = None,
         queue_threshold: float | None = None,
     ) -> None:
-        cfg = get_config().get("algorithms.rule_adaptive", {})
+        cfg = get_config().get("algorithms.actuated", {})
         self.min_green = min_green if min_green is not None else cfg.get("min_green", 10)
         self.max_green = max_green if max_green is not None else cfg.get("max_green", 60)
         self.queue_threshold = (

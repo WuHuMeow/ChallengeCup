@@ -301,7 +301,7 @@ git commit -m "chore: add requirements.txt with SUMO, ML, API and viz dependenci
 - Modify: `README.md` (complete rewrite)
 
 **Interfaces:**
-- Consumes: design doc `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`, team doc `docs/team/README.md`, and SVG images in `docs/superpowers/specs/images/`.
+- Consumes: design doc `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`, team doc `docs/tasks/README.md`, and SVG images in `docs/superpowers/specs/images/`.
 - Produces: a comprehensive `README.md` with badges, TOC, environment setup, quick start, project structure, docs navigation, milestones, team, scoring alignment, and submission checklist.
 
 - [ ] **Step 1: Write the new `README.md`**
@@ -563,7 +563,7 @@ ChallengeCup/
 |------|------|------|
 | 📐 完整设计文档 | 架构设计、模块详情、分工、里程碑 | [`docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`](./docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md) |
 | 📋 本 README 重设计文档 | README  redesign 方案 | [`docs/superpowers/specs/2026-07-14-readme-redesign-design.md`](./docs/superpowers/specs/2026-07-14-readme-redesign-design.md) |
-| 👥 团队分工 | 8 成员4 组详细任务 | [`docs/team/README.md`](./docs/team/README.md) |
+| 👥 团队分工 | 8 成员4 组详细任务 | [`docs/tasks/README.md`](./docs/tasks/README.md) |
 | 🔌 API 接口文档 | 功能一产出：接口定义与 Postman Collection | `docs/api-spec.md`（待创建） |
 | 📊 实验报告 | 180 次仿真分析与统计检验 | `docs/experiment-report.md`（待创建） |
 
@@ -592,7 +592,7 @@ ChallengeCup/
 | 实验分析组 | 成员5、成员8 | 180 次跑批、指标采集、统计检验、Docker 工程化 |
 | 可视化与交付 | 🔷 成员6（后端负责）、🔶 成员7（前端负责） | FastAPI、可视化图表、PPT、Demo 视频 |
 
-详细分工与个人任务书见 [`docs/team/README.md`](./docs/team/README.md)。
+详细分工与个人任务书见 [`docs/tasks/README.md`](./docs/tasks/README.md)。
 
 ---
 
@@ -772,10 +772,10 @@ git commit -m "docs: align design doc directory tree with actual skeleton"
 ## Task 5: Verify Team README Links
 
 **Files:**
-- Read: `docs/team/README.md`
+- Read: `docs/tasks/README.md`
 
 **Interfaces:**
-- Consumes: actual files in `docs/team/人X-*/任务书.md`.
+- Consumes: actual files in `docs/tasks/人X-*/任务书.md`.
 - Produces: confirmation that all internal links resolve.
 
 - [ ] **Step 1: Check each link target exists**
@@ -786,7 +786,7 @@ Run:
 cd /c/Users/peng/Desktop/project/ChallengeCup
 python -c "
 import re, os
-with open('docs/team/README.md', 'r', encoding='utf-8') as f:
+with open('docs/tasks/README.md', 'r', encoding='utf-8') as f:
     text = f.read()
 links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', text)
 broken = []
@@ -811,7 +811,7 @@ If no changes were made, skip this step. If links were fixed:
 
 ```bash
 cd /c/Users/peng/Desktop/project/ChallengeCup
-git add docs/team/README.md
+git add docs/tasks/README.md
 git commit -m "docs: fix team README internal links"
 ```
 

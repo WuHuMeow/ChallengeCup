@@ -52,5 +52,5 @@
   <!-- Summary -->
   <rect x="80" y="340" width="640" height="55" rx="8" fill="#edf2f7" stroke="#cbd5e0" stroke-width="1"/>
   <text x="400" y="362" text-anchor="middle" font-size="10" fill="#4a5568">协作节奏：每日 21:00 群内同步（≤5行）| 每周六 21:00 全体会（30min）| 卡住 >4h 升级到 TL</text>
-  <text x="400" y="382" text-anchor="middle" font-size="10" fill="#4a5568">分支策略：main（稳定）/ dev（开发）/ feature/*（功能分支）| 接口冻结：7/23 后不改 messages + base</text>
+  <text x="400" y="382" text-anchor="middle" font-size="10" fill="#4a5568">分支策略：main（稳定）/ dev（开发）/ feature/*（功能分支）| 接口冻结：7/23 后不改 types + base</text>
 </svg>

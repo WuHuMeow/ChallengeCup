@@ -58,7 +58,7 @@
   <!-- Key milestones -->
   <text x="60" y="185" font-size="11" font-weight="bold" fill="#4a5568">关键验收节点：</text>
   <rect x="60" y="195" width="700" height="120" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text x="80" y="218" font-size="10" fill="#4a5568">M1（7/23）：接口冻结 — messages.py + base.py 不再修改</text>
+  <text x="80" y="218" font-size="10" fill="#4a5568">M1（7/23）：接口冻结 — core/types.py + algorithms/base.py 不再修改</text>
   <text x="80" y="238" font-size="10" fill="#4a5568">M2（7/26）：路口 1 两种算法跑通 3600 步，tag v0.1-w1-complete</text>
   <text x="80" y="258" font-size="10" fill="#4a5568">M3（8/9）：20 路口 × 3 算法 × 原始流量 = 180 次仿真完成</text>
   <text x="80" y="278" font-size="10" fill="#4a5568">M4（8/16）：1.5 倍流量实验完成，EWMA 接入，360 次全量数据就绪</text>

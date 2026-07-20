@@ -17,7 +17,7 @@ class TrafficLevel(str, Enum):
 
     LOW = "low"        # 0.5x
     NORMAL = "normal"  # 1.0x
-    HIGH = "high"      # 3.0x
+    HIGH = "high"      # 1.5x
 
 
 @dataclass
