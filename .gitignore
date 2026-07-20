@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Experiment outputs
+experiments/results/
+
+# Raw intersection data (use data/intersection_data.zip)
+intersection_data/
+
+# Editor/IDE
+.obsidian/
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
