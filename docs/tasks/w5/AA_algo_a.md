@@ -9,7 +9,7 @@
 
 ### Day 1（8/17 周日）
 1. 基线算法代码最终清理：
-   - fixed_time.py / actuated.py 最终 review
+   - fixed_time.py / rule_adaptive.py 最终 review
    - 删除调试代码、确认 docstring 完整
    - 确认参数可配置（min_green/max_green 等）
 2. 提交给 TL

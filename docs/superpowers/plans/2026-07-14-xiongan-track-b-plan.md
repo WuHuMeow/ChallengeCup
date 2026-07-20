@@ -40,7 +40,7 @@ ChallengeCup/
 │   ├── base.py                # BaseControlAlgorithm ABC
 │   ├── fixed_time.py          # 固定配时基线
 │   ├── rule_adaptive.py       # 规则自适应算法
-│   └── ml_enhanced.py         # ML 增强算法（加载 model.pkl）
+│   └── ca_max_pressure.py         # ML 增强算法（加载 model.pkl）
 ├── ml/
 │   ├── __init__.py
 │   ├── train.py               # XGBoost 训练入口
@@ -906,7 +906,7 @@ ml:
 
 experiments:
   output_dir: "output"
-  algorithms: ["fixed_time", "rule_adaptive", "ml_enhanced"]
+  algorithms: ["fixed_time", "rule_adaptive", "ca_maxpressure"]
 
 api:
   host: "127.0.0.1"
@@ -1481,23 +1481,23 @@ git commit -m "feat: Rule-adaptive traffic signal algorithm"
 ### Task 13: ML 增强算法
 
 **Files:**
-- Create: `algorithms/ml_enhanced.py`
+- Create: `algorithms/ca_max_pressure.py`
 
 **Interfaces:**
 - Consumes: `BaseControlAlgorithm`, `RuleAdaptiveAlgorithm`, `ml/model.pkl`
-- Produces: `class MLEnhancedAlgorithm(BaseControlAlgorithm)`
+- Produces: `class CAMaxPressureAlgorithm(BaseControlAlgorithm)`
 
 - [ ] **Step 1: 实现 ML 增强算法**
 
 ```python
-# algorithms/ml_enhanced.py
+# algorithms/ca_max_pressure.py
 import pickle
 from pathlib import Path
 import numpy as np
 from algorithms.base import BaseControlAlgorithm, ControlAction, JointState
 from scenes.registry import SceneMeta
 
-class MLEnhancedAlgorithm(BaseControlAlgorithm):
+class CAMaxPressureAlgorithm(BaseControlAlgorithm):
     """
     ML 增强算法 = 规则自适应基础 + XGBoost 流量预测预调。
     - 每个仿真步用 ML 模型预测未来流量
@@ -1596,7 +1596,7 @@ class MLEnhancedAlgorithm(BaseControlAlgorithm):
 - [ ] **Step 2: Commit**
 
 ```bash
-git add algorithms/ml_enhanced.py
+git add algorithms/ca_max_pressure.py
 git commit -m "feat: ML-enhanced algorithm — XGBoost prediction + adaptive timing"
 ```
 
@@ -1672,12 +1672,12 @@ def stop_simulation():
 
 @router.get("/api/algorithms")
 def list_algorithms():
-    return {"algorithms": ["fixed_time", "rule_adaptive", "ml_enhanced"]}
+    return {"algorithms": ["fixed_time", "rule_adaptive", "ca_maxpressure"]}
 
 @router.post("/api/algorithm/switch")
 def switch_algorithm(algorithm: str):
     global _current_algorithm
-    if algorithm not in ("fixed_time", "rule_adaptive", "ml_enhanced"):
+    if algorithm not in ("fixed_time", "rule_adaptive", "ca_maxpressure"):
         raise HTTPException(400, f"未知算法: {algorithm}")
     _current_algorithm = algorithm
     return {"status": "switched", "algorithm": algorithm}
@@ -1745,7 +1745,7 @@ def test_list_algorithms():
     assert resp.status_code == 200
     data = resp.json()
     assert "fixed_time" in data["algorithms"]
-    assert "ml_enhanced" in data["algorithms"]
+    assert "ca_maxpressure" in data["algorithms"]
 
 def test_switch_algorithm_invalid():
     resp = client.post("/api/algorithm/switch?algorithm=invalid")
@@ -1788,12 +1788,12 @@ from engine.collector import DataCollector
 from algorithms.base import JointState
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
-from algorithms.ml_enhanced import MLEnhancedAlgorithm
+from algorithms.ca_maxpressure import CAMaxPressureAlgorithm
 
 ALGO_MAP = {
     'fixed_time': FixedTimeAlgorithm,
     'rule_adaptive': RuleAdaptiveAlgorithm,
-    'ml_enhanced': MLEnhancedAlgorithm,
+    'ca_maxpressure': CAMaxPressureAlgorithm,
 }
 
 
@@ -1875,7 +1875,7 @@ def run_batch(
 python -c "
 from pathlib import Path
 from experiments.runner import run_batch
-results = run_batch(['1'], ['fixed_time', 'rule_adaptive', 'ml_enhanced'], steps=600)
+results = run_batch(['1'], ['fixed_time', 'rule_adaptive', 'ca_maxpressure'], steps=600)
 print(f'完成: {len(results)} 个实验')
 for r in results:
     print(f'  {r}')
@@ -1990,8 +1990,8 @@ from pathlib import Path
 from experiments.runner import run_batch
 from experiments.metrics import compare_algorithms
 
-results = run_batch(['1'], ['fixed_time', 'rule_adaptive', 'ml_enhanced'], steps=1800)
-df = compare_algorithms('1', Path('output'), ['fixed_time', 'rule_adaptive', 'ml_enhanced'])
+results = run_batch(['1'], ['fixed_time', 'rule_adaptive', 'ca_maxpressure'], steps=1800)
+df = compare_algorithms('1', Path('output'), ['fixed_time', 'rule_adaptive', 'ca_maxpressure'])
 print(df.to_string())
 df.to_csv('output/comparison_demo1.csv', index=False)
 print('对比结果保存到 output/comparison_demo1.csv')
@@ -2006,7 +2006,7 @@ import pandas as pd
 df = pd.read_csv('output/comparison_demo1.csv')
 print(df[['algorithm', 'avg_queue_length', 'avg_waiting_per_vehicle', 'total_throughput']])
 # 基本检查：ML 增强的排队长度应 ≤ 规则自适应
-ml_row = df[df['algorithm'] == 'ml_enhanced']
+ml_row = df[df['algorithm'] == 'ca_maxpressure']
 rule_row = df[df['algorithm'] == 'rule_adaptive']
 fixed_row = df[df['algorithm'] == 'fixed_time']
 if len(ml_row) and len(rule_row):
@@ -2079,7 +2079,7 @@ def generate_summary_table(
 
     # 统计检验：固定配时 vs ML 增强
     fixed_queues = df[df['algorithm'] == 'fixed_time']['avg_queue_length'].tolist()
-    ml_queues = df[df['algorithm'] == 'ml_enhanced']['avg_queue_length'].tolist()
+    ml_queues = df[df['algorithm'] == 'ca_maxpressure']['avg_queue_length'].tolist()
     rule_queues = df[df['algorithm'] == 'rule_adaptive']['avg_queue_length'].tolist()
 
     print("\n=== 统计检验 ===")
@@ -2125,7 +2125,7 @@ from scenes.registry import SceneRegistry
 
 reg = SceneRegistry(Path('scenes/data'))
 scene_ids = [s.id for s in reg.list_all()]
-algos = ['fixed_time', 'rule_adaptive', 'ml_enhanced']
+algos = ['fixed_time', 'rule_adaptive', 'ca_maxpressure']
 total = len(scene_ids) * len(algos)
 
 print(f'开始全量跑批: {len(scene_ids)} 场景 × {len(algos)} 算法 = {total} 次仿真')
@@ -2219,7 +2219,7 @@ def plot_per_scene_heatmap(csv_path: Path, output_dir: Path):
         values='avg_queue_length', index='scene_id', columns='algorithm', aggfunc='mean'
     )
     pivot['ML提升_vs_固定'] = (
-        (pivot['fixed_time'] - pivot['ml_enhanced']) / pivot['fixed_time'] * 100
+        (pivot['fixed_time'] - pivot['ca_maxpressure']) / pivot['fixed_time'] * 100
     )
 
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -2281,7 +2281,7 @@ def generate_report(csv_dir: Path, output_path: Path, scene_ids: list[str], algo
 
     # 统计检验
     fixed_q = df[df['algorithm'] == 'fixed_time']['avg_queue_length'].tolist()
-    ml_q = df[df['algorithm'] == 'ml_enhanced']['avg_queue_length'].tolist()
+    ml_q = df[df['algorithm'] == 'ca_maxpressure']['avg_queue_length'].tolist()
     test_result = paired_ttest(fixed_q, ml_q)
 
     report = f"""# 实验对比报告
@@ -2329,7 +2329,7 @@ if __name__ == '__main__':
         Path("output"),
         Path("docs/experiment-report.md"),
         scene_ids,
-        ['fixed_time', 'rule_adaptive', 'ml_enhanced'],
+        ['fixed_time', 'rule_adaptive', 'ca_maxpressure'],
     )
 ```
 
@@ -2463,7 +2463,7 @@ curl http://localhost:8000/api/scenes
 curl http://localhost:8000/api/algorithms
 curl -X POST "http://localhost:8000/api/experiments/run" \
   -H "Content-Type: application/json" \
-  -d '{"scene_ids":["1"],"algorithms":["fixed_time","rule_adaptive","ml_enhanced"]}'
+  -d '{"scene_ids":["1"],"algorithms":["fixed_time","rule_adaptive","ca_maxpressure"]}'
 
 kill %1
 ```

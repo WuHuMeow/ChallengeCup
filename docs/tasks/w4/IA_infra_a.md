@@ -28,15 +28,18 @@
    COPY requirements.txt .
    RUN pip3 install --no-cache-dir -r requirements.txt
 
-   COPY src/ ./src/
+   COPY core/ ./core/
+   COPY algorithms/ ./algorithms/
+   COPY engine/ ./engine/
+   COPY cloud/ ./cloud/
    COPY experiments/ ./experiments/
-   COPY intersection_data/ ./intersection_data/
+   COPY data/intersection_data/ ./data/intersection_data/
 
-   ENTRYPOINT ["python3", "src/platform/main.py"]
-   CMD ["--intersection", "1", "--algo", "ca_maxpressure", "--steps", "3600"]
+   ENTRYPOINT ["python3", "engine/runner.py"]
+   CMD ["1"]
    ```
 2. 构建镜像：`docker build -t ca-mp:latest .`
-3. 测试运行：`docker run --rm ca-mp:latest --intersection 1 --algo fixed_time --steps 100`
+3. 测试运行：`docker run --rm ca-mp:latest 1`
 
 ### Day 3（8/12 周二）
 1. 编写 `docker-compose.yml`（简化版，单容器）：
@@ -47,7 +50,7 @@
        build: .
        volumes:
          - ./experiments/results:/app/experiments/results
-       command: ["--intersection", "16", "--algo", "ca_maxpressure", "--steps", "3600"]
+       command: ["16"]
    ```
 2. 测试 `docker-compose up`
 3. 确认输出文件正确挂载到宿主机

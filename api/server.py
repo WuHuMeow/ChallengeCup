@@ -84,7 +84,7 @@ def cloud_predict(state: Dict[str, Any]) -> Dict[str, Any]:
 @app.post("/api/edge/control")
 def edge_control(predictions: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:
     """边缘控制决策。"""
-    # TODO: 成员6 接入 algorithms.ml_enhanced.MLEnhancedAlgorithm
+    # TODO: 成员6 接入 algorithms.ca_max_pressure.CAMaxPressureAlgorithm
     return {"actions": []}
 
 

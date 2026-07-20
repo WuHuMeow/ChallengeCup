@@ -9,7 +9,7 @@
 
 ### Day 1（8/17 周日）
 1. 代码最终清理：
-   - simulator.py / edge_node.py / cloud.py / main.py 最终 review
+   - traci_bridge.py / runner.py / cloud_policy.py 最终 review
    - 删除调试代码
    - 确认异常处理完整（TraCI 断开、文件不存在等）
 2. 确认所有模块的 docstring 完整

@@ -10,7 +10,7 @@
 ### Day 1（7/27 周日）
 
 1. 用路口 1 的已有 traj.xml 生成时空轨迹图：
-   - 调用 `src/visualization/plots.py` 中的 `plot_trajectory()`
+   - 调用 `visualization/plots.py` 中的 `plot_trajectory()`
    - 输出 `demo/assets/charts/trajectory_intersection1.png`
    - 检查：中文标签、颜色映射、坐标轴是否正确
 2. 如果 traj.xml 格式与预期不同，调整解析逻辑
@@ -31,7 +31,7 @@
    - OBS 录制全过程（加速播放：SUMO-GUI 的 delay 设为 0）
    - 输出 `demo/assets/recordings/test_fixed_time_i1.mp4`
 2. 再录制 CA-MP 版本：
-   - `python src/platform/main.py --intersection 1 --algo ca_maxpressure --gui --steps 3600`
+   - `python experiments/runner.py --intersection 1 --algo ca_maxpressure --gui --steps 3600`
    - OBS 录制
    - 输出 `demo/assets/recordings/test_ca_mp_i1.mp4`
 3. 检查两段视频：画面是否流畅、信号灯切换是否可见

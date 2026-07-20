@@ -47,7 +47,7 @@ class CloudPolicy:
 
         若模型未加载成功，返回当前流量作为兜底，确保边缘算法仍可运行。
         """
-        horizon = get_config().get("algorithms.ml_enhanced.prediction_horizon", 300)
+        horizon = get_config().get("algorithms.ca_maxpressure.prediction_horizon", 300)
 
         if self._model is not None:
             # TODO: 调用 ml/features.py 生成特征向量，再调用 self._model.predict()

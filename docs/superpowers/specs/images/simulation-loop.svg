@@ -22,7 +22,7 @@
   <path d="M490,82 L520,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
   <rect x="520" y="55" width="130" height="55" rx="8" fill="#fed7e2" stroke="#d53f8c" stroke-width="2"/>
   <text x="585" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">CA-MP 决策</text>
-  <text x="585" y="96" text-anchor="middle" font-size="9" fill="#718096">ml_enhanced.py</text>
+  <text x="585" y="96" text-anchor="middle" font-size="9" fill="#718096">ca_max_pressure.py</text>
   <path d="M650,82 L680,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
   <rect x="680" y="55" width="100" height="55" rx="8" fill="#c6f6d5" stroke="#38a169" stroke-width="2"/>
   <text x="730" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#276749">Action</text>

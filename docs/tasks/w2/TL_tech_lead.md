@@ -11,17 +11,17 @@
 
 1. 检查 W1 交付物完整性：
    - IA：20 路口是否全部可运行
-   - IB：simulator.py + edge_node.py + cloud.py 是否合入
-   - AA：fixed_time.py + actuated.py 是否合入
-   - AB：ca_max_pressure.py 是否合入
-   - EX：config.yaml + runner.py 框架是否就绪
+   - IB：engine/traci_bridge.py + engine/runner.py + cloud/cloud_policy.py 是否合入
+   - AA：algorithms/fixed_time.py + algorithms/rule_adaptive.py 是否合入
+   - AB：algorithms/ca_max_pressure.py 是否合入
+   - EX：config.yaml + experiments/runner.py 框架是否就绪
 2. 解决 W1 遗留的集成问题
-3. 确认 main.py 支持 `--algo fixed_time/actuated/ca_maxpressure` 三选一
+3. 确认 experiments/runner.py 支持 `fixed_time/actuated/ca_maxpressure` 三选一
 
 ### Day 2（7/28 周一）
 
-1. 协调 IB 为 main.py 添加 EX 需要的参数：`--seed`、`--flow-multiplier`、`--output-dir`
-2. 验证：`python src/platform/main.py --intersection 1 --algo ca_maxpressure --steps 3600 --seed 42 --output-dir experiments/results/test_run`
+1. 协调 IB 为 experiments/runner.py 添加 EX 需要的参数：`--seed`、`--flow-multiplier`、`--output-dir`
+2. 验证：`python experiments/runner.py --intersection 1 --algo ca_maxpressure --steps 3600 --seed 42 --output-dir experiments/results/test_run`
 3. 确认输出目录下有 tripinfo.xml 和 stats.xml
 
 ### Day 3（7/29 周二）
@@ -40,9 +40,9 @@
    - 容量计算是否合理（length / 7.5）
    - 边界情况处理（无车时、压力全为 0 时）
 2. Review IB 的云-边-端消息流：
-   - V2XMessage 是否每步都产生
-   - CloudCoordinator 是否周期性下发 CloudCommand
-   - EdgeNode 是否正确转发
+   - JointState 是否每步都产生
+   - CloudPolicy 是否周期性调用 predict() 下发预测结果
+   - engine/runner.py 是否正确转发
 3. 提出修改意见，跟踪修复
 
 ### Day 5（7/31 周四）
@@ -59,8 +59,8 @@
 1. 打 tag：`git tag v0.2-w2-complete`
 2. 编写 W2 周报
 3. 确认 W3 全量实验的前置条件：
-   - runner.py 能生成 360 组实验
-   - main.py 支持所有需要的参数
+   - experiments/runner.py 能生成 360 组实验
+   - experiments/runner.py 支持所有需要的参数
    - 输出目录结构正确
 4. 与 EX 确认：W3 第一天就能开始批量跑实验
 
@@ -79,5 +79,5 @@
 | 1 | 三种算法在路口 1 对比数据 | 7/29 | CA-MP 行程时间 < FixedTime |
 | 2 | 路口 16 验证通过 | 7/31 | 溢出门控触发 |
 | 3 | 路口 11 验证通过 | 7/31 | 0.1s 步长正常 |
-| 4 | W3 前置条件确认 | 8/1 | runner.py 可运行 |
+| 4 | W3 前置条件确认 | 8/1 | experiments/runner.py 可运行 |
 | 5 | git tag v0.2 | 8/1 | 代码稳定 |

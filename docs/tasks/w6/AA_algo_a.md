@@ -13,7 +13,7 @@
 
 ### Day 2（8/25 周一）
 1. 修复 review 中发现的问题（如有）
-2. 最终确认：fixed_time.py / actuated.py 代码干净、docstring 完整
+2. 最终确认：fixed_time.py / rule_adaptive.py 代码干净、docstring 完整
 
 ### Day 3（8/26 周二）
 1. 最终验证：基线算法在路口 16 上跑通

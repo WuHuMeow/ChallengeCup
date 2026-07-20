@@ -77,7 +77,7 @@
                ▼
 ┌─────────────────────────────────────┐
 │  边缘 Edge Controller               │  ← 接收云端预测，结合本地排队长度
-│  (algorithms/ml_enhanced.py)        │    执行规则融合决策，输出信号配时
+│  (algorithms/ca_max_pressure.py)        │    执行规则融合决策，输出信号配时
 └──────────────┬──────────────────────┘
                │ TraCI set_phase / set_vehicle_speed
                ▼
@@ -92,7 +92,7 @@
 | 层级 | 模块 | 核心职责 | 在本项目中的落点 |
 |------|------|----------|-----------------|
 | **云端** | `cloud/cloud_policy.py` | 基于历史与实时数据做未来流量预测；输出全局策略参数 | XGBoost `model.pkl` + 预测服务封装 |
-| **边缘** | `algorithms/ml_enhanced.py` | 融合云端预测与本地排队状态，生成本地控制指令 | ML 增强算法主体 |
+| **边缘** | `algorithms/ca_max_pressure.py` | 融合云端预测与本地排队状态，生成本地控制指令 | ML 增强算法主体 |
 | **车端/路侧** | `engine/traci_bridge.py` | 接收控制指令并写入 SUMO；反馈车辆状态 | TraCI 读写封装 |
 
 **接口契约**
@@ -105,8 +105,8 @@ class CloudPolicy:
         """返回未来 5 分钟各方向预测流量"""
         ...
 
-# algorithms/ml_enhanced.py
-class MLEnhancedAlgorithm(BaseControlAlgorithm):
+# algorithms/ca_max_pressure.py
+class CAMaxPressureAlgorithm(BaseControlAlgorithm):
     def __init__(self, cloud_policy: CloudPolicy): ...
     def step(self, state: JointState) -> list[ControlAction]:
         pred = self.cloud_policy.predict(state)
@@ -306,7 +306,7 @@ docker-compose up
   ├── Python 依赖（requirements.txt）
   ├── 仿真数据（scenes/data/ 只读挂载）
   ├── 云端预测服务（CloudPolicy）
-  ├── 边缘控制入口（MLEnhancedAlgorithm）
+  ├── 边缘控制入口（CAMaxPressureAlgorithm）
   └── FastAPI 服务（localhost:8000，含云/边/端接口）
 ```
 
@@ -564,7 +564,7 @@ ChallengeCup/
 │   ├── base.py             # 标准算法接口（待实现）
 │   ├── fixed_time.py       # 固定配时基线（待实现）
 │   ├── rule_adaptive.py    # 规则自适应算法（待实现）
-│   └── ml_enhanced.py      # ML 增强算法（待实现）
+│   └── ca_max_pressure.py      # ML 增强算法（待实现）
 ├── ml/                     # ML 模型模块（赛道 B 核心）
 │   ├── README.md
 │   ├── train.py            # XGBoost 训练脚本（待实现）

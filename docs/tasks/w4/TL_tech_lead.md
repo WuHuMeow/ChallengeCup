@@ -20,7 +20,7 @@
 ### Day 3（8/12 周二）
 1. 检查 1.5 倍压力测试进度
 2. Review IA 的 Docker 打包结果
-3. 验证：`docker build -t ca-mp . && docker run ca-mp --intersection 1 --algo ca_maxpressure` 能跑通
+3. 验证：`docker build -t ca-mp . && docker run ca-mp 1` 能跑通
 
 ### Day 4（8/13 周三）
 1. 1.5 倍压力测试完成

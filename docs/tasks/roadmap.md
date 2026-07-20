@@ -90,48 +90,55 @@
 ## 八、目录结构
 
 ```
-project/
-├── src/
-│   ├── common/
-│   │   ├── __init__.py
-│   │   └── messages.py          # V2XMessage, EdgeStatus, CloudCommand, SignalAction
-│   ├── platform/
-│   │   ├── __init__.py
-│   │   ├── simulator.py         # SumoSimulator (TraCI 封装)
-│   │   ├── edge_node.py         # EdgeNode (RSU 模拟)
-│   │   ├── cloud.py             # CloudCoordinator (云端协调)
-│   │   └── main.py              # 主循环入口
-│   ├── algorithm/
-│   │   ├── __init__.py
-│   │   ├── base.py              # BaseController 抽象基类
-│   │   ├── fixed_time.py        # 固定配时（基线）
-│   │   ├── actuated.py          # 感应控制（基线）
-│   │   └── ca_max_pressure.py   # CA-MP（核心创新）
-│   └── visualization/
-│       ├── __init__.py
-│       ├── plots.py             # Matplotlib 图表生成
-│       └── dashboard.py         # PyQt 实时看板（可选）
-├── experiments/
-│   ├── config.yaml              # 实验矩阵配置
-│   ├── runner.py                # 批量运行脚本
-│   ├── collector.py             # 指标采集
-│   └── results/                 # 实验结果输出（gitignore）
-├── intersection_data/           # 20 路口原始数据（只读）
-│   ├── 1/ ~ 20/
-│   ├── metadata/
-│   └── README.md
+ChallengeCup/
+├── core/                        # 全项目共享核心
+│   ├── types.py                 # JointState / ControlAction / SceneMeta 等数据契约
+│   └── config.py                # YAML 配置加载
+├── engine/                      # 仿真引擎（SUMO + TraCI）
+│   ├── runner.py                # 单次仿真实验运行器（主循环入口）
+│   ├── traci_bridge.py          # TraCI 批量读写桥接
+│   └── collector.py             # 每步状态与指标 CSV 采集
+├── scenes/                      # 场景管理
+│   ├── registry.py              # 20 路口元数据索引
+│   ├── variant.py               # 流量变体生成
+│   └── timing_loader.py         # 从 Excel 读取信号配时方案
+├── algorithms/                  # 算法库
+│   ├── base.py                  # BaseControlAlgorithm 标准接口（ABC）
+│   ├── fixed_time.py            # 固定配时（基线）
+│   ├── rule_adaptive.py         # 感应控制（Actuated 基线）
+│   └── ca_max_pressure.py       # CA-MP（核心创新）
+├── cloud/                       # 云端策略层
+│   └── cloud_policy.py          # CloudCoordinator 全局参数下发 + EWMA 预测
+├── ml/                          # ML 模型模块（EWMA 参数校准）
+│   ├── train.py                 # EWMA 参数校准
+│   ├── features.py              # 特征工程
+│   └── evaluate.py              # 模型评估
+├── api/                         # REST API
+│   └── server.py                # FastAPI 应用
+├── experiments/                 # 实验分析框架
+│   ├── runner.py                # 批量跑批
+│   └── metrics.py               # 指标采集
+├── visualization/               # 可视化
+│   └── plots.py                 # Matplotlib 图表
+├── config/
+│   └── default.yaml             # 全局配置
+├── data/                        # 数据集
+│   ├── intersection_data/       # 20 路口原始数据（只读）
+│   │   ├── 1/ ~ 20/
+│   │   └── metadata/
+│   └── intersection_data.zip
+├── examples/
+│   └── run_fixed_time.py        # 最小可运行示例
 ├── docs/
-│   ├── deployment.md            # 部署文档
-│   ├── interface.md             # 接口文档
-│   ├── faq/
-│   └── tasks/                   # 任务书（本目录）
-│       ├── roadmap.md           # 本文件
-│       ├── w1/ ~ w6/            # 各周任务书
-├── report/                      # 实验评估报告
-├── slides/                      # PPT
-├── demo/                        # 演示视频素材与脚本
-├── Dockerfile
+│   ├── pdf/                     # 赛题 PDF
+│   ├── tasks/                   # 任务书（本目录）
+│   │   ├── roadmap.md           # 本文件
+│   │   └── w1/ ~ w6/           # 各周任务书
+│   ├── guides/                  # 协作指南
+│   └── superpowers/specs/       # 设计文档
+├── docker/                      # 容器化部署（待实现）
 ├── requirements.txt
+├── LICENSE
 ├── .gitignore
 └── README.md
 ```

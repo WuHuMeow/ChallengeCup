@@ -10,7 +10,7 @@
 ### Day 1（8/10 周日）
 1. 实现 EWMA 预测模块：
    ```python
-   # src/algorithm/ewma_predictor.py
+   # algorithms/ewma_predictor.py
    class EWMAPredictor:
        """指数加权移动平均流量预测"""
        def __init__(self, alpha: float = 0.4, history_window: int = 3):
@@ -76,7 +76,7 @@
 ### Day 6（8/15 周五）
 1. 最终代码整理：
    - 确保 EWMA 模块有完整 docstring
-   - 确保参数可通过 CloudCommand 动态调整
+   - 确保参数可通过 CloudPolicy 动态调整
    - 确保无 EWMA 时 CA-MP 退化为 W3 版本（向后兼容）
 2. 提交代码给 TL
 
@@ -90,7 +90,7 @@
 
 | # | 文件 | 截止日 | 验收标准 |
 |---|------|--------|----------|
-| 1 | `src/algorithm/ewma_predictor.py` | 8/10 | EWMA 预测模块完整 |
+| 1 | `algorithms/ewma_predictor.py` | 8/10 | EWMA 预测模块完整 |
 | 2 | CA-MP 接入 EWMA | 8/11 | 路口 1 效果不退化 |
 | 3 | 多路口 EWMA 验证 | 8/12 | 路口 16、11 正常 |
 | 4 | 1.5 倍压力分析 | 8/13 | 改进百分比数据 |

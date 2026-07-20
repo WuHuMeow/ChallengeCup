@@ -85,7 +85,7 @@
 - `base.py` — 标准算法接口（ABC）。
 - `fixed_time.py` — 固定配时基线（对照组）。
 - `rule_adaptive.py` — 规则自适应算法（中间对比）。
-- `ml_enhanced.py` — ML 增强算法（主打）：加载 `ml/model.pkl` 进行预测驱动配时。
+- `ca_max_pressure.py` — ML 增强算法（主打）：加载 `ml/model.pkl` 进行预测驱动配时。
 
 ## 接口约定
 
@@ -109,7 +109,7 @@ XGBoost 流量预测与模型评估。
 - `train.py` — XGBoost 回归训练脚本。
 - `features.py` — 特征工程：滑动窗口、one-hot、归一化。
 - `evaluate.py` — 模型评估：RMSE、MAE、R²、残差分析。
-- `model.pkl` — 训练产出，推理时由 `algorithms/ml_enhanced.py` 加载。
+- `model.pkl` — 训练产出，推理时由 `algorithms/ca_max_pressure.py` 加载。
 
 ## 数据流
 
@@ -515,7 +515,7 @@ ChallengeCup/
 │   ├── base.py             # 标准算法接口（ABC）
 │   ├── fixed_time.py       # 固定配时基线
 │   ├── rule_adaptive.py    # 规则自适应算法
-│   └── ml_enhanced.py      # ML 增强算法（主打）
+│   └── ca_max_pressure.py      # ML 增强算法（主打）
 ├── ml/                     # ML 模型模块（赛道 B 核心）
 │   ├── train.py            # XGBoost 训练脚本
 │   ├── features.py         # 特征工程
@@ -701,7 +701,7 @@ ChallengeCup/
 │   ├── base.py             # 标准算法接口（待实现）
 │   ├── fixed_time.py       # 固定配时基线（待实现）
 │   ├── rule_adaptive.py    # 规则自适应算法（待实现）
-│   └── ml_enhanced.py      # ML 增强算法（待实现）
+│   └── ca_max_pressure.py      # ML 增强算法（待实现）
 ├── ml/                     # ML 模型模块（赛道 B 核心）
 │   ├── README.md
 │   ├── train.py            # XGBoost 训练脚本（待实现）

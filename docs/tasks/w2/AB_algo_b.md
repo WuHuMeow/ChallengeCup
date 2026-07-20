@@ -21,18 +21,13 @@
 1. 适配 0.1s 步长路口：
    - 决策频率调整：每 10 步（= 1s）做一次决策
    ```python
-   def update(self, status: EdgeStatus) -> None:
-       self._status = status
+   def step(self, state: JointState) -> List[ControlAction]:
+       self._state = state
        self._step_count += 1
        # 0.1s 步长路口每 10 步决策一次
        if self._timestep < 1.0 and self._step_count % 10 != 0:
-           self._should_decide = False
-       else:
-           self._should_decide = True
-
-   def decide(self) -> SignalAction:
-       if not self._should_decide:
-           return SignalAction(next_phase=self._current_phase, duration=-1.0)
+           return [ControlAction(tls_id=state.tls_id, action_type="set_phase",
+                                 value=self._current_phase, reason="hold")]
        # 正常决策逻辑...
    ```
 2. 在路口 11（0.1s）和路口 16（5 进口道）上测试
@@ -41,15 +36,15 @@
 ### Day 3（7/29 周二）
 
 1. 正式接入云-边-端消息流：
-   - 确认 `on_cloud_command()` 能正确接收 CloudCoordinator 的参数
-   - 验证：云端下发 min_green/max_green/base_green 后，CA-MP 行为变化
+   - 确认 __init__ 中通过 CloudPolicy 能正确接收云端预测参数
+   - 验证：云端 CloudPolicy.predict() 下发 min_green/max_green/base_green 后，CA-MP 行为变化
 2. 测试完整消息流：
    ```
-   V2XMessage → EdgeNode.on_v2x_receive()
-   → EdgeNode.decide() → CAMaxPressureController.decide()
-   → SignalAction → simulator.apply_signal()
-   → EdgeStatus → CloudCoordinator.on_status_receive()
-   → CloudCommand → CAMaxPressureController.on_cloud_command()
+   JointState → engine/runner.py 收集
+   → CAMaxPressureAlgorithm.step(state)
+   → List[ControlAction] → engine/traci_bridge.apply_action()
+   → JointState → CloudPolicy.predict()
+   → PredictionResult → CAMaxPressureAlgorithm（在 __init__ 中通过 CloudPolicy 接入）
    ```
 3. 记录消息流是否完整闭环
 
@@ -103,7 +98,7 @@
 |---|------|--------|----------|
 | 1 | CA-MP 0.1s 步长适配 | 7/28 | 路口 11 正常 |
 | 2 | CA-MP 5 进口道适配 | 7/28 | 路口 16 正常 |
-| 3 | 云-边-端消息流闭环 | 7/29 | CloudCommand 影响 CA-MP 行为 |
+| 3 | 云-边-端消息流闭环 | 7/29 | CloudPolicy 影响 CA-MP 行为 |
 | 4 | 路口 1 三算法对比数据 | 7/30 | CA-MP 优于基线 |
 | 5 | 路口 16 重点对比 | 7/31 | 溢出门控触发、效果显著 |
 | 6 | `docs/ewma_design.md` | 8/2 | EWMA 设计笔记 |

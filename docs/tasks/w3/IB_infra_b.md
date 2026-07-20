@@ -1,14 +1,14 @@
 # W3 任务书：仿真基础设施 B（IB）
 
 > 周期：8/3（周日）- 8/9（周六）
-> 核心目标：保障 main.py 稳定运行、完善日志输出、协助实验
+> 核心目标：保障 experiments/runner.py 稳定运行、完善日志输出、协助实验
 
 ---
 
 ## 每日任务
 
 ### Day 1（8/3 周日）
-1. 监控 main.py 在全量实验中的稳定性
+1. 监控 experiments/runner.py 在全量实验中的稳定性
 2. 处理可能的 TraCI 连接断开问题（长时间运行）
 3. 添加异常处理：如果 TraCI 断开，自动重连或优雅退出
 
@@ -23,10 +23,10 @@
 2. 这个日志后续 DA 写报告、DB 做可视化都要用
 
 ### Day 3（8/5 周二）
-1. 协助 EX 处理 runner.py 运行中的问题
-2. 如果某些路口运行时间过长，优化 simulator.py：
+1. 协助 EX 处理 experiments/runner.py 运行中的问题
+2. 如果某些路口运行时间过长，优化 engine/traci_bridge.py：
    - 减少不必要的 TraCI 调用（如不需要每步都获取所有车辆位置）
-   - 对于非 GUI 模式，跳过 V2XMessage 生成（直接用 get_state()）
+   - 对于非 GUI 模式，跳过 JointState 中车端字段的逐车采集（直接用 get_state()）
 
 ### Day 4（8/6 周三）
 1. 确认所有实验的 simulation_log.csv 正确生成

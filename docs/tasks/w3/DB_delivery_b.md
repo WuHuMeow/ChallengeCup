@@ -8,7 +8,7 @@
 ## 每日任务
 
 ### Day 1（8/3 周日）
-1. 完善 `src/visualization/plots.py` 中的批量生成函数：
+1. 完善 `visualization/plots.py` 中的批量生成函数：
    ```python
    def generate_all_charts(metrics_csv: str, output_dir: str):
        """一键生成所有报告/PPT 用图表"""

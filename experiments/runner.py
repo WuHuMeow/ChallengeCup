@@ -13,7 +13,7 @@ from typing import Dict, List
 
 from algorithms.base import BaseControlAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.ml_enhanced import MLEnhancedAlgorithm
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from core.config import get_config
 from core.types import Scene, TrafficLevel
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
     "fixed_time": FixedTimeAlgorithm,
     "actuated": RuleAdaptiveAlgorithm,
-    "ca_maxpressure": MLEnhancedAlgorithm,
+    "ca_maxpressure": CAMaxPressureAlgorithm,
 }
 
 

@@ -19,13 +19,13 @@
    - `<tripinfo-output value="tripinfo.xml"/>` — 行程信息（EX 采集用）
    - `<fcd-output value="traj.xml"/>` — 车辆轨迹（DB 时空轨迹图用）
    - `<summary-output value="stats.xml"/>` — 统计摘要
-2. **注意**：不修改原始文件。在 `src/platform/configs/` 下生成增强版 sumocfg：
+2. **注意**：不修改原始文件。在 `engine/configs/` 下生成增强版 sumocfg：
    ```
-   src/platform/configs/demo_1.sumocfg  (引用原始 net.xml/rou.xml，增加输出配置)
-   src/platform/configs/demo_2.sumocfg
+   engine/configs/demo_1.sumocfg  (引用原始 net.xml/rou.xml，增加输出配置)
+   engine/configs/demo_2.sumocfg
    ...
    ```
-3. 更新 main.py 使用增强版 sumocfg
+3. 更新 engine/runner.py 使用增强版 sumocfg
 
 ### Day 3（7/29 周二）
 
@@ -38,12 +38,12 @@
 
 ### Day 4（7/30 周三）
 
-1. 协助 EX 调试 runner.py：
+1. 协助 EX 调试 experiments/runner.py：
    - 确认 `--output-dir` 参数正确输出 tripinfo.xml/stats.xml/traj.xml
    - 确认 `--seed` 参数能改变随机种子（SUMO 的 `--seed` 选项）
    - 确认 `--flow-multiplier` 参数能正确放大流量
 2. 在路口 1 上做一次完整的"模拟实验"：
-   - 运行 runner.py 的单次实验函数
+   - 运行 experiments/runner.py 的单次实验函数
    - 验证输出文件完整
 
 ### Day 5（7/31 周四）
@@ -76,7 +76,7 @@
 | # | 文件 | 截止日 | 验收标准 |
 |---|------|--------|----------|
 | 1 | 20 路口 3600 步全部通过 | 7/27 | batch_validate 输出 20/20 PASS |
-| 2 | `src/platform/configs/` 增强版 sumocfg | 7/28 | 含 tripinfo/fcd/summary 输出 |
+| 2 | `engine/configs/` 增强版 sumocfg | 7/28 | 含 tripinfo/fcd/summary 输出 |
 | 3 | `scripts/batch_validate.py` | 7/29 | 批量验证 + 运行时间统计 |
 | 4 | `docs/sumo_env_setup.md` | 7/31 | 安装指南完整 |
 | 5 | Docker 调研笔记 | 8/2 | 基础镜像确定 |

@@ -1,7 +1,7 @@
 # W2 任务书：实验组（EX）
 
 > 周期：7/27（周日）- 8/2（周六）
-> 核心目标：完成 runner.py 联调、验证采集脚本、开始预跑实验
+> 核心目标：完成 experiments/runner.py 联调、验证采集脚本、开始预跑实验
 
 ---
 
@@ -9,8 +9,8 @@
 
 ### Day 1（7/27 周日）
 
-1. 与 IB 联调 runner.py：
-   - 确认 main.py 支持 `--seed`、`--flow-multiplier`、`--output-dir`
+1. 与 IB 联调 experiments/runner.py：
+   - 确认 experiments/runner.py 支持 `--seed`、`--flow-multiplier`、`--output-dir`
    - 用路口 1 跑一次完整实验：
      ```bash
      python experiments/runner.py --intersection 1 --algo ca_maxpressure --flow original --seed 42
@@ -30,7 +30,7 @@
 
 ### Day 3（7/29 周二）
 
-1. 完善 runner.py：
+1. 完善 experiments/runner.py：
    - 添加断点续跑功能（如果中途中断，能从上次位置继续）
    - 添加进度显示：`[42/360] Running: i5_ca_maxpressure_high_pressure_s123`
    - 添加失败重试（最多重试 2 次）
@@ -81,9 +81,9 @@
 
 | # | 文件 | 截止日 | 验收标准 |
 |---|------|--------|----------|
-| 1 | runner.py 联调通过 | 7/27 | 单次实验输出完整 |
+| 1 | experiments/runner.py 联调通过 | 7/27 | 单次实验输出完整 |
 | 2 | collector.py 验证通过 | 7/28 | 6 项指标正确采集 |
-| 3 | runner.py 断点续跑 | 7/29 | 中断后能继续 |
+| 3 | experiments/runner.py 断点续跑 | 7/29 | 中断后能继续 |
 | 4 | 流量放大验证 | 7/30 | 1.5 倍流量车辆数增加 ~50% |
 | 5 | 路口 1-5 预跑完成 | 8/1 | 45 组实验成功 |
 | 6 | 路口 6-10 预跑完成 | 8/2 | 45 组实验成功 |

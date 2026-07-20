@@ -16,7 +16,7 @@
 
 ### Day 2（8/11 周一）
 1. 撰写报告第五章"系统工程化"：
-   - 5.1 标准化算法接口：BaseController 设计、插件化
+   - 5.1 标准化算法接口：BaseControlAlgorithm 设计、插件化
    - 5.2 Docker 容器化部署：引用 IA 的 Dockerfile
    - 5.3 可复现性：一键运行命令、随机种子控制
 2. 需要 IA 提供的素材：Dockerfile、deployment.md

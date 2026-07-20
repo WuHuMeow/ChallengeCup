@@ -11,7 +11,7 @@
 1. CA-MP + EWMA 代码最终清理：
    - ca_max_pressure.py / ewma_predictor.py 最终 review
    - 删除调试代码、确认 docstring 完整
-   - 确认所有参数可通过 CloudCommand 调整
+   - 确认所有参数可通过 CloudPolicy 调整
 2. 提交给 TL
 
 ### Day 2（8/18 周一）

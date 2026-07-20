@@ -33,11 +33,11 @@ intersections: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1
 
 algorithms:
   - name: fixed_time
-    module: src.algorithm.fixed_time.FixedTimeController
-  - name: actuated
-    module: src.algorithm.actuated.ActuatedController
-  - name: ca_maxpressure
-    module: src.algorithm.ca_max_pressure.CAMaxPressureController
+    module: algorithms.fixed_time.FixedTimeAlgorithm
+  - name: rule_adaptive
+    module: algorithms.rule_adaptive.RuleAdaptiveAlgorithm
+  - name: ca_max_pressure
+    module: algorithms.ca_max_pressure.CAMaxPressureAlgorithm
 
 flow_levels:
   - name: original
@@ -58,19 +58,19 @@ metrics:
     source: "tripinfo.xml - duration"
   - name: avg_queue_length
     description: "平均排队长度（辆）"
-    source: "stats.xml - haltingNumber"
+    source: "SimulationMetrics.avg_queue_length"
   - name: throughput
     description: "吞吐量（辆/小时）"
-    source: "tripinfo.xml - 完成车辆数 / 时间"
+    source: "SimulationMetrics.total_throughput"
   - name: fuel_consumption
     description: "总油耗（ml）"
-    source: "tripinfo.xml - fuel"
+    source: "SimulationMetrics.fuel_consumption"
   - name: avg_delay
     description: "平均延误（秒）"
-    source: "tripinfo.xml - timeLoss"
+    source: "SimulationMetrics.avg_delay"
   - name: avg_stops
     description: "平均停车次数"
-    source: "tripinfo.xml - stops"
+    source: "SimulationMetrics.total_stops"
 ```
 
 2. 计算总实验量：20 路口 × 3 算法 × 2 流量 × 3 重复 = **360 次仿真**
@@ -123,7 +123,7 @@ def run_single_experiment(exp: dict, output_dir: str) -> dict:
     os.makedirs(exp_output, exist_ok=True)
 
     cmd = [
-        "python", "src/platform/main.py",
+        "python", "experiments/run_single.py",
         "--intersection", str(exp["intersection"]),
         "--algo", exp["algorithm"],
         "--steps", str(exp["steps"]),
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     run_all()
 ```
 
-2. 此时 main.py 还不支持 `--seed`、`--flow-multiplier`、`--output-dir` 参数——记录下来，W2 与 IB 协调添加
+2. 此时 `experiments/run_single.py` 还不支持 `--seed`、`--flow-multiplier`、`--output-dir` 参数——记录下来，W2 与 IB 协调添加
 
 ### Day 3（7/22 周二）
 
@@ -176,14 +176,35 @@ if __name__ == "__main__":
 1. 创建 `experiments/collector.py`：
 
 ```python
-"""指标采集：从 SUMO 输出文件中提取实验指标"""
-import xml.etree.ElementTree as ET
+"""指标采集：从仿真输出 CSV 和 SUMO 输出文件中提取实验指标"""
 import pandas as pd
 from pathlib import Path
 
 
+def collect_from_csv(output_csv: str) -> dict:
+    """从 SimulationRunner 输出的 CSV 采集指标（基于 SimulationMetrics）"""
+    df = pd.read_csv(output_csv)
+
+    if df.empty:
+        return {"avg_travel_time": 0, "avg_delay": 0, "fuel_consumption": 0,
+                "avg_stops": 0, "throughput": 0, "avg_queue_length": 0,
+                "max_queue_length": 0, "num_steps": 0}
+
+    return {
+        "avg_travel_time": df["avg_travel_time"].mean(),
+        "avg_delay": df["avg_delay"].mean(),
+        "fuel_consumption": df["fuel_consumption"].sum(),
+        "avg_stops": df["total_stops"].mean(),
+        "throughput": df["total_throughput"].max(),
+        "avg_queue_length": df["avg_queue_length"].mean(),
+        "max_queue_length": df["max_queue_length"].max(),
+        "num_steps": len(df),
+    }
+
+
 def collect_tripinfo(tripinfo_path: str) -> dict:
-    """从 tripinfo.xml 采集行程级指标"""
+    """从 tripinfo.xml 采集行程级指标（备用）"""
+    import xml.etree.ElementTree as ET
     tree = ET.parse(tripinfo_path)
     root = tree.getroot()
 
@@ -208,40 +229,21 @@ def collect_tripinfo(tripinfo_path: str) -> dict:
         "avg_delay": sum(time_losses) / n,
         "fuel_consumption": sum(fuels),
         "avg_stops": sum(stops) / n,
-        "throughput": n,  # 完成行程的车辆数
+        "throughput": n,
         "num_vehicles": n,
-    }
-
-
-def collect_summary(summary_path: str) -> dict:
-    """从 stats.xml (summary output) 采集排队指标"""
-    tree = ET.parse(summary_path)
-    root = tree.getroot()
-
-    halting_numbers = []
-    for step in root.findall("step"):
-        halting = int(step.get("halting", 0))
-        halting_numbers.append(halting)
-
-    avg_queue = sum(halting_numbers) / max(len(halting_numbers), 1)
-    max_queue = max(halting_numbers) if halting_numbers else 0
-
-    return {
-        "avg_queue_length": avg_queue,
-        "max_queue_length": max_queue,
     }
 
 
 def collect_single_experiment(output_dir: str) -> dict:
     """采集单次实验的所有指标"""
+    output_csv = Path(output_dir) / "metrics.csv"
     tripinfo = Path(output_dir) / "tripinfo.xml"
-    summary = Path(output_dir) / "stats.xml"
 
     metrics = {}
-    if tripinfo.exists():
+    if output_csv.exists():
+        metrics.update(collect_from_csv(str(output_csv)))
+    elif tripinfo.exists():
         metrics.update(collect_tripinfo(str(tripinfo)))
-    if summary.exists():
-        metrics.update(collect_summary(str(summary)))
     return metrics
 
 
@@ -287,7 +289,7 @@ def aggregate_results(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compare_algorithms(df: pd.DataFrame) -> pd.DataFrame:
-    """生成算法对比表：CA-MP vs FixedTime vs Actuated"""
+    """生成算法对比表：CA-MP vs FixedTime vs RuleAdaptive"""
     pivot = df.pivot_table(
         index=["intersection", "flow_level"],
         columns="algorithm",
@@ -295,16 +297,16 @@ def compare_algorithms(df: pd.DataFrame) -> pd.DataFrame:
         aggfunc="mean"
     )
     # 计算改进百分比
-    if "fixed_time" in pivot.columns and "ca_maxpressure" in pivot.columns:
+    if "fixed_time" in pivot.columns and "ca_max_pressure" in pivot.columns:
         pivot["improvement_vs_fixed"] = (
-            (pivot["fixed_time"] - pivot["ca_maxpressure"]) / pivot["fixed_time"] * 100
+            (pivot["fixed_time"] - pivot["ca_max_pressure"]) / pivot["fixed_time"] * 100
         )
     return pivot
 
 
 def significance_test(df: pd.DataFrame, metric: str = "avg_travel_time"):
     """对 CA-MP vs FixedTime 做 t 检验"""
-    ca_mp = df[df["algorithm"] == "ca_maxpressure"][metric]
+    ca_mp = df[df["algorithm"] == "ca_max_pressure"][metric]
     fixed = df[df["algorithm"] == "fixed_time"][metric]
     t_stat, p_value = stats.ttest_ind(ca_mp, fixed)
     return {"t_statistic": t_stat, "p_value": p_value, "significant": p_value < 0.05}
@@ -321,16 +323,16 @@ def significance_test(df: pd.DataFrame, metric: str = "avg_travel_time"):
 1. 1.5 倍压力测试需要修改 flow.xml 中的流量
 2. 设计方案：
    - 不修改原始 flow.xml（只读）
-   - 在 runner.py 中，运行前生成临时 flow.xml（将 vehsPerHour × multiplier）
-   - 或者：在 main.py 中通过 TraCI 动态调整流量
-3. 与 IB 确认：main.py 是否支持 `--flow-multiplier` 参数
+   - 在 run_single.py 中，运行前生成临时 flow.xml（将 vehsPerHour × multiplier）
+   - 或者：通过 Scene.config 传入 flow_multiplier 参数
+3. 与 IB 确认：SimulationRunner 是否支持流量倍率参数
 4. 写一个 `scripts/scale_flow.py`：读取原始 flow.xml → 乘以倍率 → 输出临时文件
 
 ### Day 6（7/25 周五）
 
 **验证采集脚本**
-1. 用路口 1 的已有输出（`intersection_data/1/sumo工程/stats.xml` 和 `traj.xml`）测试 collector.py
-2. 确认能正确解析 stats.xml 格式
+1. 用路口 1 的已有输出测试 collector.py
+2. 确认能正确解析 SimulationRunner 输出的 CSV 格式（SimulationMetrics 字段）
 3. 确认 tripinfo.xml 的字段名（需要在 sumocfg 中添加 tripinfo-output）
 4. 记录：哪些路口的 sumocfg 缺少 tripinfo-output 配置（需要 IB 补充）
 
@@ -349,7 +351,7 @@ def significance_test(df: pd.DataFrame, metric: str = "avg_travel_time"):
 |---|------|--------|----------|
 | 1 | `experiments/config.yaml` | 7/20 | 实验矩阵完整定义 |
 | 2 | `experiments/runner.py` | 7/21 | 批量运行脚本框架（可生成 360 组实验列表） |
-| 3 | `experiments/collector.py` | 7/22 | 能从 tripinfo.xml/stats.xml 提取 6 项指标 |
+| 3 | `experiments/collector.py` | 7/22 | 能从输出 CSV/tripinfo.xml 提取 6 项指标 |
 | 4 | `experiments/analysis.py` | 7/23 | 聚合、对比、t 检验框架 |
 | 5 | `scripts/scale_flow.py` | 7/24 | 流量放大脚本 |
 | 6 | `experiments/README.md` | 7/26 | 实验设计文档 |
@@ -361,6 +363,6 @@ def significance_test(df: pd.DataFrame, metric: str = "avg_travel_time"):
 - W1 你不需要跑实验——算法还没联调完
 - 你的核心产出是"框架"——W3 一到就能直接 `python experiments/runner.py` 批量跑
 - 指标采集脚本必须 robust——处理文件不存在、字段缺失等异常
-- 与 IB 确认 main.py 需要新增的参数：`--seed`、`--flow-multiplier`、`--output-dir`
+- 与 IB 确认 SimulationRunner 需要新增的参数：`--seed`、`--flow-multiplier`、`--output-dir`
 - 统计方法用 scipy.stats.ttest_ind，不需要复杂统计
 - 360 次实验的机器时间要提前规划——W2 结束就开始排队跑

@@ -10,9 +10,9 @@
 
 ## 待完成情况
 
-- [ ] 重构为 CloudCoordinator：周期性下发 CloudCommand（min_green/max_green/base_green）。
+- [ ] 重构为 CloudCoordinator：周期性通过 PredictionResult 下发参数（min_green/max_green/base_green）。
 - [ ] 接入 EWMA 流量预测，根据全局压力动态调整下发参数。
-- [ ] 实现边缘算法的 `on_cloud_command()` 回调机制。
+- [ ] 实现边缘算法通过 `CloudPolicy.predict()` 获取预测结果的调用机制。
 
 ## 需求分析
 
@@ -21,7 +21,7 @@
 | 参数下发 | 周期性向边缘下发 min_green/max_green/base_green |
 | EWMA 预测 | 轻量流量预测修正压力值 |
 | 兜底机制 | 预测未就绪时使用默认参数，避免阻塞仿真 |
-| 云-边接口 | 清晰定义 CloudCommand 输入输出 |
+| 云-边接口 | 清晰定义 PredictionResult 输入输出 |
 
 ## 关键文件
 

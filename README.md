@@ -256,7 +256,7 @@ ChallengeCup/
 │   ├── base.py                 # BaseControlAlgorithm 标准接口（ABC）
 │   ├── fixed_time.py           # 固定配时基线（支持 Excel 配时写入）
 │   ├── rule_adaptive.py        # 感应控制 Actuated（排队阈值延长/切换）
-│   └── ml_enhanced.py          # CA-MP 容量感知最大压力（核心创新）
+│   └── ca_max_pressure.py      # CA-MP 容量感知最大压力（核心创新）
 ├── cloud/                      # 云端策略层
 │   └── cloud_policy.py         # CloudCoordinator 全局参数下发 + EWMA 预测
 ├── ml/                         # ML 模型模块
@@ -370,9 +370,9 @@ intersection_data/{id}/
 
 | 层级 | 模块 | 职责 | 数据契约 |
 |------|------|------|----------|
-| 云端 | `cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `CloudCommand` |
-| 边缘 | `algorithms/ml_enhanced.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` → `ControlAction` |
-| 车端/路侧 | `engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `V2XMessage` |
+| 云端 | `cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
+| 边缘 | `algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` → `ControlAction` |
+| 车端/路侧 | `engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
 
 <a id="仿真数据流"></a>
 
@@ -399,11 +399,12 @@ SUMO step → TraCI 读取 → JointState → CA-MP 决策 → ControlAction →
 ### CA-MP 决策逻辑
 
 ```python
-def ca_mp_decide(state: JointState, cloud_params: CloudCommand) -> SignalAction:
+def ca_mp_decide(state: JointState, prediction: PredictionResult) -> List[ControlAction]:
     # 1. 溢出门控：任何进口道占用率 > 90% → 强制放行该方向
     for approach in state.queues:
-        if approach.occupancy > 0.9:
-            return SignalAction(next_phase=approach.phase, duration=cloud_params.min_green)
+        if approach.queue_length / approach.capacity > 0.9:
+            return [ControlAction(tls_id=state.tls_id, action_type="set_phase",
+                                  value=approach.phase, reason="溢出门控")]
 
     # 2. 容量归一化压力：pressure = queue / capacity
     pressures = {d: q.queue_length / q.capacity for d, q in state.queues.items()}
@@ -413,10 +414,11 @@ def ca_mp_decide(state: JointState, cloud_params: CloudCommand) -> SignalAction:
 
     # 4. 动态绿灯时长：按压力比例分配
     avg_pressure = mean(pressures.values())
-    duration = cloud_params.base_green * (pressures[best_phase] / avg_pressure)
-    duration = clamp(duration, cloud_params.min_green, cloud_params.max_green)
+    duration = base_green * (pressures[best_phase] / avg_pressure)
+    duration = clamp(duration, min_green, max_green)
 
-    return SignalAction(next_phase=best_phase, duration=duration)
+    return [ControlAction(tls_id=state.tls_id, action_type="set_phase_duration",
+                          value=duration, reason="CA-MP 动态绿灯")]
 ```
 
 <a id="算法对比"></a>
@@ -427,7 +429,7 @@ def ca_mp_decide(state: JointState, cloud_params: CloudCommand) -> SignalAction:
 |------|------|---------|----------|----------|
 | 固定配时 | 基线 | 无 | 无协同 | `algorithms/fixed_time.py` |
 | 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `algorithms/rule_adaptive.py` |
-| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ml_enhanced.py` |
+| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ca_max_pressure.py` |
 
 <a id="ewma-预测"></a>
 
@@ -487,7 +489,7 @@ predicted_flow(t+1) = α × observed_flow(t) + (1-α) × predicted_flow(t)
 | IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 |
 | IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 |
 | AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` |
-| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ml_enhanced.py` + `cloud/` + `ml/` |
+| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` |
 | EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 |
 | DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT |
 | DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 |

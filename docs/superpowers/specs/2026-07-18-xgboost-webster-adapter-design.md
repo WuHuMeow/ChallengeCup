@@ -48,7 +48,7 @@
 | `cloud/cloud_policy.py` | 改 | `predict()` 调 XGBoost 推理,返回真实 `PredictionResult` |
 | `ml/features.py` | 改 | `extract_features()` 填实:队列+流量+时段+相位+5 分钟滑动均值 |
 | `ml/train.py` | 改 | 实现 XGBoost 训练 + 交叉验证 + 保存 model.pkl |
-| `algorithms/ml_enhanced.py` | 改 | `step()` 调 CloudPolicy + WebsterAdapter,输出 `set_phase_duration` |
+| `algorithms/ca_max_pressure.py` | 改 | `step()` 调 CloudPolicy + WebsterAdapter,输出 `set_phase_duration` |
 | `ml/evaluate.py` | 改 | 填实 RMSE/MAE/R² + 第二层端到端仿真对比 |
 | `experiments/data_generator.py` | **新增** | 跑 15 次仿真(3 流量级 × 5 种子),合并产出 train.csv |
 
@@ -70,7 +70,7 @@
 在线阶段(每次仿真运行):
   SUMO step
       ↓ engine/traci_bridge
-  JointState → algorithms/ml_enhanced.step()
+  JointState → algorithms/ca_maxpressure.step()
       ├── cloud/cloud_policy.predict()
       │     ├── ml/features.extract_features() → 19 维向量
       │     └── XGBoost model.predict() → predicted_flows (4 方向 veh/s)
@@ -243,7 +243,7 @@ class CloudPolicy:
         # ... 原 _load_model 逻辑不变
 
     def push_state(self, state: JointState) -> None:
-        """由外部(engine 或 ml_enhanced)在 step() 之前调用。"""
+        """由外部(engine 或 ca_maxpressure)在 step() 之前调用。"""
         self._history.append(state)
 
     def predict(self, state: JointState) -> PredictionResult:
@@ -361,7 +361,7 @@ class WebsterAdapter:
         return self.stats
 
     def reset_stats(self) -> None:
-        """重置统计字段,供 MLEnhancedAlgorithm.reset() 调用。"""
+        """重置统计字段,供 CAMaxPressureAlgorithm.reset() 调用。"""
         self.stats = AdapterStats(
             updates_total=0,
             updates_skipped_threshold=0,
@@ -378,10 +378,10 @@ class WebsterAdapter:
         return list(self._initial_green_splits)
 ```
 
-### 5.3 `algorithms/ml_enhanced.py`
+### 5.3 `algorithms/ca_max_pressure.py`
 
 ```python
-class MLEnhancedAlgorithm(BaseControlAlgorithm):
+class CAMaxPressureAlgorithm(BaseControlAlgorithm):
     def __init__(
         self,
         cloud_policy: CloudPolicy,
@@ -433,7 +433,7 @@ class MLEnhancedAlgorithm(BaseControlAlgorithm):
 
     @property
     def name(self) -> str:
-        return "ml_enhanced_webster"
+        return "ca_maxpressure_webster"
 ```
 
 ### 5.4 错误处理
@@ -470,7 +470,7 @@ class MLEnhancedAlgorithm(BaseControlAlgorithm):
 对 demo_1 × 3 流量级,各跑 5 次仿真 (5 随机种子):
   - baseline_fixed:    FixedTimeAlgorithm (固定配时)
   - baseline_webster:  经典 Webster (按 xlsx 配时,不接 ML)
-  - experiment:        MLEnhancedWebsterAlgorithm (本设计)
+  - experiment:        CAMaxPressureWebsterAlgorithm (本设计)
 
 每组指标(取 5 次平均):
   - 平均延误 (s/veh)
@@ -521,7 +521,7 @@ class MLEnhancedAlgorithm(BaseControlAlgorithm):
 - [ ] `ml/train.py` 训练出 `ml/model.pkl`,val R² ≥ 0.5
 - [ ] `cloud/cloud_policy.py` 真实推理路径走通(单测:给定状态 → 非兜底预测)
 - [ ] `cloud/webster_adapter.py` 单元测试:节奏检查、阈值检查、EMA、周期边界、绿信比分配
-- [ ] `algorithms/ml_enhanced.py.step()` 接到 SUMO,demo_1 跑 3600 秒无崩溃
+- [ ] `algorithms/ca_max_pressure.py.step()` 接到 SUMO,demo_1 跑 3600 秒无崩溃
 - [ ] 第二层评估产出 `output/comparison_table.csv` (9 行: 3 流量级 × 3 算法)
 - [ ] 答辩材料:4 张图 + 1 张表 + 1 段 5 分钟讲稿
 
@@ -558,7 +558,7 @@ class MLEnhancedAlgorithm(BaseControlAlgorithm):
 | 现有说法 | 本设计 | 处理建议 |
 |---|---|---|
 | README:核心策略 = 固定配时 / 规则自适应 / ML 增强 | 本设计只实现 ML 增强,规则自适应未触动 | README 改动:方案 B 锁定为"ML 增强 Webster",不另起"规则自适应" |
-| W1-A2 任务书:Webster 基线算法 | Webster 由 ml_enhanced 复用,单独"基线 Webster" 用于对比 | A2 任务改为:实现 baseline_webster = 一次性按 xlsx 配时跑,不调参,作为对比组 |
+| W1-A2 任务书:Webster 基线算法 | Webster 由 ca_maxpressure 复用,单独"基线 Webster" 用于对比 | A2 任务改为:实现 baseline_webster = 一次性按 xlsx 配时跑,不调参,作为对比组 |
 | 180 次跑批 = 60 场景 × 3 算法 | 9.1 完成 demo_1 (3 流量级 × 3 算法 = 9 次),后续 9.1-9.15 完成剩余 19 路口 | 文档化阶段交付,不冲突 |
 
 ---

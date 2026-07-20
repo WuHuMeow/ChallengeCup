@@ -41,7 +41,7 @@
 1. 如果时间允许，实现 Webster 最优配时基线（可选第三基线）：
    - 从 .xlsx 读取流量和饱和流率
    - 用 Webster 公式计算最优周期和绿信比
-   - 实现 `src/algorithm/webster.py`
+   - 实现 `algorithms/webster.py`
 2. 如果时间不够，跳过（两个基线已足够）
 
 ### Day 7（8/9 周六）

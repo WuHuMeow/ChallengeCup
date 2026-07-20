@@ -30,7 +30,7 @@
 
 ### Day 4（8/27 周三）
 1. 所有修改完成，做最终集成验证：
-   - `python src/platform/main.py --intersection 16 --algo ca_maxpressure --steps 3600` 跑通
+   - `python experiments/runner.py 16` 跑通
    - `docker build` + `docker run` 跑通
    - 报告/PPT/视频文件完整
 2. 打 tag：`git tag v1.0-final`

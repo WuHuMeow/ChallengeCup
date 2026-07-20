@@ -21,7 +21,7 @@
    - 安装后设置环境变量：`SUMO_HOME=C:\Program Files\Eclipse\Sumo`（或你的安装路径）
 2. 验证安装：`sumo --version` 输出版本号
 3. 验证 Python 接口：`python -c "import traci; print(traci.__version__)"`
-4. 用 SUMO-GUI 打开路口 1：`sumo-gui -c intersection_data/1/sumo工程/demo_1.sumocfg`
+4. 用 SUMO-GUI 打开路口 1：`sumo-gui -c data/intersection_data/1/sumo工程/demo_1.sumocfg`
    - 如果能正常打开并运行 → 记录"路口 1 兼容"
    - 如果报错 → 记录错误信息，分析原因
 
@@ -40,7 +40,7 @@
 
 **批量验证（不修改文件）**
 1. 写一个 Python 脚本 `scripts/validate_all.py`：
-   - 遍历 `intersection_data/1~20/sumo工程/demo_N.sumocfg`
+   - 遍历 `data/intersection_data/1~20/sumo工程/demo_N.sumocfg`
    - 对每个路口执行 `sumo -c demo_N.sumocfg --no-step-log` 跑 100 步
    - 记录：成功/失败、错误信息、运行时间
 2. 运行脚本，得到 20 个路口的兼容性报告
@@ -55,9 +55,9 @@
    - XML schema 变化：用 `netconvert -s old.net.xml -o new.net.xml` 重新生成
    - 缺少文件：检查 `.sumocfg` 引用的文件是否都存在
    - 版本特有参数：删除或替换已废弃的 XML 属性
-2. **重要**：不修改 `intersection_data/` 原始文件！
-   - 将修复后的文件输出到 `intersection_data/N/sumo工程/` 中覆盖（因为 README 说 1~20 只读）
-   - 或者：如果需要修改，在 `src/platform/configs/` 下生成新的 `.sumocfg` 指向修复后的文件
+2. **重要**：不修改 `data/intersection_data/` 原始文件！
+   - 将修复后的文件输出到 `data/intersection_data/N/sumo工程/` 中覆盖（因为 README 说 1~20 只读）
+   - 或者：如果需要修改，在 `engine/configs/` 下生成新的 `.sumocfg` 指向修复后的文件
    - **与 TL 确认**：是直接在原目录修复，还是另建目录
 3. 每修复一个路口，立即验证能跑通
 
@@ -105,7 +105,7 @@
 ### Day 7（7/26 周六）
 
 **Buffer / 协助**
-1. 协助 IB 调试 SumoSimulator（IB 需要调用你验证过的路口）
+1. 协助 IB 调试 TraCIBridge（IB 需要调用你验证过的路口）
 2. 如果 W1 任务提前完成，开始编写 `scripts/migrate.py`（自动化迁移脚本，供报告使用）
 
 ---
@@ -127,16 +127,16 @@
 
 ```bash
 # 验证单个路口（无 GUI，跑 100 步）
-sumo -c intersection_data/1/sumo工程/demo_1.sumocfg --no-step-log -e 100
+sumo -c data/intersection_data/1/sumo工程/demo_1.sumocfg --no-step-log -e 100
 
 # 用 netconvert 重新生成路网（修复旧版本文件）
-netconvert -s intersection_data/N/sumo工程/demo_N.net.xml -o intersection_data/N/sumo工程/demo_N.net.xml.new
+netconvert -s data/intersection_data/N/sumo工程/demo_N.net.xml -o data/intersection_data/N/sumo工程/demo_N.net.xml.new
 
 # 查看 SUMO 版本
 sumo --version
 
 # 用 GUI 打开（调试用）
-sumo-gui -c intersection_data/1/sumo工程/demo_1.sumocfg
+sumo-gui -c data/intersection_data/1/sumo工程/demo_1.sumocfg
 ```
 
 ---

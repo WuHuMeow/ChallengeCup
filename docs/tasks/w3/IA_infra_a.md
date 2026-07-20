@@ -44,7 +44,7 @@
      RUN pip3 install -r requirements.txt
      COPY . /app
      WORKDIR /app
-     CMD ["python3", "src/platform/main.py", "--intersection", "1", "--algo", "ca_maxpressure"]
+     CMD ["python3", "experiments/runner.py", "--intersection", "1", "--algo", "ca_maxpressure"]
      ```
 2. 测试 Docker 内能否运行 SUMO
 

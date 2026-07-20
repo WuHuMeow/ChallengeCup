@@ -34,7 +34,7 @@
   <text x="545" y="169" text-anchor="middle" font-size="10" fill="#718096">轻量级，无需 GPU</text>
   <!-- Arrow Cloud->Edge -->
   <path d="M400,195 L400,225" stroke="#667eea" stroke-width="2.5" marker-end="url(#arrP)"/>
-  <text x="410" y="215" font-size="10" fill="#667eea">CloudCommand（周期性下发）</text>
+  <text x="410" y="215" font-size="10" fill="#667eea">PredictionResult（周期性下发）</text>
   <!-- Edge -->
   <rect x="100" y="230" width="600" height="170" rx="12" fill="url(#edgeGrad)" opacity="0.10" filter="url(#shadow)"/>
   <rect x="100" y="230" width="600" height="170" rx="12" fill="none" stroke="#f5576c" stroke-width="2"/>
@@ -44,7 +44,7 @@
   <text x="215" y="310" text-anchor="middle" font-size="10" fill="#718096">接收 V2X 消息</text>
   <text x="215" y="327" text-anchor="middle" font-size="10" fill="#718096">汇聚排队状态</text>
   <text x="215" y="344" text-anchor="middle" font-size="10" fill="#718096">调用算法决策</text>
-  <text x="215" y="361" text-anchor="middle" font-size="10" fill="#718096">输出 SignalAction</text>
+  <text x="215" y="361" text-anchor="middle" font-size="10" fill="#718096">输出 ControlAction</text>
   <rect x="320" y="267" width="180" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
   <text x="410" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">CA-MP Controller</text>
   <text x="410" y="310" text-anchor="middle" font-size="10" fill="#718096">1. 溢出门控: occ>90%→强制放行</text>
@@ -58,14 +58,14 @@
   <text x="600" y="360" text-anchor="middle" font-size="10" fill="#718096">（对照组）</text>
   <!-- Arrow Edge->Vehicle -->
   <path d="M400,400 L400,430" stroke="#f5576c" stroke-width="2.5" marker-end="url(#arrR)"/>
-  <text x="410" y="420" font-size="10" fill="#f5576c">SignalAction（相位+时长）</text>
+  <text x="410" y="420" font-size="10" fill="#f5576c">ControlAction（相位+时长）</text>
   <!-- Vehicle -->
   <rect x="100" y="435" width="600" height="130" rx="12" fill="url(#vehicleGrad)" opacity="0.10" filter="url(#shadow)"/>
   <rect x="100" y="435" width="600" height="130" rx="12" fill="none" stroke="#4facfe" stroke-width="2"/>
   <text x="120" y="460" font-size="14" font-weight="bold" fill="#4facfe">Vehicle Layer（车端 / SUMO）</text>
   <rect x="130" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
   <text x="255" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">SUMO 仿真车辆</text>
-  <text x="255" y="515" text-anchor="middle" font-size="10" fill="#718096">位置、速度、车道 → V2XMessage</text>
+  <text x="255" y="515" text-anchor="middle" font-size="10" fill="#718096">位置、速度、车道 → JointState</text>
   <text x="255" y="532" text-anchor="middle" font-size="10" fill="#718096">TraCI 实时状态读取</text>
   <rect x="420" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
   <text x="545" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">信号灯执行</text>
@@ -73,6 +73,6 @@
   <text x="545" y="532" text-anchor="middle" font-size="10" fill="#718096">setProgram</text>
   <!-- Feedback -->
   <path d="M250,435 L250,400" stroke="#4facfe" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrB)"/>
-  <text x="140" y="420" font-size="10" fill="#4facfe">V2XMessage（上报）</text>
+  <text x="140" y="420" font-size="10" fill="#4facfe">JointState（上报）</text>
   <text x="400" y="590" text-anchor="middle" font-size="10" fill="#a0aec0">XH-202613 | CA-MP Capacity-Aware MaxPressure | 赛道 B（算法调优型）</text>
 </svg>
