@@ -1,32 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" font-family="Microsoft YaHei, SimHei, sans-serif">
   <defs>
-    <marker id="a1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#0984e3"/></marker>
-    <marker id="a2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#95a5a6"/></marker>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4a5568"/></marker>
+    <marker id="ag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#38a169"/></marker>
+    <marker id="ap" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#805ad5"/></marker>
+    <filter id="s"><feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.1"/></filter>
   </defs>
-
-  <rect x="240" y="15" width="240" height="46" rx="8" fill="#e8f4fd"/>
-  <text x="360" y="35" text-anchor="middle" fill="#2c3e50" font-size="13" font-weight="bold">① 数据采集</text>
-  <text x="360" y="52" text-anchor="middle" fill="#666" font-size="9">TraCI 读取全景状态 → 写 CSV</text>
-  <line x1="360" y1="61" x2="360" y2="85" stroke="#0984e3" stroke-width="1.8" marker-end="url(#a1)"/>
-
-  <rect x="240" y="90" width="240" height="46" rx="8" fill="#fff3e0"/>
-  <text x="360" y="110" text-anchor="middle" fill="#2c3e50" font-size="13" font-weight="bold">② 算法决策</text>
-  <text x="360" y="127" text-anchor="middle" fill="#666" font-size="9">.step(state) → 控制指令</text>
-  <line x1="360" y1="136" x2="360" y2="160" stroke="#0984e3" stroke-width="1.8" marker-end="url(#a1)"/>
-
-  <rect x="240" y="165" width="240" height="46" rx="8" fill="#e8f8f0"/>
-  <text x="360" y="185" text-anchor="middle" fill="#2c3e50" font-size="13" font-weight="bold">③ 仿真执行</text>
-  <text x="360" y="202" text-anchor="middle" fill="#666" font-size="9">TraCI 写入 SUMO · traci.simulationStep()</text>
-
-  <!-- Loop -->
-  <path d="M480,188 Q540,188 540,100 Q540,38 480,38" fill="none" stroke="#95a5a6" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#a2)"/>
-  <text x="555" y="120" fill="#95a5a6" font-size="9">循环</text>
-
-  <!-- ML branch -->
-  <rect x="540" y="80" width="160" height="66" rx="8" fill="#e17055" opacity="0.15"/>
-  <text x="620" y="100" text-anchor="middle" fill="#e17055" font-size="9" font-weight="bold">ML 增强路径</text>
-  <text x="620" y="118" text-anchor="middle" fill="#e17055" font-size="8">model.predict(features)</text>
-  <text x="620" y="134" text-anchor="middle" fill="#e17055" font-size="8">→ 预测流量 → 预调配时</text>
-  <path d="M480,113 L530,113" stroke="#e17055" stroke-width="1.2" stroke-dasharray="4,3"/>
-  <text x="505" y="108" fill="#e17055" font-size="7">ML</text>
+  <rect width="800" height="480" fill="#f8fafc"/>
+  <text x="400" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">CA-MP 仿真循环数据流</text>
+  <!-- Row 1: Main pipeline -->
+  <rect x="40" y="55" width="130" height="55" rx="8" fill="#ebf8ff" stroke="#4facfe" stroke-width="2"/>
+  <text x="105" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">SUMO 仿真</text>
+  <text x="105" y="96" text-anchor="middle" font-size="9" fill="#718096">demo_N.sumocfg</text>
+  <path d="M170,82 L200,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="200" y="55" width="130" height="55" rx="8" fill="#fefcbf" stroke="#d69e2e" stroke-width="2"/>
+  <text x="265" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#975a16">TraCI Bridge</text>
+  <text x="265" y="96" text-anchor="middle" font-size="9" fill="#718096">traci_bridge.py</text>
+  <path d="M330,82 L360,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="360" y="55" width="130" height="55" rx="8" fill="#e6fffa" stroke="#38b2ac" stroke-width="2"/>
+  <text x="425" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#285e61">JointState</text>
+  <text x="425" y="96" text-anchor="middle" font-size="9" fill="#718096">排队/流量/相位</text>
+  <path d="M490,82 L520,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="520" y="55" width="130" height="55" rx="8" fill="#fed7e2" stroke="#d53f8c" stroke-width="2"/>
+  <text x="585" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">CA-MP 决策</text>
+  <text x="585" y="96" text-anchor="middle" font-size="9" fill="#718096">ml_enhanced.py</text>
+  <path d="M650,82 L680,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="680" y="55" width="100" height="55" rx="8" fill="#c6f6d5" stroke="#38a169" stroke-width="2"/>
+  <text x="730" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#276749">Action</text>
+  <text x="730" y="96" text-anchor="middle" font-size="9" fill="#718096">写入SUMO</text>
+  <!-- Feedback loop -->
+  <path d="M730,110 L730,135 L105,135 L105,110" stroke="#38a169" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ag)"/>
+  <text x="400" y="130" text-anchor="middle" font-size="9" fill="#38a169">下一步仿真（循环 3600 步）</text>
+  <!-- CA-MP Decision Detail -->
+  <rect x="350" y="160" width="320" height="130" rx="10" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#s)"/>
+  <text x="510" y="185" text-anchor="middle" font-size="12" font-weight="bold" fill="#97266d">CA-MP 决策逻辑（每步）</text>
+  <text x="370" y="210" font-size="10" fill="#4a5568">① 溢出门控: occupancy > 90% → 强制放行</text>
+  <text x="370" y="232" font-size="10" fill="#4a5568">② 容量归一化: pressure = queue / capacity</text>
+  <text x="370" y="254" font-size="10" fill="#4a5568">③ 选最大压力相位: argmax(pressure)</text>
+  <text x="370" y="276" font-size="10" fill="#4a5568">④ 动态绿灯: duration = base_green × (p / avg_p)</text>
+  <path d="M585,110 L510,160" stroke="#d53f8c" stroke-width="1" stroke-dasharray="3,2"/>
+  <!-- Cloud -->
+  <rect x="40" y="180" width="220" height="90" rx="8" fill="#e9d8fd" stroke="#805ad5" stroke-width="2"/>
+  <text x="150" y="205" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">CloudCoordinator</text>
+  <text x="150" y="225" text-anchor="middle" font-size="9" fill="#4a5568">EWMA 预测 → 修正压力值</text>
+  <text x="150" y="242" text-anchor="middle" font-size="9" fill="#4a5568">周期性下发 base_green 参数</text>
+  <text x="150" y="259" text-anchor="middle" font-size="9" fill="#4a5568">cloud/cloud_policy.py</text>
+  <path d="M260,225 L350,225" stroke="#805ad5" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ap)"/>
+  <!-- Collector -->
+  <rect x="40" y="320" width="220" height="70" rx="8" fill="#feebc8" stroke="#dd6b20" stroke-width="2"/>
+  <text x="150" y="345" text-anchor="middle" font-size="11" font-weight="bold" fill="#c05621">MetricsCollector</text>
+  <text x="150" y="365" text-anchor="middle" font-size="9" fill="#4a5568">每 60 步快照 → CSV</text>
+  <text x="150" y="380" text-anchor="middle" font-size="9" fill="#4a5568">engine/collector.py</text>
+  <path d="M265,110 L265,320" stroke="#dd6b20" stroke-width="1" stroke-dasharray="3,3"/>
+  <!-- Experiment output -->
+  <rect x="350" y="320" width="320" height="70" rx="8" fill="#fff5f5" stroke="#e53e3e" stroke-width="1.5"/>
+  <text x="510" y="345" text-anchor="middle" font-size="11" font-weight="bold" fill="#c53030">实验输出</text>
+  <text x="510" y="365" text-anchor="middle" font-size="9" fill="#4a5568">360 次仿真 → 对比表 + 图表 + 统计检验</text>
+  <text x="510" y="380" text-anchor="middle" font-size="9" fill="#4a5568">experiments/runner.py → visualization/plots.py</text>
+  <path d="M260,370 L350,370" stroke="#dd6b20" stroke-width="1" marker-end="url(#a)"/>
+  <!-- Legend -->
+  <text x="400" y="430" text-anchor="middle" font-size="10" fill="#a0aec0">实线 = 数据流方向 | 虚线 = 反馈/辅助流 | 每仿真步循环一次</text>
+  <text x="400" y="450" text-anchor="middle" font-size="10" fill="#a0aec0">XH-202613 | 20 路口 × 3 算法 × 2 流量 × 3 种子 = 360 次仿真</text>
 </svg>

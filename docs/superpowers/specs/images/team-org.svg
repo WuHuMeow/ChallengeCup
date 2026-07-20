@@ -1,52 +1,56 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 360" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif">
-  <defs><filter id="sd"><feDropShadow dx="0" dy="1.5" stdDeviation="3" flood-opacity="0.12"/></filter></defs>
-
-  <!-- Leads -->
-  <rect x="240" y="8" width="300" height="36" rx="8" fill="#2d3436" filter="url(#sd)"/>
-  <text x="390" y="31" text-anchor="middle" fill="white" font-size="12" font-weight="bold">🧭 成员6（后端负责）+ 成员7（前端负责）— 兼开发</text>
-
-  <line x1="390" y1="44" x2="390" y2="60" stroke="#2d3436" stroke-width="1.5"/>
-  <line x1="162" y1="60" x2="618" y2="60" stroke="#2d3436" stroke-width="1.5"/>
-  <line x1="162" y1="60" x2="162" y2="72" stroke="#2d3436" stroke-width="1.5"/>
-  <line x1="390" y1="60" x2="390" y2="72" stroke="#2d3436" stroke-width="1.5"/>
-  <line x1="618" y1="60" x2="618" y2="72" stroke="#2d3436" stroke-width="1.5"/>
-
-  <!-- Group 1 -->
-  <rect x="30" y="74" width="265" height="62" rx="8" fill="#fce4ec" filter="url(#sd)"/>
-  <text x="162" y="96" text-anchor="middle" fill="#c0392b" font-size="12" font-weight="bold">🚦 仿真与场景组</text>
-  <text x="162" y="113" text-anchor="middle" fill="#666" font-size="10">成员1 + 成员2</text>
-  <text x="162" y="128" text-anchor="middle" fill="#888" font-size="9">SUMO · 场景管理 · CSV 数据 · 功能一</text>
-
-  <!-- Group 2 -->
-  <rect x="325" y="74" width="265" height="62" rx="8" fill="#e8f4fd" filter="url(#sd)"/>
-  <text x="457" y="96" text-anchor="middle" fill="#2471a3" font-size="12" font-weight="bold">🧠 算法与 ML 组（核心）</text>
-  <text x="457" y="113" text-anchor="middle" fill="#666" font-size="10">成员3 + 成员4</text>
-  <text x="457" y="128" text-anchor="middle" fill="#888" font-size="9">算法接口 · 基线 · ML增强 · 功能二+三</text>
-
-  <!-- Group 3 -->
-  <rect x="620" y="74" width="130" height="62" rx="8" fill="#e8f8f0" filter="url(#sd)"/>
-  <text x="685" y="96" text-anchor="middle" fill="#27ae60" font-size="12" font-weight="bold">📊 实验分析组</text>
-  <text x="685" y="113" text-anchor="middle" fill="#666" font-size="10">成员5 + 成员8</text>
-  <text x="685" y="128" text-anchor="middle" fill="#888" font-size="9">跑批 · 统计 · 报告</text>
-
-  <!-- Across bottom: delivery -->
-  <rect x="80" y="160" width="620" height="52" rx="8" fill="#e8eaf6" filter="url(#sd)"/>
-  <text x="390" y="183" text-anchor="middle" fill="#3f51b5" font-size="12" font-weight="bold">📦 可视化与交付（成员6 + 成员7 主导，全员配合）</text>
-  <text x="390" y="200" text-anchor="middle" fill="#666" font-size="10">Matplotlib 报告 · FASTAPI API 文档 · PPT · Demo 视频 · Docker</text>
-
-  <!-- Dependency arrows -->
-  <path d="M295,105 L315,105" stroke="#e74c3c" stroke-width="2"/>
-  <path d="M590,105 L610,105" stroke="#3498db" stroke-width="2"/>
-
-  <!-- Bottom bar -->
-  <rect x="140" y="240" width="500" height="24" rx="5" fill="#2d3436"/>
-  <text x="390" y="257" text-anchor="middle" fill="white" font-size="10" font-weight="bold">仿真数据 → ML训练 → 算法集成 → 实验跑批 → 报告图表 → PPT/视频</text>
-
-  <!-- Key difference -->
-  <rect x="80" y="282" width="620" height="30" rx="6" fill="#ffeaa7"/>
-  <text x="390" y="302" text-anchor="middle" fill="#d35400" font-size="10" font-weight="bold">🔄 vs 赛道A：MQTT通信砍掉 / 三端部署砍掉 / ECharts实时面板→Matplotlib报告 / 人力释放到ML+实验</text>
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" font-family="Microsoft YaHei, SimHei, sans-serif">
+  <defs><filter id="sd"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/></filter></defs>
+  <rect width="800" height="420" fill="#f8fafc"/>
+  <text x="400" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">团队组织结构（8 人）</text>
+  <!-- TL -->
+  <rect x="310" y="50" width="180" height="50" rx="10" fill="#667eea" filter="url(#sd)"/>
+  <text x="400" y="72" text-anchor="middle" font-size="13" font-weight="bold" fill="white">TL · Tech Lead</text>
+  <text x="400" y="90" text-anchor="middle" font-size="9" fill="#e2e8f0">架构设计 · 接口定义 · 集成协调</text>
+  <!-- Lines from TL -->
+  <path d="M350,100 L200,140" stroke="#a0aec0" stroke-width="1.5"/>
+  <path d="M400,100 L400,140" stroke="#a0aec0" stroke-width="1.5"/>
+  <path d="M450,100 L600,140" stroke="#a0aec0" stroke-width="1.5"/>
+  <!-- Infra group -->
+  <rect x="80" y="140" width="240" height="30" rx="6" fill="#edf2f7"/>
+  <text x="200" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">仿真基础设施组</text>
+  <rect x="80" y="180" width="115" height="65" rx="8" fill="white" stroke="#4facfe" stroke-width="2" filter="url(#sd)"/>
+  <text x="137" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">IA</text>
+  <text x="137" y="218" text-anchor="middle" font-size="8" fill="#718096">SUMO 版本统一</text>
+  <text x="137" y="232" text-anchor="middle" font-size="8" fill="#718096">20 路口迁移验证</text>
+  <rect x="205" y="180" width="115" height="65" rx="8" fill="white" stroke="#4facfe" stroke-width="2" filter="url(#sd)"/>
+  <text x="262" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">IB</text>
+  <text x="262" y="218" text-anchor="middle" font-size="8" fill="#718096">TraCI 封装</text>
+  <text x="262" y="232" text-anchor="middle" font-size="8" fill="#718096">云-边-端消息流</text>
+  <!-- Algo group -->
+  <rect x="340" y="140" width="120" height="30" rx="6" fill="#edf2f7"/>
+  <text x="400" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">算法组</text>
+  <rect x="340" y="180" width="115" height="65" rx="8" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#sd)"/>
+  <text x="397" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">AA</text>
+  <text x="397" y="218" text-anchor="middle" font-size="8" fill="#718096">FixedTime</text>
+  <text x="397" y="232" text-anchor="middle" font-size="8" fill="#718096">Actuated（基线）</text>
+  <rect x="465" y="180" width="115" height="65" rx="8" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#sd)"/>
+  <text x="522" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">AB</text>
+  <text x="522" y="218" text-anchor="middle" font-size="8" fill="#718096">CA-MP（核心）</text>
+  <text x="522" y="232" text-anchor="middle" font-size="8" fill="#718096">EWMA 预测</text>
+  <!-- Delivery group -->
+  <rect x="530" y="140" width="200" height="30" rx="6" fill="#edf2f7"/>
+  <text x="630" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">实验 + 交付组</text>
+  <rect x="600" y="180" width="80" height="65" rx="8" fill="white" stroke="#38a169" stroke-width="2" filter="url(#sd)"/>
+  <text x="640" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#276749">EX</text>
+  <text x="640" y="218" text-anchor="middle" font-size="8" fill="#718096">实验矩阵</text>
+  <text x="640" y="232" text-anchor="middle" font-size="8" fill="#718096">批量运行</text>
+  <rect x="690" y="180" width="80" height="65" rx="8" fill="white" stroke="#dd6b20" stroke-width="2" filter="url(#sd)"/>
+  <text x="730" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#c05621">DA</text>
+  <text x="730" y="218" text-anchor="middle" font-size="8" fill="#718096">报告 · PPT</text>
+  <text x="730" y="232" text-anchor="middle" font-size="8" fill="#718096">文档排版</text>
+  <!-- DB below -->
+  <path d="M630,100 L630,140" stroke="#a0aec0" stroke-width="1.5"/>
+  <rect x="600" y="260" width="170" height="55" rx="8" fill="white" stroke="#805ad5" stroke-width="2" filter="url(#sd)"/>
+  <text x="685" y="282" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">DB</text>
+  <text x="685" y="300" text-anchor="middle" font-size="8" fill="#718096">可视化（Matplotlib + PyQt）· 视频录制剪辑</text>
+  <path d="M685,245 L685,260" stroke="#a0aec0" stroke-width="1"/>
   <!-- Summary -->
-  <rect x="240" y="322" width="300" height="24" rx="4" fill="#636e72"/>
-  <text x="390" y="338" text-anchor="middle" fill="white" font-size="10" font-weight="bold">4 组 × 2 人 = 8 人 ｜ 分工明确，串行依赖少</text>
+  <rect x="80" y="340" width="640" height="55" rx="8" fill="#edf2f7" stroke="#cbd5e0" stroke-width="1"/>
+  <text x="400" y="362" text-anchor="middle" font-size="10" fill="#4a5568">协作节奏：每日 21:00 群内同步（≤5行）| 每周六 21:00 全体会（30min）| 卡住 >4h 升级到 TL</text>
+  <text x="400" y="382" text-anchor="middle" font-size="10" fill="#4a5568">分支策略：main（稳定）/ dev（开发）/ feature/*（功能分支）| 接口冻结：7/23 后不改 messages + base</text>
 </svg>

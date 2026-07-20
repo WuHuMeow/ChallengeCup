@@ -1,64 +1,66 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 390" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" font-family="Microsoft YaHei, SimHei, sans-serif">
   <defs>
     <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#a29bfe"/><stop offset="100%" stop-color="#6c5ce7"/></linearGradient>
     <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#74b9ff"/><stop offset="100%" stop-color="#0984e3"/></linearGradient>
     <linearGradient id="g3" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#55efc4"/><stop offset="100%" stop-color="#00b894"/></linearGradient>
     <linearGradient id="g4" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ffeaa7"/><stop offset="100%" stop-color="#fdcb6e"/></linearGradient>
     <linearGradient id="g5" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fab1a0"/><stop offset="100%" stop-color="#e17055"/></linearGradient>
+    <linearGradient id="g6" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fd79a8"/><stop offset="100%" stop-color="#e84393"/></linearGradient>
   </defs>
-
-  <!-- Month header -->
-  <rect x="20" y="8" width="760" height="22" rx="5" fill="#2d3436"/>
-  <text x="55" y="23" text-anchor="middle" fill="white" font-size="9" font-weight="bold">7月</text>
-  <text x="290" y="23" text-anchor="middle" fill="white" font-size="9" font-weight="bold">8月</text>
-  <text x="525" y="23" text-anchor="middle" fill="white" font-size="9" font-weight="bold">9月</text>
-  <text x="700" y="23" text-anchor="middle" fill="white" font-size="9" font-weight="bold">截止</text>
-
-  <line x1="180" y1="8" x2="180" y2="360" stroke="#dfe6e9" stroke-width="0.8" stroke-dasharray="4,4"/>
-  <line x1="430" y1="8" x2="430" y2="360" stroke="#dfe6e9" stroke-width="0.8" stroke-dasharray="4,4"/>
-  <line x1="680" y1="8" x2="680" y2="360" stroke="#dfe6e9" stroke-width="0.8" stroke-dasharray="4,4"/>
-
-  <!-- Phase bars -->
-  <rect x="150" y="48" width="490" height="22" rx="5" fill="url(#g1)"/>
-  <text x="395" y="63" text-anchor="middle" fill="white" font-size="11" font-weight="bold">接口契约 · SUMO 环境 · 基线跑通 · 第一批 CSV 产出</text>
-
-  <rect x="180" y="115" width="530" height="22" rx="5" fill="url(#g2)"/>
-  <text x="445" y="130" text-anchor="middle" fill="white" font-size="11" font-weight="bold">ML 训练迭代 · 规则自适应 · ML增强算法集成 · 单场景验证</text>
-
-  <rect x="350" y="182" width="350" height="22" rx="5" fill="url(#g3)"/>
-  <text x="525" y="197" text-anchor="middle" fill="white" font-size="11" font-weight="bold">全量跑批 180 次 · 统计检验 · 对比报告 · 集成调试</text>
-
-  <rect x="500" y="249" width="150" height="22" rx="5" fill="url(#g4)"/>
-  <text x="575" y="264" text-anchor="middle" fill="#333" font-size="10" font-weight="bold">PPT · 视频 · 文档</text>
-
-  <rect x="580" y="298" width="100" height="22" rx="5" fill="url(#g5)"/>
-  <text x="630" y="313" text-anchor="middle" fill="white" font-size="9" font-weight="bold">答辩演练</text>
-
-  <!-- Phase labels -->
-  <text x="140" y="64" text-anchor="end" fill="#2d3436" font-size="12" font-weight="bold">P1 基础</text>
-  <text x="140" y="131" text-anchor="end" fill="#2d3436" font-size="12" font-weight="bold">P2 核心</text>
-  <text x="140" y="198" text-anchor="end" fill="#2d3436" font-size="12" font-weight="bold">P3 集成</text>
-  <text x="140" y="265" text-anchor="end" fill="#2d3436" font-size="12" font-weight="bold">P4 打磨</text>
-  <text x="140" y="314" text-anchor="end" fill="#2d3436" font-size="12" font-weight="bold">P5 缓冲</text>
-
-  <!-- Dates -->
-  <text x="150" y="92" fill="#636e72" font-size="10">7.16 – 7.30（2w） 🔵 全并行 8 人</text>
-  <text x="180" y="159" fill="#636e72" font-size="10">7.31 – 8.20（3w） 🟡 成员4等CSV（≤3天），其余并行</text>
-  <text x="350" y="226" fill="#636e72" font-size="10">8.21 – 9.2（2w）   🟠 算法→实验→报告 顺序</text>
-  <text x="500" y="293" fill="#636e72" font-size="10">9.3 – 9.9（1w）   🔵 全并行</text>
-  <text x="580" y="342" fill="#636e72" font-size="10">9.10 – 9.14  缓冲</text>
-
-  <!-- Deadline -->
-  <line x1="690" y1="35" x2="690" y2="350" stroke="#e17055" stroke-width="1.5" stroke-dasharray="3,2"/>
-  <text x="690" y="370" text-anchor="middle" fill="#e17055" font-size="10" font-weight="bold">📅 9.15 提交</text>
-
-  <!-- Key milestone markers -->
-  <circle cx="640" cy="59" r="4" fill="#fff" stroke="#6c5ce7" stroke-width="2"/>
-  <text x="648" y="55" fill="#6c5ce7" font-size="7">M1</text>
-  <circle cx="710" cy="126" r="4" fill="#fff" stroke="#0984e3" stroke-width="2"/>
-  <text x="718" y="122" fill="#0984e3" font-size="7">M2</text>
-  <circle cx="700" cy="193" r="4" fill="#fff" stroke="#00b894" stroke-width="2"/>
-  <text x="708" y="189" fill="#00b894" font-size="7">M3</text>
-  <circle cx="650" cy="260" r="4" fill="#fff" stroke="#fdcb6e" stroke-width="2"/>
-  <text x="658" y="256" fill="#f39c12" font-size="7">M4</text>
+  <rect width="820" height="340" fill="#f8fafc"/>
+  <text x="410" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">六周里程碑（7/20 - 8/31）</text>
+  <!-- Timeline axis -->
+  <line x1="60" y1="60" x2="780" y2="60" stroke="#cbd5e0" stroke-width="2"/>
+  <!-- Week markers -->
+  <circle cx="120" cy="60" r="5" fill="#6c5ce7"/><text x="120" y="50" text-anchor="middle" font-size="9" fill="#6c5ce7">7/20</text>
+  <circle cx="240" cy="60" r="5" fill="#0984e3"/><text x="240" y="50" text-anchor="middle" font-size="9" fill="#0984e3">7/27</text>
+  <circle cx="360" cy="60" r="5" fill="#00b894"/><text x="360" y="50" text-anchor="middle" font-size="9" fill="#00b894">8/3</text>
+  <circle cx="480" cy="60" r="5" fill="#fdcb6e"/><text x="480" y="50" text-anchor="middle" font-size="9" fill="#b7791f">8/10</text>
+  <circle cx="600" cy="60" r="5" fill="#e17055"/><text x="600" y="50" text-anchor="middle" font-size="9" fill="#e17055">8/17</text>
+  <circle cx="720" cy="60" r="5" fill="#e84393"/><text x="720" y="50" text-anchor="middle" font-size="9" fill="#e84393">8/24</text>
+  <text x="780" y="50" text-anchor="middle" font-size="9" fill="#e53e3e">8/31</text>
+  <!-- W1 -->
+  <rect x="60" y="80" width="120" height="70" rx="8" fill="url(#g1)" opacity="0.9"/>
+  <text x="120" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W1 框架搭建</text>
+  <text x="120" y="117" text-anchor="middle" font-size="8" fill="#e2e8f0">接口冻结</text>
+  <text x="120" y="131" text-anchor="middle" font-size="8" fill="#e2e8f0">路口1 跑通</text>
+  <text x="120" y="145" text-anchor="middle" font-size="8" fill="#e2e8f0">FixedTime+CA-MP</text>
+  <!-- W2 -->
+  <rect x="185" y="80" width="120" height="70" rx="8" fill="url(#g2)" opacity="0.9"/>
+  <text x="245" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W2 算法联调</text>
+  <text x="245" y="117" text-anchor="middle" font-size="8" fill="#e2e8f0">云-边-端贯通</text>
+  <text x="245" y="131" text-anchor="middle" font-size="8" fill="#e2e8f0">CA-MP 对比数据</text>
+  <text x="245" y="145" text-anchor="middle" font-size="8" fill="#e2e8f0">Actuated 完成</text>
+  <!-- W3 -->
+  <rect x="310" y="80" width="120" height="70" rx="8" fill="url(#g3)" opacity="0.9"/>
+  <text x="370" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W3 全量实验</text>
+  <text x="370" y="117" text-anchor="middle" font-size="8" fill="#1a202c">20路口×3算法</text>
+  <text x="370" y="131" text-anchor="middle" font-size="8" fill="#1a202c">原始流量跑完</text>
+  <text x="370" y="145" text-anchor="middle" font-size="8" fill="#1a202c">图表产出</text>
+  <!-- W4 -->
+  <rect x="435" y="80" width="120" height="70" rx="8" fill="url(#g4)" opacity="0.9"/>
+  <text x="495" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="#1a202c">W4 压力测试</text>
+  <text x="495" y="117" text-anchor="middle" font-size="8" fill="#1a202c">1.5倍流量</text>
+  <text x="495" y="131" text-anchor="middle" font-size="8" fill="#1a202c">EWMA 接入</text>
+  <text x="495" y="145" text-anchor="middle" font-size="8" fill="#1a202c">Docker 打包</text>
+  <!-- W5 -->
+  <rect x="560" y="80" width="120" height="70" rx="8" fill="url(#g5)" opacity="0.9"/>
+  <text x="620" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W5 交付制作</text>
+  <text x="620" y="117" text-anchor="middle" font-size="8" fill="#fff5f5">报告初稿</text>
+  <text x="620" y="131" text-anchor="middle" font-size="8" fill="#fff5f5">PPT 初稿</text>
+  <text x="620" y="145" text-anchor="middle" font-size="8" fill="#fff5f5">视频录制</text>
+  <!-- W6 -->
+  <rect x="685" y="80" width="95" height="70" rx="8" fill="url(#g6)" opacity="0.9"/>
+  <text x="732" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W6 打磨</text>
+  <text x="732" y="117" text-anchor="middle" font-size="8" fill="#fff5f5">全员review</text>
+  <text x="732" y="131" text-anchor="middle" font-size="8" fill="#fff5f5">视频定稿</text>
+  <text x="732" y="145" text-anchor="middle" font-size="8" fill="#fff5f5">8/31 提交</text>
+  <!-- Key milestones -->
+  <text x="60" y="185" font-size="11" font-weight="bold" fill="#4a5568">关键验收节点：</text>
+  <rect x="60" y="195" width="700" height="120" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="80" y="218" font-size="10" fill="#4a5568">M1（7/23）：接口冻结 — messages.py + base.py 不再修改</text>
+  <text x="80" y="238" font-size="10" fill="#4a5568">M2（7/26）：路口 1 两种算法跑通 3600 步，tag v0.1-w1-complete</text>
+  <text x="80" y="258" font-size="10" fill="#4a5568">M3（8/9）：20 路口 × 3 算法 × 原始流量 = 180 次仿真完成</text>
+  <text x="80" y="278" font-size="10" fill="#4a5568">M4（8/16）：1.5 倍流量实验完成，EWMA 接入，360 次全量数据就绪</text>
+  <text x="80" y="298" font-size="10" fill="#4a5568">M5（8/31）：最终提交 — 报告 + PPT + 视频 + 可运行代码 + Docker</text>
 </svg>
