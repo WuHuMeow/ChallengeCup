@@ -54,7 +54,7 @@ def stop_simulation() -> Dict[str, str]:
 @app.get("/api/algorithms")
 def list_algorithms() -> List[str]:
     """列出可用算法。"""
-    return ["fixed_time", "rule_adaptive", "ml_enhanced"]
+    return ["fixed_time", "actuated", "ca_maxpressure"]
 
 
 @app.post("/api/algorithm/switch")

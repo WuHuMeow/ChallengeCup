@@ -41,4 +41,4 @@ data_root = config.path("paths.data_root")
 
 ## 负责人
 
-- 成员6（后端负责）统一维护接口契约，其他人按需使用。
+- TL（Tech Lead）：统一维护接口契约，其他人按需使用。

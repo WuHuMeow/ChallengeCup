@@ -54,4 +54,5 @@ flow_file = vg.generate(scene.meta, TrafficLevel.HIGH, output_dir)
 
 ## 负责人
 
-- 成员2（场景管理工程师）主责，成员1（仿真引擎工程师）配合校验。
+- IA（仿真基础设施 A）：SUMO 版本统一、20 路口迁移验证
+- IB（仿真基础设施 B）：配合校验

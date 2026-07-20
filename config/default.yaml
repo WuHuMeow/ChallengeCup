@@ -1,5 +1,5 @@
 project:
-  name: "雄安新区城市大脑车路云一体化协同感知算法平台"
+  name: "雄安新区城市大脑车路云一体化协同管控算法与仿真平台"
   version: "0.1.0"
 
 paths:
@@ -16,11 +16,10 @@ sumo:
   default_simulation_steps: 3600
 
 scene:
-  # 20 路口 × 3 流量等级 = 60 个变体
+  # 20 路口 × 2 流量等级 = 40 个变体
   default_traffic_levels:
-    low: 0.5
     normal: 1.0
-    high: 3.0
+    high: 1.5
 
 algorithms:
   fixed_time:
@@ -28,14 +27,20 @@ algorithms:
     # false：使用 SUMO 路网中自带的默认配时程序。
     use_excel_timing: false
 
-  rule_adaptive:
+  actuated:
     min_green: 10
     max_green: 60
     queue_threshold: 5
 
-  ml_enhanced:
-    # 预测未来 5 分钟流量（300 秒）
-    prediction_horizon: 300
+  ca_maxpressure:
+    # 溢出门控阈值：进口道占用率超过此值时强制放行
+    overflow_occupancy_threshold: 0.9
+    # 云端下发参数默认值
+    base_green: 30
+    min_green: 10
+    max_green: 90
+    # EWMA 平滑系数
+    ewma_alpha: 0.3
 
 metrics:
   # 每 60 仿真秒记录一次快照，降低 CSV 体积。

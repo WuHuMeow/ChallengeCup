@@ -2,33 +2,32 @@
 
 ## 模块职责
 
-云端策略层，封装离线训练好的 ML 模型，对外提供未来流量预测服务。在赛道 B 单机实现中，以模块边界模拟"云端"，供边缘 ML 增强算法调用。
+云端策略层（CloudCoordinator），负责全局参数下发与 EWMA 流量预测。在赛道 B 单机实现中，以模块边界模拟"云端"，周期性向边缘节点下发 `min_green`/`max_green`/`base_green` 等参数，并根据全局压力动态调整。
 
 ## 当前完成情况
 
-- [x] `cloud_policy.py`：`CloudPolicy` 类，负责加载 `ml/model.pkl`，提供 `predict(JointState) -> PredictionResult` 接口。
-- [ ] 当前为兜底实现：若模型不存在，返回当前流量作为预测值，确保下游可运行。
+- [x] `cloud_policy.py`：`CloudPolicy` 类骨架，当前为兜底实现（返回当前流量作为预测值）。
 
 ## 待完成情况
 
-- [ ] 接入真实的 `ml/model.pkl` 推理逻辑。
-- [ ] 完善特征工程调用（`ml/features.py`），确保训练/推理特征维度一致。
-- [ ] 可选：将 `CloudPolicy` 包装为独立服务进程，体现"云-边"分离。
+- [ ] 重构为 CloudCoordinator：周期性下发 CloudCommand（min_green/max_green/base_green）。
+- [ ] 接入 EWMA 流量预测，根据全局压力动态调整下发参数。
+- [ ] 实现边缘算法的 `on_cloud_command()` 回调机制。
 
 ## 需求分析
 
 | 需求 | 说明 |
 |------|------|
-| 模型加载 | 离线训练产出 `ml/model.pkl`，运行时加载 |
-| 预测服务 | 输入 `JointState`，输出未来各方向流量预测 |
-| 兜底机制 | 模型未就绪时返回当前流量，避免阻塞仿真 |
-| 云-边接口 | 清晰定义 `CloudPolicy.predict()` 输入输出 |
+| 参数下发 | 周期性向边缘下发 min_green/max_green/base_green |
+| EWMA 预测 | 轻量流量预测修正压力值 |
+| 兜底机制 | 预测未就绪时使用默认参数，避免阻塞仿真 |
+| 云-边接口 | 清晰定义 CloudCommand 输入输出 |
 
 ## 关键文件
 
 | 文件 | 说明 |
 |------|------|
-| `cloud_policy.py` | 云端流量预测服务封装 |
+| `cloud_policy.py` | CloudCoordinator 全局参数下发（待重构） |
 
 ## 对外接口
 
@@ -42,4 +41,5 @@ pred = policy.predict(state)
 
 ## 负责人
 
-- 成员4（ML 模型工程师）主责，成员3（算法负责人）消费预测结果。
+- AB（算法 B）：CAMaxPressureController + EWMA 预测
+- IB（仿真基础设施 B）：云-边-端消息流贯通

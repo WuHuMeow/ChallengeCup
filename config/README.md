@@ -17,8 +17,8 @@
 
 | 需求 | 说明 |
 |------|------|
-| 路径可配置 | 数据根目录、输出目录、模型路径可集中修改 |
-| 算法参数可配置 | 固定配时、规则自适应、ML 增强的参数集中管理 |
+| 路径可配置 | 数据根目录、输出目录可集中修改 |
+| 算法参数可配置 | 固定配时、感应控制、CA-MP 的参数集中管理 |
 | 环境变量覆盖 | 支持 `CC_DATA_ROOT` 等环境变量临时覆盖 |
 
 ## 关键文件
@@ -32,10 +32,10 @@
 ```yaml
 paths.data_root: "./data/intersection_data"   # 20 个路口数据目录
 sumo.binary: "sumo"                           # 批量跑批用命令行版
-scene.default_traffic_levels: {low:0.5, normal:1.0, high:3.0}
+scene.default_traffic_levels: {normal:1.0, high:1.5}  # 原始 + 1.5 倍压力
 algorithms.fixed_time.use_excel_timing: false # 是否使用 Excel 配时
 ```
 
 ## 负责人
 
-- 成员6（后端负责）维护配置结构，其他人按模块读取对应参数。
+- TL：维护配置结构，其他人按模块读取对应参数。

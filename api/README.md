@@ -44,4 +44,5 @@ uvicorn api.server:app --reload
 
 ## 负责人
 
-- 成员6（后端负责）主责，成员7（前端负责）对接数据格式。
+- IB（仿真基础设施 B）：云-边-端消息流、API 接口
+- TL（Tech Lead）：接口定义与集成协调

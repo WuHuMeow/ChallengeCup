@@ -1,10 +1,16 @@
-# XGBoost 流量预测 → Webster 适配器 · 设计文档
+> **⚠️ 已废弃**：本设计文档（XGBoost + Webster 方案）已被 CA-MP（Capacity-Aware MaxPressure）方案取代。
+> 当前项目算法方向为 CA-MP，详见 `docs/tasks/roadmap.md` 和根目录 `README.md`。
+> 本文件仅作历史参考保留。
+
+---
+
+# XGBoost 流量预测 → Webster 适配器 · 设计文档（已废弃）
 
 **项目**: 雄安新区"城市大脑"车路云一体化协同感知算法平台(挑战杯 2026, 编号 XH-202613, 赛道 B)
 **主题**: 高级扩展方案 B —— 用 XGBoost 预测未来流量,驱动 Webster 公式动态调参
 **作者**: fyx0927
 **日期**: 2026-07-18
-**截止**: 9.1 (demo_1 端到端跑通 + 与基线对比出报告)
+**状态**: 已废弃，被 CA-MP 方案取代
 
 ---
 

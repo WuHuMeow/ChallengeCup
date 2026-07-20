@@ -1,6 +1,6 @@
 """多场景多算法批量跑批框架。
 
-支持 20 路口 × 3 流量等级 × 3 算法 = 180 次仿真的批量执行，
+支持 20 路口 × 2 流量等级 × 3 算法 × 3 种子 = 360 次仿真的批量执行，
 并汇总结果供统计检验与报告生成。
 """
 
@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
     "fixed_time": FixedTimeAlgorithm,
-    "rule_adaptive": RuleAdaptiveAlgorithm,
-    "ml_enhanced": MLEnhancedAlgorithm,
+    "actuated": RuleAdaptiveAlgorithm,
+    "ca_maxpressure": MLEnhancedAlgorithm,
 }
 
 
