@@ -1,0 +1,38 @@
+# === 实验输出（按路径排除） ===
+results/*
+!results/README.md
+
+# === 团队临时工作区 ===
+workspace/*
+!workspace/README.md
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# === IDE / 编辑器 ===
+.idea/
+.vscode/
+.obsidian/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === 日志 ===
+*.log
+
+# === 大文件（防止意外提交） ===
+*.mp4
+*.avi
+*.mov

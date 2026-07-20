@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgeRelations>
+    <interval begin="0" end="3600">
+        
+        <edgeRelation from="E0.40" to="E1" probability="0.4"/>   
+        <edgeRelation from="E0.40" to="E3" probability="0.3"/>   
+        <edgeRelation from="E0.40" to="E2" probability="0.3"/>   
+        
+        
+        <edgeRelation from="-E1.42" to="-E0" probability="0.4"/> 
+        <edgeRelation from="-E1.42" to="E3" probability="0.3"/>  
+        <edgeRelation from="-E1.42" to="E2" probability="0.3"/>  
+        
+        
+        <edgeRelation from="-E3" to="E2" probability="0.4"/>  
+        <edgeRelation from="-E3" to="-E0" probability="0.3"/> 
+        <edgeRelation from="-E3" to="E1" probability="0.3"/>  
+        
+        
+        <edgeRelation from="-E2.41" to="E3" probability="0.4"/>  
+        <edgeRelation from="-E2.41" to="-E0" probability="0.3"/> 
+        <edgeRelation from="-E2.41" to="E1" probability="0.3"/>  
+    </interval>
+    
+    <turns>
+        <sink edges="E1"/>   
+        <sink edges="-E0"/>  
+        <sink edges="E3"/>   
+        <sink edges="E2"/>   
+    </turns>
+</edgeRelations>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgeRelations>
+    <interval begin="0" end="3600">
+        <!-- 东进口 -E1：直行 343，右转 198，左转 213 -->
+        <edgeRelation from="-E1" to="-E0" probability="0.455"/>   <!-- 直行向西 343-->
+        <edgeRelation from="-E1" to="E3" probability="0.263"/>    <!-- 右转向北 198 -->
+        <edgeRelation from="-E1" to="E2" probability="0.283"/>    <!-- 左转向南 213 -->
+
+        <!-- 西进口 E0：直行 311，右转 155，左转 223 -->
+        <edgeRelation from="E0" to="E1" probability="0.451"/>     <!-- 直行向东 311 -->
+        <edgeRelation from="E0" to="E2" probability="0.225"/>     <!-- 右转向南 155 -->
+        <edgeRelation from="E0" to="E3" probability="0.324"/>     <!-- 左转向北 223 -->
+
+        <!-- 南进口 -E2：直行 304，右转 123，左转 200 -->
+        <edgeRelation from="-E2" to="E3" probability="0.485"/>    <!-- 直行向北 304 -->
+        <edgeRelation from="-E2" to="E1" probability="0.196"/>    <!-- 右转向东 123 -->
+        <edgeRelation from="-E2" to="-E0" probability="0.319"/>   <!-- 左转向西 200 -->
+
+        <!-- 北进口 -E3：直行 253，右转 99，左转 211 -->
+        <edgeRelation from="-E3" to="E2" probability="0.449"/>    <!-- 直行向南 253 -->
+        <edgeRelation from="-E3" to="-E0" probability="0.176"/>   <!-- 右转向西 99 -->
+        <edgeRelation from="-E3" to="E1" probability="0.375"/>    <!-- 左转向东 211 -->
+    </interval>
+
+    <turns>
+        <sink edges="-E0 E1 E2 E3"/>
+    </turns>
+</edgeRelations>

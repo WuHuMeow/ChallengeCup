@@ -1,0 +1,15 @@
+name: xiong-an-traffic
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - matplotlib
+  - openpyxl
+  - pyyaml
+  - pip:
+    - traci
+    - sumolib

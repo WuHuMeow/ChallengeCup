@@ -1,0 +1,31 @@
+# 20 路口元数据 - 供批量脚本读取
+# 维护者：A 组
+# 更新规则：发现新信息时更新对应字段
+
+intersections:
+  - id: 1
+    timestep_s: 1.0
+    sumo_versions: ["1.18.0", "1.26.0"]
+    flow_count: 4
+    has_queues: false
+    map_folder: "高精地图"
+    notes: "标准十字路口，边命名 E0/-E1/-E2/-E3"
+
+  - id: 11
+    timestep_s: 0.1
+    sumo_versions: ["1.13.0"]
+    flow_count: 4
+    has_queues: true
+    map_folder: "高清地图"
+    notes: "流ID为 W_car/E_car/S_car/N_car，方向映射与路口1不同"
+
+  - id: 16
+    timestep_s: 0.1
+    sumo_versions: ["1.23.1"]
+    flow_count: 4
+    has_queues: true
+    map_folder: "高精地图"
+    notes: "含 -E5 进口道（5进口道路口）"
+
+  # 其余路口待 A 组验证后补充完整
+  # 格式同上

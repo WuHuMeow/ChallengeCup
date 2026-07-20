@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edgeRelations>
+    <interval begin="0" end="3600">
+        <!-- 西侧来车 (E0) -->
+        <edgeRelation from="E0.40" to="E1" probability="0.4"/>   <!-- 直行 (向东) -->
+        <edgeRelation from="E0.40" to="E3" probability="0.3"/>   <!-- 左转 (向北) -->
+        <edgeRelation from="E0.40" to="E2" probability="0.3"/>   <!-- 右转 (向南) -->
+        
+        <!-- 东侧来车 (-E1) -->
+        <edgeRelation from="-E1.42" to="-E0" probability="0.4"/> <!-- 直行 (向西) -->
+        <edgeRelation from="-E1.42" to="E3" probability="0.3"/>  <!-- 右转 (向北) -->
+        <edgeRelation from="-E1.42" to="E2" probability="0.3"/>  <!-- 左转 (向南) -->
+        
+        <!-- 北侧来车 (-E3) -->
+        <edgeRelation from="-E3" to="E2" probability="0.4"/>  <!-- 直行 (向南) -->
+        <edgeRelation from="-E3" to="-E0" probability="0.3"/> <!-- 右转 (向西) -->
+        <edgeRelation from="-E3" to="E1" probability="0.3"/>  <!-- 左转 (向东) -->
+        
+        <!-- 南侧来车 (-E2) -->
+        <edgeRelation from="-E2.41" to="E3" probability="0.4"/>  <!-- 直行 (向北) -->
+        <edgeRelation from="-E2.41" to="-E0" probability="0.3"/> <!-- 左转 (向西) -->
+        <edgeRelation from="-E2.41" to="E1" probability="0.3"/>  <!-- 右转 (向东) -->
+    </interval>
+    
+    <turns>
+        <sink edges="E1"/>   <!-- 向东出口 -->
+        <sink edges="-E0"/>  <!-- 向西出口 -->
+        <sink edges="E3"/>   <!-- 向北出口 -->
+        <sink edges="E2"/>   <!-- 向南出口 -->
+    </turns>
+</edgeRelations>

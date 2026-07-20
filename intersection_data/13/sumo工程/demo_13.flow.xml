@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    <vType id="car" maxSpeed="37" vClass="passenger"/>
+
+    <!-- 东进口：总479 veh/h (直行306，右转173) -->
+    <flow id="E_car" type="car" from="-E1" begin="0" end="3600" number="479"/>
+    <!-- 西进口：总569 veh/h (直行389，左转180) -->
+    <flow id="W_car" type="car" from="E0" begin="0" end="3600" number="569"/>
+    <!-- 北进口：总327 veh/h (左转189，右转142) -->
+    <flow id="N_car" type="car" from="-E2" begin="0" end="3600" number="327"/>
+</routes>

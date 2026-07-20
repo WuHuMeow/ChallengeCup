@@ -1,0 +1,14 @@
+# SUMO 交通仿真接口
+traci
+sumolib
+
+# 数据处理
+pandas
+numpy
+openpyxl
+
+# 可视化
+matplotlib
+
+# 配置管理
+pyyaml
