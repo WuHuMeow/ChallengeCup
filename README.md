@@ -492,7 +492,20 @@ predicted_flow(t+1) = α × observed_flow(t) + (1-α) × predicted_flow(t)
 | DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT |
 | DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 |
 
-详细任务书见 [`docs/tasks/`](docs/tasks/roadmap.md)（含每人每周每日任务）。
+### 个人任务书入口
+
+| 代号 | 角色 | W1 | W2 | W3 | W4 | W5 | W6 |
+|------|------|----|----|----|----|----|----|
+| TL | Tech Lead | [W1](docs/tasks/w1/TL_tech_lead.md) | [W2](docs/tasks/w2/TL_tech_lead.md) | [W3](docs/tasks/w3/TL_tech_lead.md) | [W4](docs/tasks/w4/TL_tech_lead.md) | [W5](docs/tasks/w5/TL_tech_lead.md) | [W6](docs/tasks/w6/TL_tech_lead.md) |
+| IA | 仿真基础设施 A | [W1](docs/tasks/w1/IA_infra_a.md) | [W2](docs/tasks/w2/IA_infra_a.md) | [W3](docs/tasks/w3/IA_infra_a.md) | [W4](docs/tasks/w4/IA_infra_a.md) | [W5](docs/tasks/w5/IA_infra_a.md) | [W6](docs/tasks/w6/IA_infra_a.md) |
+| IB | 仿真基础设施 B | [W1](docs/tasks/w1/IB_infra_b.md) | [W2](docs/tasks/w2/IB_infra_b.md) | [W3](docs/tasks/w3/IB_infra_b.md) | [W4](docs/tasks/w4/IB_infra_b.md) | [W5](docs/tasks/w5/IB_infra_b.md) | [W6](docs/tasks/w6/IB_infra_b.md) |
+| AA | 算法 A | [W1](docs/tasks/w1/AA_algo_a.md) | [W2](docs/tasks/w2/AA_algo_a.md) | [W3](docs/tasks/w3/AA_algo_a.md) | [W4](docs/tasks/w4/AA_algo_a.md) | [W5](docs/tasks/w5/AA_algo_a.md) | [W6](docs/tasks/w6/AA_algo_a.md) |
+| AB | 算法 B | [W1](docs/tasks/w1/AB_algo_b.md) | [W2](docs/tasks/w2/AB_algo_b.md) | [W3](docs/tasks/w3/AB_algo_b.md) | [W4](docs/tasks/w4/AB_algo_b.md) | [W5](docs/tasks/w5/AB_algo_b.md) | [W6](docs/tasks/w6/AB_algo_b.md) |
+| EX | 实验组 | [W1](docs/tasks/w1/EX_experiment.md) | [W2](docs/tasks/w2/EX_experiment.md) | [W3](docs/tasks/w3/EX_experiment.md) | [W4](docs/tasks/w4/EX_experiment.md) | [W5](docs/tasks/w5/EX_experiment.md) | [W6](docs/tasks/w6/EX_experiment.md) |
+| DA | 交付 A | [W1](docs/tasks/w1/DA_delivery_a.md) | [W2](docs/tasks/w2/DA_delivery_a.md) | [W3](docs/tasks/w3/DA_delivery_a.md) | [W4](docs/tasks/w4/DA_delivery_a.md) | [W5](docs/tasks/w5/DA_delivery_a.md) | [W6](docs/tasks/w6/DA_delivery_a.md) |
+| DB | 交付 B | [W1](docs/tasks/w1/DB_delivery_b.md) | [W2](docs/tasks/w2/DB_delivery_b.md) | [W3](docs/tasks/w3/DB_delivery_b.md) | [W4](docs/tasks/w4/DB_delivery_b.md) | [W5](docs/tasks/w5/DB_delivery_b.md) | [W6](docs/tasks/w6/DB_delivery_b.md) |
+
+总路线图：[`docs/tasks/roadmap.md`](docs/tasks/roadmap.md)
 
 ---
 
