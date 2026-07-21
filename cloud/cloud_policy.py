@@ -19,9 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 class CloudPolicy:
-    """云端流量预测策略。"""
+    """云端流量预测策略（EWMA 指数加权移动平均）。"""
 
     def __init__(self, model_path: Optional[Path] = None) -> None:
+        cfg = get_config().get("algorithms.ca_maxpressure", {})
+        self.alpha: float = cfg.get("ewma_alpha", 0.3)
+        self.horizon: int = cfg.get("prediction_horizon", 300)
+        self._prev_predicted: dict[str, float] = {}
+
         if model_path is None:
             model_path = get_config().path("paths.model_path")
         self.model_path = Path(model_path)
@@ -29,35 +34,45 @@ class CloudPolicy:
         self._load_model()
 
     def _load_model(self) -> None:
-        """加载离线训练好的 ML 模型。"""
+        """加载离线训练好的 ML 模型（可选，XGBoost 扩展用）。"""
         if not self.model_path.exists():
-            logger.warning("模型文件不存在: %s，将使用兜底预测", self.model_path)
             return
 
         try:
             import joblib
 
-            self._model = joblib.load(self.model_path)
-            logger.info("已加载云端模型: %s", self.model_path)
+            loaded = joblib.load(self.model_path)
+            if loaded is not None:
+                self._model = loaded
+                logger.info("已加载云端模型: %s", self.model_path)
         except Exception as exc:
-            logger.warning("加载模型失败: %s，将使用兜底预测", exc)
+            logger.warning("加载模型失败: %s，将使用 EWMA 预测", exc)
 
     def predict(self, state: JointState) -> PredictionResult:
-        """预测未来各方向流量。
+        """EWMA 流量预测：predicted(t+1) = α × observed(t) + (1-α) × predicted(t)。"""
+        predicted: dict[str, float] = {}
+        for direction, observed in state.flows.items():
+            prev = self._prev_predicted.get(direction, observed)
+            predicted[direction] = self.alpha * observed + (1 - self.alpha) * prev
 
-        若模型未加载成功，返回当前流量作为兜底，确保边缘算法仍可运行。
-        """
-        horizon = get_config().get("algorithms.ca_maxpressure.prediction_horizon", 300)
-
-        if self._model is not None:
-            # TODO: 调用 ml/features.py 生成特征向量，再调用 self._model.predict()
-            # 当前返回兜底值，由成员3/成员4 后续替换为真实推理。
-            predicted = state.flows
-        else:
-            predicted = state.flows
+        self._prev_predicted = predicted
 
         return PredictionResult(
-            horizon_steps=int(horizon),
-            horizon_seconds=float(horizon),
+            horizon_steps=self.horizon,
+            horizon_seconds=float(self.horizon),
             predicted_flows=predicted,
         )
+
+    def dispatch_base_green(self, state: JointState) -> float:
+        """周期性下发 base_green 参数（云端全局协调）。
+
+        MVI：返回配置的固定 base_green。
+        TODO(AB): 根据全局压力评估动态调整 base_green，
+        实现 README 中"CloudCoordinator 根据全局压力周期性下发 base_green"。
+        """
+        cfg = get_config().get("algorithms.ca_maxpressure", {})
+        return float(cfg.get("base_green", 30))
+
+    def reset(self) -> None:
+        """重置预测状态，用于新场景或重复实验。"""
+        self._prev_predicted = {}
