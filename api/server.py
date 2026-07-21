@@ -11,7 +11,10 @@ from typing import Any, Dict, List
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+import uuid
+
 from core.types import ControlAction, JointState, PredictionResult, SceneMeta
+from scenes.registry import SceneRegistry
 
 app = FastAPI(title="雄安新区车路云协同管控算法平台", version="0.1.0")
 
@@ -92,3 +95,43 @@ def edge_control(predictions: Dict[str, Any], state: Dict[str, Any]) -> Dict[str
 def vehicle_status() -> Dict[str, Any]:
     """车端/灯端状态快照。"""
     return {"tls_id": "", "current_phase": 0}
+
+
+# ─── 根级接口（Task 9） ───────────────────────────────────────────────
+
+_run_state: Dict[str, Any] = {"run_id": None, "status": "idle"}
+
+
+@app.get("/health")
+def health() -> Dict[str, str]:
+    """健康检查。"""
+    return {"status": "ok"}
+
+
+@app.get("/scenes")
+def scenes_list() -> List[Dict[str, Any]]:
+    """返回场景列表。"""
+    try:
+        registry = SceneRegistry()
+        return [
+            {"intersection_id": m.intersection_id, "name": m.name}
+            for m in registry.list_scenes()
+        ]
+    except Exception:
+        return []
+
+
+@app.post("/run")
+def start_run(req: StartRequest) -> Dict[str, Any]:
+    """启动一次仿真（MVI：记录状态，不实际运行）。"""
+    run_id = str(uuid.uuid4())[:8]
+    _run_state["run_id"] = run_id
+    _run_state["status"] = "started"
+    _run_state["request"] = req.dict()
+    return {"run_id": run_id, "status": "started"}
+
+
+@app.get("/status")
+def run_status() -> Dict[str, Any]:
+    """返回当前运行状态。"""
+    return {"run_id": _run_state["run_id"], "status": _run_state["status"]}
