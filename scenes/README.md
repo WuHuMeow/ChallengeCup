@@ -7,7 +7,7 @@
 ## 当前完成情况
 
 - [x] `registry.py`：`SceneRegistry` 自动发现 20 个路口，输出 `SceneMeta`，兼容 `高精地图`/`高清地图` 命名差异。
-- [x] `variant.py`：`VariantGenerator` 支持生成 0.5x / 1.0x / 3.0x 流量变体。
+- [x] `variant.py`：`VariantGenerator` 支持生成 1.0x（NORMAL）/ 1.5x（HIGH）流量变体。
 - [x] `timing_loader.py`：从 Excel 读取信号配时方案，输出 `TimingPlan`。
 - [ ] `validator.py`：尚未实现。
 - [ ] `perturbation.py`：尚未实现。
@@ -24,7 +24,7 @@
 | 需求 | 说明 |
 |------|------|
 | 统一索引 | 20 个路口分散在不同目录，需要统一入口 |
-| 变体生成 | 支持 60 个场景（20 路口 × 3 流量等级）用于 180 次仿真 |
+| 变体生成 | 支持 40 个场景（20 路口 × 2 流量等级）用于对比实验 |
 | 配时读取 | 固定配时基线需读取 Excel 配时方案 |
 | 扰动注入 | PDF 功能二要求支持施工占道、大型活动等扰动 |
 | 场景校验 | 跑批前需确认场景不会死锁 |

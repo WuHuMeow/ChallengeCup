@@ -6,12 +6,10 @@
 
 ## 当前完成情况
 
-- [x] `plots.py`：图表函数骨架，包含算法对比、热力图占位。
-- [ ] `report.py`：尚未实现。
+- [x] `plots.py`：4 种图表已完整实现——算法对比曲线、箱线图、柱状汇总图、热力图。
 
 ## 待完成情况
 
-- [ ] `plots.py`：实现真实数据驱动的对比柱状图、时序图、热力图。
 - [ ] `report.py`：实现报告自动生成（可选）。
 - [ ] 确定统一配色与图表风格（红=固定配时，橙=感应控制，绿=CA-MP）。
 - [ ] 输出高分辨率图表供 PPT 与报告使用。
@@ -29,13 +27,17 @@
 
 | 文件 | 说明 |
 |------|------|
-| `plots.py` | 图表生成 |
-| `report.py` | 报告生成（待实现） |
+| `plots.py` | 图表生成（4 种图表） |
 
 ## 对外接口
 
 ```python
-from visualization.plots import plot_algorithm_comparison
+from visualization.plots import (
+    plot_algorithm_comparison,  # 时序对比曲线
+    plot_boxplot,               # 箱线图
+    plot_bar_summary,           # 分组柱状图
+    plot_heatmap,               # 路口×算法热力图
+)
 
 plot_algorithm_comparison(csv_files, labels, output_path, metric="avg_queue_length")
 ```
