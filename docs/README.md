@@ -10,13 +10,13 @@
 - [x] `tasks/`：团队任务书（roadmap + w1~w6 周任务书，8 人）。
 - [x] `guides/`：协作与文档书写指南（Git 工作流、Markdown、引用方法）。
 - [x] `superpowers/specs/`：设计文档。
+- [x] `interface.md`：接口文档（数据契约、算法接口、使用示例）。
 - [x] `总路线.md`：项目总路线图（六周里程碑）。
-- [ ] `api-spec.md`：接口文档（待创建）。
 - [ ] `数据流图.png`：车-路-云数据流图（待创建）。
 
 ## 待完成情况
 
-- [ ] IB 编写 `api-spec.md` 与 Postman Collection。
+- [ ] IB 编写 Postman Collection。
 - [ ] IB 绘制 `数据流图.png`。
 - [ ] DA + EX 编写实验评估报告。
 - [ ] DA 编写系统设计与算法报告。
@@ -26,6 +26,7 @@
 | 文件 | 说明 |
 |------|------|
 | `pdf/` | 赛题 PDF |
+| `interface.md` | 接口文档（数据契约） |
 | `tasks/` | 团队任务书（roadmap + w1~w6） |
 | `guides/` | 协作与文档书写指南 |
 | `superpowers/specs/` | 设计文档 |

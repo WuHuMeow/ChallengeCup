@@ -238,7 +238,7 @@ class TrafficLevel(str, Enum):
     HIGH = "high"      # 1.5x 原始流量（压力测试）
 ```
 
-由 `scenes/variant.py` 的 `VariantGenerator` 使用，生成不同流量倍率的 `.rou.xml` 变体文件。
+由 `scenes/variant.py` 的 `VariantGenerator` 使用，生成不同流量倍率的 `.flow.xml` 变体文件。
 
 ---
 
@@ -303,9 +303,10 @@ from experiments.runner import run_batch
 results = run_batch(
     intersection_ids=["1", "16"],
     algorithms=["fixed_time", "ca_maxpressure"],
+    seeds=[42, 123, 456],
     steps=3600,
 )
-# results: [{"intersection_id": "1", "algorithm": "fixed_time", "csv": "..."}, ...]
+# results: [{"intersection_id": "1", "algorithm": "fixed_time", "seed": "42", "csv": "..."}, ...]
 ```
 
 ---
