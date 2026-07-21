@@ -6,12 +6,11 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, List
 
 from fastapi import FastAPI
 from pydantic import BaseModel
-
-import uuid
 
 from core.types import ControlAction, JointState, PredictionResult, SceneMeta
 from scenes.registry import SceneRegistry
@@ -45,7 +44,7 @@ def load_scene(intersection_id: str) -> Dict[str, str]:
 @app.post("/api/simulation/start")
 def start_simulation(req: StartRequest) -> Dict[str, Any]:
     """启动单次仿真。"""
-    return {"status": "started", "request": req.dict()}
+    return {"status": "started", "request": req.model_dump()}
 
 
 @app.post("/api/simulation/stop")
@@ -127,7 +126,7 @@ def start_run(req: StartRequest) -> Dict[str, Any]:
     run_id = str(uuid.uuid4())[:8]
     _run_state["run_id"] = run_id
     _run_state["status"] = "started"
-    _run_state["request"] = req.dict()
+    _run_state["request"] = req.model_dump()
     return {"run_id": run_id, "status": "started"}
 
 

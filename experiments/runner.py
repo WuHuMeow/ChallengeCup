@@ -16,7 +16,7 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from core.config import get_config
-from core.types import Scene, TrafficLevel
+from core.types import TrafficLevel
 from engine.runner import SimulationRunner
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
