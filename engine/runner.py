@@ -29,6 +29,8 @@ class SimulationRunner:
         sumo_binary: Optional[str] = None,
         output_csv: Optional[Path] = None,
         snapshot_interval: Optional[int] = None,
+        additional_files: Optional[List[Path]] = None,
+        bridge: Optional[object] = None,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -36,6 +38,7 @@ class SimulationRunner:
         self.snapshot_interval = snapshot_interval or get_config().get(
             "metrics.snapshot_interval", 60
         )
+        self.additional_files = additional_files or []
 
         if output_csv is None:
             output_root = Path(get_config().get("paths.output_root", "./output"))
@@ -46,7 +49,14 @@ class SimulationRunner:
             )
         self.output_csv = output_csv
 
-        self.bridge = TraCIBridge(scene.meta.sumo_cfg, binary=self.sumo_binary)
+        if bridge is not None:
+            self.bridge = bridge
+        else:
+            self.bridge = TraCIBridge(
+                scene.meta.sumo_cfg,
+                binary=self.sumo_binary,
+                additional_files=self.additional_files,
+            )
         self.collector: Optional[MetricsCollector] = None
         self.metrics_history: List[dict] = []
 
