@@ -1,165 +1,82 @@
-# W1 任务书：Tech Lead（TL）
+# Tech Lead W1 任务书
 
-> 周期：7/20（周日）- 7/26（周六）
-> 核心目标：冻结接口、搭建仓库骨架、确保单路口可运行
+> 周期：7/20–7/26 | 核心目标：冻结核心接口，路口 1 固定配时 + CA-MP 跑通 3600 步
 
----
+## 本周背景
+
+本项目采用云-边-端三层架构：云端（`cloud/cloud_policy.py`）做流量预测，边缘（`algorithms/`）做信号决策，车端/路侧（`engine/traci_bridge.py`）执行控制并反馈状态。三层通过 `core/types.py` 中的共享数据类（JointState、ControlAction、PredictionResult）交互。W1 的核心是把这些接口定死，让 8 个人能并行开发。
 
 ## 每日任务
 
-### Day 1（7/20 周日）
+### Day 1（7/20）
 
-**上午：初始化仓库**
-1. 在项目根目录执行 `git init`
-2. 创建 `.gitignore`（内容见下方）
-3. 创建 `requirements.txt`（内容见下方）
-4. 创建 `README.md`（项目简介 + 目录说明 + 快速开始）
-5. 创建所有 `__init__.py` 空文件：
-   - `core/__init__.py`
-   - `algorithms/__init__.py`
-   - `engine/__init__.py`
-   - `cloud/__init__.py`
-   - `visualization/__init__.py`
-6. 首次 commit：`git add -A && git commit -m "init: project skeleton"`
+- [ ] 初始化仓库：创建 `.gitignore`（排除 `__pycache__/`、`*.pyc`、`.env`、`experiments/results/`、`.venv/`）
+- [ ] 创建 `requirements.txt`（traci, sumolib, pandas, numpy, matplotlib, pyyaml, openpyxl）
+- [ ] 编写 `core/types.py`：定义 SceneMeta、Scene、JointState、QueueState、ControlAction、PredictionResult、SimulationMetrics 数据类，全部带类型注解
+- [ ] 编写 `algorithms/base.py`：BaseControlAlgorithm ABC，含 `init(scene)`、`step(state) -> List[ControlAction]`、`reset()`、`name` 四个抽象成员
+- [ ] 首次 commit 并将接口文件通知全员
 
-**下午：定义核心接口文件**
-1. 编写 `core/types.py`（完整代码见下方）
-2. 编写 `algorithms/base.py`（完整代码见下方）
-3. Commit：`git commit -m "feat: define core interfaces (types + base algorithm)"`
-4. 将接口文件发给全员（微信群/邮件），通知："接口已冻结，各组基于此开发，不得自行修改"
+**验证：** `python -c "from core.types import JointState, ControlAction; from algorithms.base import BaseControlAlgorithm; print('接口导入成功')"` → 输出 `接口导入成功`
 
-### Day 2（7/21 周一）
+### Day 2（7/21）
 
-**上午：编写主循环骨架**
-1. 编写 `engine/runner.py` 骨架（SimulationRunner 类，能启动仿真、调用算法、记录指标、退出）
-2. 此时算法用 placeholder（直接 `traci.trafficlight.setPhase()` 固定相位即可）
-3. 验证：`python examples/run_fixed_time.py 1` 能跑通
+- [ ] 编写 `engine/runner.py` 骨架：SimulationRunner 类，支持启动仿真 → 逐步调用算法 → 采集指标 → 关闭
+- [ ] 编写 `engine/traci_bridge.py` 骨架：TraCIBridge 类，封装 `start()`、`get_state() -> JointState`、`apply_actions()`、`step()`、`close()`
+- [ ] 确认 IA 已开始 SUMO 版本迁移、IB 已开始 TraCI 封装、AA/AB 已开始算法实现
+- [ ] 解答各组对接口的疑问
 
-**下午：协调各组**
-1. 确认 IA 已开始 SUMO 版本迁移
-2. 确认 IB 已开始 TraCI Bridge 封装
-3. 确认 AA/AB 已开始算法实现
-4. 解答各组对接口的疑问（但不得修改接口）
+**验证：** `python -c "from engine.runner import SimulationRunner; print('runner 导入成功')"` → 输出 `runner 导入成功`
 
-### Day 3（7/22 周二）
+### Day 3（7/22）
 
-1. Review IA 提交的迁移结果（抽查 3 个路口能否跑通）
-2. Review IB 提交的 TraCIBridge 初版
-3. 如果发现接口设计有缺陷，**唯一修改窗口**：今天之内修改并通知全员
-4. 编写 `docs/interface.md`（接口文档，描述每个数据类的字段含义和使用方式）
+- [ ] Review IA 提交的迁移结果：抽查路口 1、11、16 能否被 SUMO 正常加载
+- [ ] Review IB 提交的 TraCIBridge 初版：确认 `get_state()` 返回的 JointState 字段完整
+- [ ] 如发现接口设计缺陷，今天内修改并通知全员（唯一修改窗口）
+- [ ] 编写 `docs/interface.md`：每个数据类的字段含义和使用方式
 
-### Day 4（7/23 周三）
+**验证：** `python -c "from scenes.registry import SceneRegistry; r = SceneRegistry(); print(len(r.list_scenes()), '个路口已注册')"` → 输出 `20 个路口已注册`
 
-1. **接口冻结截止日**——此后 `core/types.py` 和 `algorithms/base.py` 不再修改
-2. 集成测试：将 IB 的 TraCIBridge + AA 的 FixedTimeAlgorithm 合入主分支
-3. 验证：`python examples/run_fixed_time.py 1` 完整跑通 3600 步
-4. Commit：`git commit -m "feat: integrate traci bridge + fixed-time algorithm, intersection 1 runs"`
+### Day 4（7/23）
 
-### Day 5（7/24 周四）
+- [ ] 接口冻结：此后 `core/types.py` 和 `algorithms/base.py` 不再修改
+- [ ] 集成 IB 的 TraCIBridge + AA 的 FixedTimeAlgorithm 到主分支
+- [ ] 在路口 1 上运行固定配时仿真 3600 步
+- [ ] 确认输出 CSV 包含 avg_queue_length、avg_delay、total_throughput 列
 
-1. 集成 AB 的 CAMaxPressureAlgorithm
-2. 验证：`python examples/run_ca_max_pressure.py 1` 完整跑通 3600 步
-3. 对比两次运行的输出 CSV，确认 CA-MP 有输出差异
-4. Commit：`git commit -m "feat: integrate CA-MP algorithm, intersection 1 comparison ready"`
+**验证：** `python examples/run_fixed_time.py 1` → 无报错，`output/csv/` 下生成 CSV 文件
 
-### Day 6（7/25 周五）
+### Day 5（7/24）
 
-1. 合入 EX 的实验配置框架
-2. 合入 DA 的报告模板
-3. 检查全员代码是否能无冲突合入
-4. 编写 W1 周报（发给导师/团队）：完成了什么、下周计划、风险点
+- [ ] 集成 AB 的 CAMaxPressureAlgorithm
+- [ ] 在路口 1 上运行 CA-MP 仿真 3600 步
+- [ ] 对比两次运行的输出 CSV，确认 CA-MP 有输出差异（至少 avg_queue_length 不同）
+- [ ] 如有集成冲突，协调 AB 修复
 
-### Day 7（7/26 周六）
+**验证：** `python examples/run_demo.py 1` → 两种算法均跑通，输出两个不同的 CSV
 
-1. 最终集成测试：确保 `engine/runner.py` 在路口 1 上两种算法都能跑
-2. 打 tag：`git tag v0.1-w1-complete`
-3. 确认 W2 各组任务无阻塞
+### Day 6（7/25）
 
----
+- [ ] 合入 EX 的实验配置框架（`experiments/runner.py`）
+- [ ] 合入 DA 的报告模板
+- [ ] 检查全员代码能否无冲突合入主分支
+- [ ] 编写 W1 周报：完成了什么、下周计划、风险点
 
-## 交付物清单
+**验证：** `git log --oneline -10` → 所有组员的 commit 已在主分支
 
-| # | 文件 | 截止日 | 验收标准 |
-|---|------|--------|----------|
-| 1 | `.gitignore` | 7/20 | 排除 `__pycache__/`, `*.pyc`, `experiments/results/`, `.env` |
-| 2 | `requirements.txt` | 7/20 | 包含 traci, sumolib, pandas, numpy, matplotlib, pyyaml |
-| 3 | `core/types.py` | 7/20 | 核心数据类定义完整（SceneMeta, Scene, JointState, QueueState, ControlAction, SimulationMetrics），有类型注解 |
-| 4 | `algorithms/base.py` | 7/20 | BaseControlAlgorithm ABC，含 init/step/reset/name |
-| 5 | `engine/runner.py` | 7/21 | SimulationRunner 类，支持单路口仿真循环 |
-| 6 | `docs/interface.md` | 7/22 | 接口文档，每个字段有中文说明 |
-| 7 | 集成验证通过 | 7/25 | 路口 1 两种算法跑通 3600 步 |
+### Day 7（7/26）
 
----
+- [ ] 最终集成测试：路口 1 上固定配时和 CA-MP 都能跑通 3600 步
+- [ ] 打 tag：`git tag v0.1-w1-complete`
+- [ ] 确认 W2 各组任务无阻塞（experiments/runner.py 能调用三种算法）
 
-## 关键代码
+**验证：** `git tag -l "v0.1*"` → 输出 `v0.1-w1-complete`
 
-### .gitignore
-
-```
-__pycache__/
-*.pyc
-*.pyo
-.env
-experiments/results/
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
-```
-
-### requirements.txt
-
-```
-traci>=1.16.0
-sumolib>=1.16.0
-pandas>=1.5.0
-numpy>=1.23.0
-matplotlib>=3.6.0
-pyyaml>=6.0
-openpyxl>=3.0.0
-```
-
-### core/types.py
+## 关键代码指引
 
 ```python
-from dataclasses import dataclass, field
-from typing import Dict, List
-
-
-@dataclass
-class SceneMeta:
-    """路口场景元数据"""
-    intersection_id: int
-    name: str
-    sumo_net: str       # .net.xml 路径
-    sumo_rou: str       # .rou.xml 路径
-    sumo_flow: str      # .flow.xml 路径
-    sumo_turn: str      # .turn.xml 路径
-    sumo_cfg: str       # .sumocfg 路径
-    timing_xlsx: str    # 配时方案 xlsx 路径
-    map_png: str        # 高精地图 png 路径
-
-
-@dataclass
-class Scene:
-    """仿真场景：元数据 + 运行配置"""
-    meta: SceneMeta
-    config: dict = field(default_factory=dict)
-
-
-@dataclass
-class QueueState:
-    """单进口道排队状态"""
-    direction: str
-    queue_length: float
-    waiting_time: float
-    vehicle_count: int
-
-
+# 核心数据契约（完整实现见 core/types.py）
 @dataclass
 class JointState:
-    """每仿真步传给算法的联合状态"""
     step: int
     timestamp: float
     tls_id: str
@@ -168,70 +85,42 @@ class JointState:
     elapsed_phase_time: float
     queues: List[QueueState]
     flows: Dict[str, float]
-    detector_values: Dict[str, float]
-
+    detector_values: Dict[str, float] = field(default_factory=dict)
 
 @dataclass
 class ControlAction:
-    """算法输出的信号控制指令"""
     tls_id: str
-    action_type: str    # "set_phase" / "set_phase_duration" / "set_program"
-    value: float
+    action_type: str  # "set_phase" / "set_phase_duration" / "set_program"
+    value: Any
     reason: str = ""
-
-
-@dataclass
-class SimulationMetrics:
-    """单步仿真指标"""
-    step: int
-    avg_queue_length: float
-    max_queue_length: float
-    avg_delay: float
-    total_throughput: int
-    avg_travel_time: float
-    total_stops: int
-    fuel_consumption: float
 ```
-
-### algorithms/base.py
 
 ```python
-from abc import ABC, abstractmethod
-from typing import List
-
-from core.types import ControlAction, JointState, Scene
-
-
+# 算法标准接口（完整实现见 algorithms/base.py）
 class BaseControlAlgorithm(ABC):
-    """标准化算法插件接口——所有控制算法必须继承此类"""
-
     @abstractmethod
-    def init(self, scene: Scene) -> None:
-        """根据场景元数据初始化算法内部状态（解析路网、配时等）"""
-        ...
-
+    def init(self, scene: Scene) -> None: ...
     @abstractmethod
-    def step(self, state: JointState) -> List[ControlAction]:
-        """每仿真步调用：接收联合状态，返回控制动作列表"""
-        ...
-
+    def step(self, state: JointState) -> List[ControlAction]: ...
     @abstractmethod
-    def reset(self) -> None:
-        """重置算法内部状态（用于多次实验）"""
-        ...
-
+    def reset(self) -> None: ...
     @property
     @abstractmethod
-    def name(self) -> str:
-        """算法名称标识"""
-        ...
+    def name(self) -> str: ...
 ```
 
----
+## 交付物
 
-## 注意事项
+| 文件 | 截止 | 验收标准 |
+|------|------|----------|
+| `core/types.py` | Day 1 | 包含 SceneMeta、Scene、JointState、QueueState、ControlAction、PredictionResult、SimulationMetrics，全部有类型注解，`python -c "from core.types import *"` 无报错 |
+| `algorithms/base.py` | Day 1 | BaseControlAlgorithm ABC 含 init/step/reset/name，`python -c "from algorithms.base import BaseControlAlgorithm"` 无报错 |
+| `engine/runner.py` | Day 2 | SimulationRunner 类可实例化，`run(steps)` 方法签名存在 |
+| `docs/interface.md` | Day 3 | 每个数据类字段有中文说明 |
+| 集成验证 | Day 5 | 路口 1 两种算法跑通 3600 步，输出 CSV 有数据 |
 
-- 你是唯一有权修改 `core/types.py` 和 `algorithms/base.py` 的人
-- 7/23 之后接口冻结，即使发现不完美也只能在 W2 通过向后兼容方式扩展
-- 不要替其他人写代码——你的职责是定义接口、集成、review
-- 每天花 30 分钟检查各组进度，发现阻塞立即协调
+## 协作对接
+
+- Day 1 将 `core/types.py` 和 `algorithms/base.py` 发给全员，通知接口冻结时间（7/23）
+- Day 2-3 与 IA/IB/AA/AB 确认各自开发无阻塞
+- Day 6 收集全员代码合入主分支
