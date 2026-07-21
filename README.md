@@ -360,7 +360,7 @@ intersection_data/{id}/
 
 ## 系统架构
 
-![系统架构](https://gitee.com/fyx0927/challenge-cup/raw/master/docs/superpowers/specs/images/architecture.svg)
+![系统架构](./docs/superpowers/specs/images/architecture.png)
 
 <a id="云-边-端协同框架"></a>
 
@@ -378,7 +378,7 @@ intersection_data/{id}/
 
 ### 仿真数据流
 
-![仿真数据流](https://gitee.com/fyx0927/challenge-cup/raw/master/docs/superpowers/specs/images/simulation-loop.svg)
+![仿真数据流](./docs/superpowers/specs/images/simulation-loop.png)
 
 每个仿真步的完整循环：
 
@@ -481,7 +481,7 @@ predicted_flow(t+1) = α × observed_flow(t) + (1-α) × predicted_flow(t)
 
 ## 团队分工
 
-![团队组织](https://gitee.com/fyx0927/challenge-cup/raw/master/docs/superpowers/specs/images/team-org.svg)
+![团队组织](./docs/superpowers/specs/images/team-org.png)
 
 | 代号 | 角色 | 人数 | 职责概述 | 主要交付 |
 |------|------|------|----------|----------|
@@ -515,7 +515,7 @@ predicted_flow(t+1) = α × observed_flow(t) + (1-α) × predicted_flow(t)
 
 ## 开发计划
 
-![时间线](https://gitee.com/fyx0927/challenge-cup/raw/master/docs/superpowers/specs/images/timeline.svg)
+![时间线](./docs/superpowers/specs/images/timeline.png)
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|
