@@ -7,7 +7,8 @@
 ## 当前完成情况
 
 - [x] `traci_bridge.py`：`TraCIBridge` 类，负责启动 SUMO、读取联合状态、写入控制动作。
-- [x] `runner.py`：`SimulationRunner` 类，负责单次仿真的完整生命周期（启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭）。
+- [x] `mock_bridge.py`：`MockBridge` 类，与 TraCIBridge 接口一致的离线替代，用于无 SUMO 环境。
+- [x] `runner.py`：`SimulationRunner` 类，负责单次仿真的完整生命周期（启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭）。支持通过 `bridge` 参数注入 MockBridge。
 - [x] `collector.py`：`MetricsCollector` 类，按固定间隔将 `JointState` 和指标写入 CSV。
 
 ## 待完成情况
@@ -30,6 +31,7 @@
 | 文件 | 说明 |
 |------|------|
 | `traci_bridge.py` | TraCI 批量读写桥接 |
+| `mock_bridge.py` | 离线 Mock 桥接（无 SUMO） |
 | `runner.py` | 单次仿真实验运行器 |
 | `collector.py` | 仿真数据采集器 |
 
@@ -37,11 +39,19 @@
 
 ```python
 from engine.runner import SimulationRunner
+from engine.mock_bridge import MockBridge
 from scenes.registry import SceneRegistry
 
 scene = SceneRegistry().get_scene("1")
+
+# SUMO 模式
 runner = SimulationRunner(scene, algorithm)
 runner.run(steps=3600)
+
+# Mock 模式（无 SUMO）
+bridge = MockBridge(tls_id="tls_0", directions=["E0", "E1", "E2", "E3"])
+runner = SimulationRunner(scene, algorithm, bridge=bridge)
+runner.run(steps=10)
 ```
 
 ## 负责人

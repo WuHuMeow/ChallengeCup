@@ -6,13 +6,13 @@
 
 ## 当前完成情况
 
-- [x] `cloud_policy.py`：`CloudPolicy` 类骨架，当前为兜底实现（返回当前流量作为预测值）。
+- [x] `cloud_policy.py`：`CloudPolicy` 类，EWMA 流量预测已实现（`predict()`），`dispatch_base_green()` MVI 已添加。
 
 ## 待完成情况
 
-- [ ] 重构为 CloudCoordinator：周期性通过 PredictionResult 下发参数（min_green/max_green/base_green）。
-- [ ] 接入 EWMA 流量预测，根据全局压力动态调整下发参数。
-- [ ] 实现边缘算法通过 `CloudPolicy.predict()` 获取预测结果的调用机制。
+- [ ] `dispatch_base_green()`：根据全局压力评估动态调整 base_green（当前返回配置固定值）。
+- [ ] 接入 ML 模型（XGBoost）作为 EWMA 的增强预测。
+- [ ] 实现周期性参数下发调度逻辑。
 
 ## 需求分析
 
@@ -36,7 +36,8 @@ from cloud.cloud_policy import CloudPolicy
 from core.types import JointState
 
 policy = CloudPolicy()
-pred = policy.predict(state)
+pred = policy.predict(state)          # -> PredictionResult
+base_green = policy.dispatch_base_green(state)  # -> float
 ```
 
 ## 负责人

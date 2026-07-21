@@ -6,16 +6,14 @@
 
 ## 当前完成情况
 
-- [x] `runner.py`：`run_batch` 骨架，支持 20 路口 × 2 流量 × 3 算法 × 3 种子批量实验配置。
+- [x] `runner.py`：`run_batch` 支持 20 路口 × 2 流量 × 3 算法 × 3 种子 = 360 次批量实验。
 - [x] `metrics.py`：基于 `JointState` 的单步指标计算（排队、延误、吞吐量近似）。
-- [ ] `analyzer.py`：尚未实现。
 
 ## 待完成情况
 
-- [ ] `runner.py`：支持替换流量变体、断点续跑、异常处理、结果汇总 CSV。
+- [ ] `runner.py`：支持断点续跑、异常处理、结果汇总 CSV。
 - [ ] `metrics.py`：接入精确的行程时间、燃油消耗（需 `tripinfo` 输出或 TraCI 精确读取）。
-- [ ] `analyzer.py`：实现配对 t 检验、效应量、汇总表生成。
-- [ ] 实现 360 次全量跑批脚本（20 路口 × 3 算法 × 2 流量 × 3 种子）。
+- [ ] 实现配对 t 检验、效应量、汇总表生成（统计检验模块）。
 
 ## 需求分析
 
@@ -31,9 +29,8 @@
 
 | 文件 | 说明 |
 |------|------|
-| `runner.py` | 批量跑批框架 |
+| `runner.py` | 批量跑批框架（360 次） |
 | `metrics.py` | 指标计算 |
-| `analyzer.py` | 统计检验（待实现） |
 
 ## 对外接口
 
@@ -43,6 +40,7 @@ from experiments.runner import run_batch
 results = run_batch(
     intersection_ids=["1", "2", "3"],
     algorithms=["fixed_time", "actuated", "ca_maxpressure"],
+    seeds=[42, 123, 456],
     steps=3600,
 )
 ```

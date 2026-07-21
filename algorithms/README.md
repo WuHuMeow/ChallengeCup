@@ -9,7 +9,7 @@
 - [x] `base.py`：`BaseControlAlgorithm` 抽象基类，统一 `init(scene)` / `step(state)` / `reset()` / `name` 接口。
 - [x] `fixed_time.py`：`FixedTimeAlgorithm` 可运行，默认使用 SUMO 默认程序；支持通过配置启用 Excel 配时写入。
 - [x] `rule_adaptive.py`：`RuleAdaptiveAlgorithm` 基础实现（感应控制基线），基于排队长度延长/切换绿灯。
-- [ ] `ca_max_pressure.py`：CA-MP 骨架，待实现容量归一化压力 + 溢出门控 + 云端动态绿灯。
+- [x] `ca_max_pressure.py`：CA-MP MVI 实现（选择最大排队方向），预留容量归一化 + 溢出门控 + 云端动态绿灯扩展点。
 
 ## 待完成情况
 
