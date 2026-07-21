@@ -12,69 +12,13 @@
 
 - [ ] 初始化仓库：创建 `.gitignore`（排除 `__pycache__/`、`*.pyc`、`.env`、`experiments/results/`、`.venv/`）
 - [ ] 创建 `requirements.txt`（traci, sumolib, pandas, numpy, matplotlib, pyyaml, openpyxl）
-- [ ] 编写 `core/types.py`：定义 SceneMeta、Scene、JointState、QueueState、ControlAction、PredictionResult、SimulationMetrics 数据类，全部带类型注解
-- [ ] 编写 `algorithms/base.py`：BaseControlAlgorithm ABC，含 `init(scene)`、`step(state) -> List[ControlAction]`、`reset()`、`name` 四个抽象成员
+- [ ] 编写 `core/types.py`：定义全部数据类，全部带类型注解
+- [ ] 编写 `algorithms/base.py`：BaseControlAlgorithm ABC
 - [ ] 首次 commit 并将接口文件通知全员
 
-**验证：** `python -c "from core.types import JointState, ControlAction; from algorithms.base import BaseControlAlgorithm; print('接口导入成功')"` → 输出 `接口导入成功`
-
-### Day 2（7/21）
-
-- [ ] 编写 `engine/runner.py` 骨架：SimulationRunner 类，支持启动仿真 → 逐步调用算法 → 采集指标 → 关闭
-- [ ] 编写 `engine/traci_bridge.py` 骨架：TraCIBridge 类，封装 `start()`、`get_state() -> JointState`、`apply_actions()`、`step()`、`close()`
-- [ ] 确认 IA 已开始 SUMO 版本迁移、IB 已开始 TraCI 封装、AA/AB 已开始算法实现
-- [ ] 解答各组对接口的疑问
-
-**验证：** `python -c "from engine.runner import SimulationRunner; print('runner 导入成功')"` → 输出 `runner 导入成功`
-
-### Day 3（7/22）
-
-- [ ] Review IA 提交的迁移结果：抽查路口 1、11、16 能否被 SUMO 正常加载
-- [ ] Review IB 提交的 TraCIBridge 初版：确认 `get_state()` 返回的 JointState 字段完整
-- [ ] 如发现接口设计缺陷，今天内修改并通知全员（唯一修改窗口）
-- [ ] 编写 `docs/interface.md`：每个数据类的字段含义和使用方式
-
-**验证：** `python -c "from scenes.registry import SceneRegistry; r = SceneRegistry(); print(len(r.list_scenes()), '个路口已注册')"` → 输出 `20 个路口已注册`
-
-### Day 4（7/23）
-
-- [ ] 接口冻结：此后 `core/types.py` 和 `algorithms/base.py` 不再修改
-- [ ] 集成 IB 的 TraCIBridge + AA 的 FixedTimeAlgorithm 到主分支
-- [ ] 在路口 1 上运行固定配时仿真 3600 步
-- [ ] 确认输出 CSV 包含 avg_queue_length、avg_delay、total_throughput 列
-
-**验证：** `python examples/run_fixed_time.py 1` → 无报错，`output/csv/` 下生成 CSV 文件
-
-### Day 5（7/24）
-
-- [ ] 集成 AB 的 CAMaxPressureAlgorithm
-- [ ] 在路口 1 上运行 CA-MP 仿真 3600 步
-- [ ] 对比两次运行的输出 CSV，确认 CA-MP 有输出差异（至少 avg_queue_length 不同）
-- [ ] 如有集成冲突，协调 AB 修复
-
-**验证：** `python examples/run_demo.py 1` → 两种算法均跑通，输出两个不同的 CSV
-
-### Day 6（7/25）
-
-- [ ] 合入 EX 的实验配置框架（`experiments/runner.py`）
-- [ ] 合入 DA 的报告模板
-- [ ] 检查全员代码能否无冲突合入主分支
-- [ ] 编写 W1 周报：完成了什么、下周计划、风险点
-
-**验证：** `git log --oneline -10` → 所有组员的 commit 已在主分支
-
-### Day 7（7/26）
-
-- [ ] 最终集成测试：路口 1 上固定配时和 CA-MP 都能跑通 3600 步
-- [ ] 打 tag：`git tag v0.1-w1-complete`
-- [ ] 确认 W2 各组任务无阻塞（experiments/runner.py 能调用三种算法）
-
-**验证：** `git tag -l "v0.1*"` → 输出 `v0.1-w1-complete`
-
-## 关键代码指引
+`core/types.py` 需要定义的数据类（完整实现见仓库 `core/types.py`）：
 
 ```python
-# 核心数据契约（完整实现见 core/types.py）
 @dataclass
 class SceneMeta:
     intersection_id: str
@@ -125,8 +69,9 @@ class SimulationMetrics:
     fuel_consumption: float
 ```
 
+`algorithms/base.py` 的标准接口：
+
 ```python
-# 算法标准接口（完整实现见 algorithms/base.py）
 class BaseControlAlgorithm(ABC):
     @abstractmethod
     def init(self, scene: Scene) -> None: ...
@@ -139,8 +84,18 @@ class BaseControlAlgorithm(ABC):
     def name(self) -> str: ...
 ```
 
+**验证：** `python -c "from core.types import JointState, ControlAction; from algorithms.base import BaseControlAlgorithm; print('接口导入成功')"` → 输出 `接口导入成功`
+
+### Day 2（7/21）
+
+- [ ] 编写 `engine/runner.py` 骨架：SimulationRunner 类
+- [ ] 编写 `engine/traci_bridge.py` 骨架：TraCIBridge 类
+- [ ] 确认 IA 已开始 SUMO 版本迁移、IB 已开始 TraCI 封装、AA/AB 已开始算法实现
+- [ ] 解答各组对接口的疑问
+
+`engine/runner.py` 的核心循环（完整实现见仓库 `engine/runner.py`）：
+
 ```python
-# 仿真主循环（完整实现见 engine/runner.py）
 class SimulationRunner:
     def run(self, steps: int = 3600) -> List[dict]:
         self.bridge.start()
@@ -158,6 +113,106 @@ class SimulationRunner:
             metrics = compute_metrics(step, state)
             self.collector.record(step, state, metrics)
 ```
+
+`engine/traci_bridge.py` 需要封装的方法：
+
+```python
+class TraCIBridge:
+    def start(self) -> None: ...           # 启动 SUMO 进程
+    def get_state(self) -> JointState: ... # 读取当前仿真状态
+    def apply_actions(self, actions: List[ControlAction]) -> None: ...  # 写入控制指令
+    def step(self) -> None: ...            # 推进仿真一步
+    def close(self) -> None: ...           # 关闭 SUMO 进程
+```
+
+**验证：** `python -c "from engine.runner import SimulationRunner; print('runner 导入成功')"` → 输出 `runner 导入成功`
+
+### Day 3（7/22）
+
+- [ ] Review IA 提交的迁移结果：抽查路口 1、11、16 能否被 SUMO 正常加载
+- [ ] Review IB 提交的 TraCIBridge 初版：确认 `get_state()` 返回的 JointState 字段完整
+- [ ] 如发现接口设计缺陷，今天内修改并通知全员（唯一修改窗口）
+- [ ] 编写 `docs/interface.md`：每个数据类的字段含义和使用方式
+
+Review 时确认 SceneRegistry 能发现全部路口：
+
+```python
+from scenes.registry import SceneRegistry
+r = SceneRegistry()
+scenes = r.list_scenes()  # 应返回 20 个 SceneMeta
+# 检查每个 SceneMeta 的 sumo_cfg 路径是否存在
+for meta in scenes:
+    assert meta.sumo_cfg.exists(), f"路口 {meta.intersection_id} 缺少 sumocfg"
+```
+
+**验证：** `python -c "from scenes.registry import SceneRegistry; r = SceneRegistry(); print(len(r.list_scenes()), '个路口已注册')"` → 输出 `20 个路口已注册`
+
+### Day 4（7/23）
+
+- [ ] 接口冻结：此后 `core/types.py` 和 `algorithms/base.py` 不再修改
+- [ ] 集成 IB 的 TraCIBridge + AA 的 FixedTimeAlgorithm 到主分支
+- [ ] 在路口 1 上运行固定配时仿真 3600 步
+- [ ] 确认输出 CSV 包含 avg_queue_length、avg_delay、total_throughput 列
+
+集成后确认数据流闭环：
+
+```python
+# 固定配时算法的 step() 应返回空列表（不干预 SUMO 自带配时）
+# 或返回 set_program 动作写入 Excel 配时方案
+from algorithms.fixed_time import FixedTimeAlgorithm
+from scenes.registry import SceneRegistry
+
+scene = SceneRegistry().get_scene("1")
+algo = FixedTimeAlgorithm()
+# SimulationRunner 会自动调用 algo.init(scene) 和 algo.step(state)
+```
+
+**验证：** `python examples/run_fixed_time.py 1` → 无报错，`output/csv/` 下生成 CSV 文件
+
+### Day 5（7/24）
+
+- [ ] 集成 AB 的 CAMaxPressureAlgorithm
+- [ ] 在路口 1 上运行 CA-MP 仿真 3600 步
+- [ ] 对比两次运行的输出 CSV，确认 CA-MP 有输出差异（至少 avg_queue_length 不同）
+- [ ] 如有集成冲突，协调 AB 修复
+
+CA-MP 集成后的对比方式：
+
+```python
+import pandas as pd
+ft = pd.read_csv("output/csv/1_fixed_time.csv")
+ca = pd.read_csv("output/csv/1_ca_maxpressure.csv")
+print(f"FixedTime 平均排队: {ft['avg_queue_length'].mean():.2f}")
+print(f"CA-MP 平均排队:    {ca['avg_queue_length'].mean():.2f}")
+# 两者应有差异，否则 CA-MP 未生效
+```
+
+**验证：** `python examples/run_demo.py 1` → 两种算法均跑通，输出两个不同的 CSV
+
+### Day 6（7/25）
+
+- [ ] 合入 EX 的实验配置框架（`experiments/runner.py`）
+- [ ] 合入 DA 的报告模板
+- [ ] 检查全员代码能否无冲突合入主分支
+- [ ] 编写 W1 周报：完成了什么、下周计划、风险点
+
+合入后确认 experiments/runner.py 的算法注册表：
+
+```python
+from experiments.runner import ALGORITHM_MAP
+print(list(ALGORITHM_MAP.keys()))
+# 应输出 ['fixed_time', 'actuated', 'ca_maxpressure']
+```
+
+**验证：** `git log --oneline -10` → 所有组员的 commit 已在主分支
+
+### Day 7（7/26）
+
+- [ ] 最终集成测试：路口 1 上固定配时和 CA-MP 都能跑通 3600 步
+- [ ] 打 tag：`git tag v0.1-w1-complete`
+- [ ] 确认 W2 各组任务无阻塞（experiments/runner.py 能调用三种算法）
+
+**验证：** `git tag -l "v0.1*"` → 输出 `v0.1-w1-complete`
 
 ## 交付物
 
