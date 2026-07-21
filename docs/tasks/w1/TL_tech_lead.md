@@ -76,6 +76,25 @@
 ```python
 # 核心数据契约（完整实现见 core/types.py）
 @dataclass
+class SceneMeta:
+    intersection_id: str
+    name: str
+    sumo_net: Path       # .net.xml 路径
+    sumo_rou: Path       # .rou.xml 路径
+    sumo_flow: Path      # .flow.xml 路径
+    sumo_turn: Path      # .turn.xml 路径
+    sumo_cfg: Path       # .sumocfg 路径
+    timing_xlsx: Path    # 配时方案 xlsx 路径
+    map_png: Optional[Path] = None
+
+@dataclass
+class QueueState:
+    direction: str       # "north", "south", "east", "west"
+    queue_length: float
+    waiting_time: float
+    vehicle_count: int
+
+@dataclass
 class JointState:
     step: int
     timestamp: float
@@ -84,7 +103,7 @@ class JointState:
     current_phase_name: str
     elapsed_phase_time: float
     queues: List[QueueState]
-    flows: Dict[str, float]
+    flows: Dict[str, float]          # 方向 -> vehicles/hour
     detector_values: Dict[str, float] = field(default_factory=dict)
 
 @dataclass
@@ -93,6 +112,17 @@ class ControlAction:
     action_type: str  # "set_phase" / "set_phase_duration" / "set_program"
     value: Any
     reason: str = ""
+
+@dataclass
+class SimulationMetrics:
+    step: int
+    avg_queue_length: float
+    max_queue_length: float
+    avg_delay: float
+    total_throughput: int
+    avg_travel_time: float
+    total_stops: int
+    fuel_consumption: float
 ```
 
 ```python
@@ -107,6 +137,26 @@ class BaseControlAlgorithm(ABC):
     @property
     @abstractmethod
     def name(self) -> str: ...
+```
+
+```python
+# 仿真主循环（完整实现见 engine/runner.py）
+class SimulationRunner:
+    def run(self, steps: int = 3600) -> List[dict]:
+        self.bridge.start()
+        self.algorithm.init(self.scene)
+        for step in range(steps):
+            self._tick(step)
+        self.bridge.close()
+
+    def _tick(self, step: int) -> None:
+        state = self.bridge.get_state()              # SUMO → JointState
+        actions = self.algorithm.step(state)         # JointState → List[ControlAction]
+        self.bridge.apply_actions(actions)           # ControlAction → SUMO
+        self.bridge.step()                           # 推进仿真一步
+        if step % self.snapshot_interval == 0:       # 每 60 步记录一次
+            metrics = compute_metrics(step, state)
+            self.collector.record(step, state, metrics)
 ```
 
 ## 交付物

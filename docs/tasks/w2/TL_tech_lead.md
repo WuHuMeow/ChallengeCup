@@ -74,6 +74,12 @@
 
 ```python
 # 批量实验入口（完整实现见 experiments/runner.py）
+ALGORITHM_MAP = {
+    "fixed_time": FixedTimeAlgorithm,
+    "actuated": RuleAdaptiveAlgorithm,
+    "ca_maxpressure": CAMaxPressureAlgorithm,
+}
+
 def run_batch(
     intersection_ids: List[str] | None = None,  # 默认全部 20 个
     algorithms: List[str] | None = None,         # 默认三种
@@ -82,18 +88,50 @@ def run_batch(
     steps: int = 3600,
     output_root: Path | None = None,
 ) -> List[Dict[str, str]]:
+    # 对每个 (路口, 算法, 流量等级, 种子) 组合创建 SimulationRunner 并运行
+    # 返回 [{"intersection_id": "1", "algorithm": "ca_maxpressure", "seed": "42", "csv": "..."}]
     ...
 ```
 
 ```python
-# EWMA 预测核心逻辑（完整实现见 cloud/cloud_policy.py）
-def predict(self, state: JointState) -> PredictionResult:
-    predicted = {}
-    for direction, observed in state.flows.items():
-        prev = self._prev_predicted.get(direction, observed)
-        predicted[direction] = self.alpha * observed + (1 - self.alpha) * prev
-    self._prev_predicted = predicted
-    return PredictionResult(horizon_steps=self.horizon, ...)
+# EWMA 预测（完整实现见 cloud/cloud_policy.py）
+class CloudPolicy:
+    def __init__(self):
+        self.alpha = 0.3       # 平滑系数：平衡响应速度与稳定性
+        self.horizon = 300     # 预测时域（秒）
+        self._prev_predicted = {}
+
+    def predict(self, state: JointState) -> PredictionResult:
+        predicted = {}
+        for direction, observed in state.flows.items():
+            prev = self._prev_predicted.get(direction, observed)
+            predicted[direction] = self.alpha * observed + (1 - self.alpha) * prev
+        self._prev_predicted = predicted
+        return PredictionResult(
+            horizon_steps=self.horizon,
+            horizon_seconds=float(self.horizon),
+            predicted_flows=predicted,
+        )
+```
+
+```python
+# CA-MP 如何接入云端预测（完整实现见 algorithms/ca_max_pressure.py）
+class CAMaxPressureAlgorithm(BaseControlAlgorithm):
+    def __init__(self, cloud_policy: CloudPolicy | None = None):
+        self.cloud_policy = cloud_policy or CloudPolicy()
+        self.overflow_threshold = 0.9   # 溢出门控阈值
+        self.base_green = 30            # 云端下发的基础绿灯时长
+
+    def step(self, state: JointState) -> List[ControlAction]:
+        pred = self.cloud_policy.predict(state)  # 每步调用云端预测
+        if not state.queues:
+            return []
+        # TODO(AB): 容量归一化 pressure = queue_length / capacity
+        # TODO(AB): 溢出门控 occupancy > 0.9 时强制放行
+        # TODO(AB): 动态绿灯 base_green * (phase_pressure / avg_pressure)
+        best_queue = max(state.queues, key=lambda q: q.queue_length)
+        return [ControlAction(tls_id=state.tls_id, action_type="set_phase",
+                              value=best_queue.direction, reason="最大排队方向")]
 ```
 
 ## 交付物

@@ -81,6 +81,34 @@ results = run_batch(
 # results 为 List[Dict]，每项含 intersection_id, algorithm, seed, csv 路径
 ```
 
+```python
+# 指标计算逻辑（完整实现见 experiments/metrics.py）
+def compute_metrics(step: int, state: JointState, arrived: int = 0) -> SimulationMetrics:
+    queue_lengths = [q.queue_length for q in state.queues]
+    waiting_times = [q.waiting_time for q in state.queues]
+    avg_queue = sum(queue_lengths) / len(queue_lengths) if queue_lengths else 0.0
+    max_queue = max(queue_lengths) if queue_lengths else 0.0
+    avg_delay = sum(waiting_times) / len(waiting_times) if waiting_times else 0.0
+    return SimulationMetrics(step=step, avg_queue_length=avg_queue, ...)
+```
+
+```python
+# CSV 输出结构（完整实现见 engine/collector.py）
+# 每个 CSV 文件的列：
+# step, timestamp, tls_id, current_phase,
+# avg_queue_length, max_queue_length, avg_delay,
+# total_throughput, avg_travel_time, total_stops, fuel_consumption,
+# queue_north, queue_south, queue_east, queue_west,   # 各方向排队
+# flow_north, flow_south, flow_east, flow_west         # 各方向流量
+
+# 对比分析示例
+import pandas as pd
+ft = pd.read_csv("output/csv/1_normal_fixed_time_s42.csv")
+ca = pd.read_csv("output/csv/1_normal_ca_maxpressure_s42.csv")
+print(f"FixedTime 平均排队: {ft['avg_queue_length'].mean():.2f}")
+print(f"CA-MP 平均排队:    {ca['avg_queue_length'].mean():.2f}")
+```
+
 ## 交付物
 
 | 文件 | 截止 | 验收标准 |

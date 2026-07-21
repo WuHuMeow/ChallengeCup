@@ -84,14 +84,36 @@ results = run_batch(
 ```
 
 ```python
-# EWMA 预测接入点（完整实现见 cloud/cloud_policy.py）
+# 流量变体生成（完整实现见 scenes/variant.py）
+class VariantGenerator:
+    def __init__(self):
+        self.levels = {TrafficLevel.NORMAL: 1.0, TrafficLevel.HIGH: 1.5}
+
+    def generate(self, scene_meta: SceneMeta, level: TrafficLevel, output_dir: Path) -> Path:
+        factor = self.levels[level]  # HIGH → 1.5
+        tree = ET.parse(scene_meta.sumo_flow)
+        for flow in tree.getroot().findall("flow"):
+            number_attr = flow.get("number")
+            if number_attr:
+                scaled = max(1, int(round(int(number_attr) * factor)))
+                flow.set("number", str(scaled))  # 车辆数 × 1.5
+        output_file = output_dir / f"{scene_meta.sumo_flow.stem}_{level.value}.flow.xml"
+        tree.write(output_file, encoding="utf-8", xml_declaration=True)
+        return output_file
+```
+
+```python
+# 云端动态绿灯下发（完整实现见 cloud/cloud_policy.py）
 class CloudPolicy:
     def predict(self, state: JointState) -> PredictionResult:
-        # predicted(t+1) = α × observed(t) + (1-α) × predicted(t)
+        # predicted(t+1) = α × observed(t) + (1-α) × predicted(t)，α=0.3
         ...
+
     def dispatch_base_green(self, state: JointState) -> float:
-        # 云端周期性下发 base_green
-        ...
+        # MVI：返回配置的固定 base_green（默认 30s）
+        # TODO(AB): 根据全局压力评估动态调整
+        #   高压时增大 base_green，低压时减小，实现自适应周期
+        return float(get_config().get("algorithms.ca_maxpressure.base_green", 30))
 ```
 
 ## 交付物

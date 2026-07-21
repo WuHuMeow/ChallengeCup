@@ -68,13 +68,34 @@
 
 ## 关键代码指引
 
-本周以文档和交付物为主，无新代码。如需验证实验数据：
+本周以文档和交付物为主，无新代码。核对报告数据时常用以下分析：
 
 ```python
-# 读取实验结果（用于核对报告数据）
+# 单路口多 seed 取均值（报告中应汇报 3 次均值 ± 标准差）
 import pandas as pd
-df = pd.read_csv("output/csv/16_normal_ca_maxpressure_s42.csv")
-print(df[["avg_queue_length", "avg_delay", "total_throughput"]].mean())
+import numpy as np
+
+dfs = [pd.read_csv(f"output/csv/16_normal_ca_maxpressure_s{s}.csv") for s in [42, 123, 456]]
+combined = pd.concat(dfs)
+print(combined.groupby(combined.index // 60)["avg_queue_length"].mean().mean())
+
+# 三种算法横向对比（用于核对报告中的对比表）
+algos = ["fixed_time", "actuated", "ca_maxpressure"]
+for algo in algos:
+    df = pd.read_csv(f"output/csv/1_normal_{algo}_s42.csv")
+    print(f"{algo:15s} | 排队={df['avg_queue_length'].mean():.2f} | 延误={df['avg_delay'].mean():.2f}")
+
+# 批量生成 20 路口汇总表（交给 DA 写入报告）
+import os
+rows = []
+for f in os.listdir("output/csv"):
+    if "normal" in f and f.endswith(".csv"):
+        df = pd.read_csv(f"output/csv/{f}")
+        parts = f.replace(".csv", "").split("_")
+        rows.append({"file": f, "avg_queue": df["avg_queue_length"].mean(),
+                     "avg_delay": df["avg_delay"].mean()})
+summary = pd.DataFrame(rows)
+summary.to_csv("output/summary_normal.csv", index=False)
 ```
 
 ## 交付物
