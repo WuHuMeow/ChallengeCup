@@ -2,7 +2,7 @@
 
 ## 模块职责
 
-可视化层，基于 Matplotlib/Seaborn 将实验数据转换为图表，支撑答辩 PPT、Demo 视频与实验报告。
+可视化层，基于 Matplotlib 将实验数据转换为图表，支撑答辩 PPT、Demo 视频与实验报告。
 
 ## 当前完成情况
 

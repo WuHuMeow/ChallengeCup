@@ -9,9 +9,9 @@
 - [x] `registry.py`：`SceneRegistry` 自动发现 20 个路口，输出 `SceneMeta`，兼容 `高精地图`/`高清地图` 命名差异。
 - [x] `variant.py`：`VariantGenerator` 支持生成 1.0x（NORMAL）/ 1.5x（HIGH）流量变体。
 - [x] `timing_loader.py`：从 Excel 读取信号配时方案，输出 `TimingPlan`。
-- [ ] `validator.py`：尚未实现。
-- [ ] `perturbation.py`：尚未实现。
-- [ ] `osm_importer.py`：尚未实现（可扩展接口）。
+- [ ] `validator.py`：尚未实现（规划中，不在当前项目结构内）。
+- [ ] `perturbation.py`：尚未实现（规划中）。
+- [ ] `osm_importer.py`：尚未实现（规划中，可扩展接口）。
 
 ## 待完成情况
 
@@ -36,14 +36,13 @@
 | `registry.py` | 20 路口元数据索引 |
 | `variant.py` | 流量变体生成 |
 | `timing_loader.py` | Excel 配时读取 |
-| `validator.py` | 场景校验（待实现） |
-| `perturbation.py` | 扰动事件注入（待实现） |
 
 ## 对外接口
 
 ```python
 from scenes.registry import SceneRegistry
-from scenes.variant import VariantGenerator, TrafficLevel
+from scenes.variant import VariantGenerator
+from core.types import TrafficLevel
 
 registry = SceneRegistry()
 scene = registry.get_scene("1")
