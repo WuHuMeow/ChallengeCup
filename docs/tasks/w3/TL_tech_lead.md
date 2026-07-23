@@ -62,7 +62,7 @@ for iid in ["5", "10", "16"]:
     ft = pd.read_csv(f"output/csv/{iid}_normal_fixed_time_s42.csv")
     ca = pd.read_csv(f"output/csv/{iid}_normal_ca_maxpressure_s42.csv")
     diff = ft["avg_queue_length"].mean() - ca["avg_queue_length"].mean()
-    status = "✓ CA-MP 更优" if diff > 0 else "✗ CA-MP 更差"
+    status = "（通过） CA-MP 更优" if diff > 0 else "（不通过） CA-MP 更差"
     print(f"路口 {iid}: FixedTime={ft['avg_queue_length'].mean():.2f}, "
           f"CA-MP={ca['avg_queue_length'].mean():.2f} → {status}")
 ```

@@ -1,7 +1,7 @@
 # 仿真基础设施 A（IA） W4 任务书
 
 > 周期：8/10（周日）- 8/16（周六） | 核心目标：完成 Docker 打包并保障 1.5 倍流量压力测试运行
-> **完成状态（2026-07-23）**：⏳ 部分完成——✅ `docker/Dockerfile`、`docker-compose.yml`、`.dockerignore`、`docs/deployment.md`（含 Docker 章节 + 常见问题 + 三平台差异）已交付；⬜ 1.5 倍压力测试保障（Day 1/5）、Docker 实机构建与镜像指标回填（Day 2/6）待 Docker 环境。
+> **完成状态（2026-07-23）**：（待办）部分完成——（已完成） `docker/Dockerfile`、`docker-compose.yml`、`.dockerignore`、`docs/deployment.md`（含 Docker 章节 + 常见问题 + 三平台差异）已交付；（未开始） 1.5 倍压力测试保障（Day 1/5）、Docker 实机构建与镜像指标回填（Day 2/6）待 Docker 环境。
 
 ## 每日任务
 

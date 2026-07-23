@@ -309,7 +309,7 @@ git commit -m "chore: add requirements.txt with SUMO, ML, API and viz dependenci
 Content (save as `README.md`):
 
 ```markdown
-# 🏙️ 雄安新区"城市大脑"车路云一体化 — 智能交通管控算法优化
+# （城市） 雄安新区"城市大脑"车路云一体化 — 智能交通管控算法优化
 
 [![挑战杯 2026](https://img.shields.io/badge/挑战杯-2026-blue)](https://www.tiaozhanbei.net)
 [![编号 XH-202613](https://img.shields.io/badge/编号-XH--202613-orange)](./docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)
@@ -321,29 +321,29 @@ Content (save as `README.md`):
 
 ---
 
-## 📑 目录
+## （页面） 目录
 
 - [项目概览](#项目概览)
   - [竞赛信息](#竞赛信息)
   - [项目背景](#项目背景)
   - [三大功能模块](#三大功能模块)
-- [🚀 核心创新点](#-核心创新点)
-- [🏗️ 系统架构](#️-系统架构)
-- [🧠 核心策略](#-核心策略)
-- [🧪 实验设计](#-实验设计)
-- [🛠️ 环境安装](#️-环境安装)
+- [（启动） 核心创新点](#-核心创新点)
+- [（建设） 系统架构](#-系统架构)
+- [（智能） 核心策略](#-核心策略)
+- [（实验） 实验设计](#-实验设计)
+- [（工具） 环境安装](#-环境安装)
   - [系统要求](#系统要求)
   - [安装 SUMO](#安装-sumo)
   - [安装 Python 依赖](#安装-python-依赖)
   - [验证安装](#验证安装)
-- [⚡ 快速开始](#-快速开始)
-- [📁 项目结构](#-项目结构)
-- [📚 文档与接口导航](#-文档与接口导航)
-- [📅 开发阶段与里程碑](#-开发阶段与里程碑)
-- [👥 团队分工](#-团队分工)
-- [🎯 评分对标](#-评分对标)
-- [📦 提交材料清单](#-提交材料清单)
-- [📄 许可与致谢](#-许可与致谢)
+- [（高效） 快速开始](#-快速开始)
+- [（目录） 项目结构](#-项目结构)
+- [（资料） 文档与接口导航](#-文档与接口导航)
+- [（日程） 开发阶段与里程碑](#-开发阶段与里程碑)
+- [（团队） 团队分工](#-团队分工)
+- [（目标） 评分对标](#-评分对标)
+- [（交付） 提交材料清单](#-提交材料清单)
+- [（文档） 许可与致谢](#-许可与致谢)
 
 ---
 
@@ -373,7 +373,7 @@ Content (save as `README.md`):
 
 ---
 
-## 🚀 核心创新点
+## （启动） 核心创新点
 
 1. **AI 与传统控制融合**  
    不是纯 ML 端到端黑盒，而是 **XGBoost 预测 + 规则决策**，在提升效果的同时保留可解释性。
@@ -386,7 +386,7 @@ Content (save as `README.md`):
 
 ---
 
-## 🏗️ 系统架构
+## （建设） 系统架构
 
 ![系统架构](./docs/superpowers/specs/images/architecture.png)
 
@@ -394,7 +394,7 @@ Content (save as `README.md`):
 
 ---
 
-## 🧠 核心策略
+## （智能） 核心策略
 
 ```
 固定配时基线 → 规则自适应 → ML 增强算法（XGBoost）
@@ -409,7 +409,7 @@ Content (save as `README.md`):
 
 ---
 
-## 🧪 实验设计
+## （实验） 实验设计
 
 | 维度 | 方案 |
 |------|------|
@@ -421,7 +421,7 @@ Content (save as `README.md`):
 
 ---
 
-## 🛠️ 环境安装
+## （工具） 环境安装
 
 ### 系统要求
 
@@ -478,7 +478,7 @@ python -c "import pandas, numpy, xgboost, fastapi; print('all dependencies OK')"
 
 ---
 
-## ⚡ 快速开始
+## （高效） 快速开始
 
 > 当前项目处于开发初期，源码模块正在按计划搭建。以下命令为规划中的最小可运行示例，实际命令将随代码实现更新。
 
@@ -498,7 +498,7 @@ uvicorn api.server:app --reload
 
 ---
 
-## 📁 项目结构
+## （目录） 项目结构
 
 ```text
 ChallengeCup/
@@ -557,19 +557,19 @@ ChallengeCup/
 
 ---
 
-## 📚 文档与接口导航
+## （资料） 文档与接口导航
 
 | 文档 | 说明 | 路径 |
 |------|------|------|
-| 📐 完整设计文档 | 架构设计、模块详情、分工、里程碑 | [`docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`](./docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md) |
-| 📋 本 README 重设计文档 | README  redesign 方案 | [`docs/superpowers/specs/2026-07-14-readme-redesign-design.md`](./docs/superpowers/specs/2026-07-14-readme-redesign-design.md) |
-| 👥 团队分工 | 8 成员4 组详细任务 | [`docs/tasks/README.md`](./docs/tasks/README.md) |
-| 🔌 API 接口文档 | 功能一产出：接口定义与 Postman Collection | `docs/api-spec.md`（待创建） |
-| 📊 实验报告 | 180 次仿真分析与统计检验 | `docs/experiment-report.md`（待创建） |
+| （设计） 完整设计文档 | 架构设计、模块详情、分工、里程碑 | [`docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`](./docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md) |
+| （清单） 本 README 重设计文档 | README  redesign 方案 | [`docs/superpowers/specs/2026-07-14-readme-redesign-design.md`](./docs/superpowers/specs/2026-07-14-readme-redesign-design.md) |
+| （团队） 团队分工 | 8 成员4 组详细任务 | [`docs/tasks/README.md`](./docs/tasks/README.md) |
+| （接口） API 接口文档 | 功能一产出：接口定义与 Postman Collection | `docs/api-spec.md`（待创建） |
+| （图表） 实验报告 | 180 次仿真分析与统计检验 | `docs/experiment-report.md`（待创建） |
 
 ---
 
-## 📅 开发阶段与里程碑
+## （日程） 开发阶段与里程碑
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|
@@ -583,20 +583,20 @@ ChallengeCup/
 
 ---
 
-## 👥 团队分工
+## （团队） 团队分工
 
 | 组 | 成员 | 主责 |
 |----|------|------|
 | 仿真场景组 | 成员1、成员2 | SUMO 引擎封装、20 路口场景管理、CSV 数据采集 |
 | 算法 ML 组 | 成员3、成员4 | 算法接口与三种策略实现、XGBoost 训练与评估 |
 | 实验分析组 | 成员5、成员8 | 180 次跑批、指标采集、统计检验、Docker 工程化 |
-| 可视化与交付 | 🔷 成员6（后端负责）、🔶 成员7（前端负责） | FastAPI、可视化图表、PPT、Demo 视频 |
+| 可视化与交付 | （蓝标） 成员6（后端负责）、（橙标） 成员7（前端负责） | FastAPI、可视化图表、PPT、Demo 视频 |
 
 详细分工与个人任务书见 [`docs/tasks/README.md`](./docs/tasks/README.md)。
 
 ---
 
-## 🎯 评分对标
+## （目标） 评分对标
 
 | 评分维度 | 满分 | 本项目对应 |
 |----------|------|-----------|
@@ -608,7 +608,7 @@ ChallengeCup/
 
 ---
 
-## 📦 提交材料清单
+## （交付） 提交材料清单
 
 根据挑战杯赛道 B 要求，最终需提交：
 
@@ -622,7 +622,7 @@ ChallengeCup/
 
 ---
 
-## 📄 许可与致谢
+## （文档） 许可与致谢
 
 本项目为挑战杯 2026 参赛作品，技术方案参考竞赛官方 PDF 要求与雄安新区"城市大脑"车路云一体化场景需求。
 

@@ -27,7 +27,9 @@ NOTES = {
     1: "标准十字路口，边命名 E0/-E1/-E2/-E3",
     9: "配时缺黄灯相位（原始文件遗留，见 docs/migration_log.md）",
     11: "流ID为 W_car/E_car/S_car/N_car，方向映射与路口1不同；tlLogic 有 unsafe green warning",
+    12: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）",
     16: "含 -E5 进口道（5进口道路口）",
+    18: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）",
 }
 
 

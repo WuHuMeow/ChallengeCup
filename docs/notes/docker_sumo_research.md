@@ -6,10 +6,10 @@
 
 | 方案 | SUMO 版本 | 评价 |
 |------|-----------|------|
-| `ubuntu:22.04` + `apt install sumo sumo-tools` | **1.12.0**（Ubuntu 官方源） | ❌ 否决：版本过旧，无法读取 net 格式 1.20 的路网（本项目路口 1-10、14-20 均为 1.20） |
-| `ubuntu:22.04` + `ppa:sumo/stable` | 跟随官方稳定版（当前 1.27.x） | ✅ **采纳**：[SUMO 官方下载页](https://sumo.dlr.de/docs/Downloads.html)推荐的 Ubuntu 安装方式，版本与本项目统一目标 1.27.1 一致 |
+| `ubuntu:22.04` + `apt install sumo sumo-tools` | **1.12.0**（Ubuntu 官方源） | （不通过） 否决：版本过旧，无法读取 net 格式 1.20 的路网（本项目路口 1-10、14-20 均为 1.20） |
+| `ubuntu:22.04` + `ppa:sumo/stable` | 跟随官方稳定版（当前 1.27.x） | （已完成） **采纳**：[SUMO 官方下载页](https://sumo.dlr.de/docs/Downloads.html)推荐的 Ubuntu 安装方式，版本与本项目统一目标 1.27.1 一致 |
 | `pip install eclipse-sumo` | 跟随 PyPI 发布（当前 1.27.x） | 备选：[eclipse-sumo on PyPI](https://pypi.org/project/eclipse-sumo/) 的 wheel 自带 SUMO 二进制，免 apt；但镜像内调试工具（netconvert 等）不如 apt 齐全 |
-| 社区 Docker 镜像（Docker Hub 搜索 "sumo"） | 参差不齐 | ❌ 否决：无官方维护镜像，版本与安全性不可控 |
+| 社区 Docker 镜像（Docker Hub 搜索 "sumo"） | 参差不齐 | （不通过） 否决：无官方维护镜像，版本与安全性不可控 |
 
 ## 采纳方案的 apt 包清单
 

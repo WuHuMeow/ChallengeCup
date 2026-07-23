@@ -88,8 +88,8 @@ python experiments/runner.py --help          # 查看批量参数
 python scripts/check_outputs.py              # 期望 缺失/空文件: 0
 ```
 
-实测基准（2026-07-23，单机 Windows + SUMO 1.27.1）：20 路口 3600 步全量验证合计 82s，
-估算 360 次实验 ≈ 0.4h（详见 `docs/batch_validate_report.md`）。
+实测基准（2026-07-23，单机 Windows + SUMO 1.27.1）：20 路口 3600 步全量验证合计约 60s，
+估算 360 次实验 ≈ 0.3h（详见 `docs/batch_validate_report.md`）。
 
 ## 镜像指标
 

@@ -54,7 +54,6 @@ def main() -> None:
         step_length = (
             f'        <step-length value="{m.group(1)}"/>\n' if m else ""
         )
-        delay = "20" if m and float(m.group(1)) < 1.0 else "100"
         ignore = (
             "    <processing>\n"
             '        <ignore-route-errors value="true"/>\n'
@@ -74,7 +73,6 @@ def main() -> None:
             step_length=step_length,
             ignore_route_errors=ignore,
             queue_output=queue,
-            delay=delay,
         )
         (OUT_DIR / f"demo_{n}.sumocfg").write_text(cfg, encoding="utf-8")
     print(f"已生成 20 个增强版配置到 {OUT_DIR}")

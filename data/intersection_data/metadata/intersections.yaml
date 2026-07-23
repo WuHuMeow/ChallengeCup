@@ -114,6 +114,7 @@ intersections:
   has_queues: true
   edge_naming: -E0/-E1/-E2/-E3/E0/E1/E2/E3
   map_folder: 高精地图
+  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）
 - id: 13
   timestep_s: 0.1
   sumo_versions:
@@ -169,6 +170,7 @@ intersections:
   has_queues: true
   edge_naming: -E0/-E1/-E1.42/-E2/-E2.41/-E3/E0/E0.40/E1/E2/E3
   map_folder: 高精地图
+  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）
 - id: 19
   timestep_s: 0.1
   sumo_versions:
