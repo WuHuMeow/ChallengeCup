@@ -1,0 +1,12 @@
+# Docker 构建上下文排除清单（IA W4：控制镜像体积）
+.git
+.venv
+__pycache__
+**/__pycache__
+output
+experiments/results
+docs
+scripts
+tests
+*.pyc
+.dockerignore

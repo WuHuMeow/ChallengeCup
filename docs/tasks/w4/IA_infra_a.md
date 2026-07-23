@@ -1,6 +1,7 @@
 # 仿真基础设施 A（IA） W4 任务书
 
 > 周期：8/10（周日）- 8/16（周六） | 核心目标：完成 Docker 打包并保障 1.5 倍流量压力测试运行
+> **完成状态（2026-07-23）**：⏳ 部分完成——✅ `docker/Dockerfile`、`docker-compose.yml`、`.dockerignore`、`docs/deployment.md`（含 Docker 章节 + 常见问题 + 三平台差异）已交付；⬜ 1.5 倍压力测试保障（Day 1/5）、Docker 实机构建与镜像指标回填（Day 2/6）待 Docker 环境。
 
 ## 每日任务
 
@@ -22,8 +23,8 @@ python experiments/runner.py --intersection 16 --algo ca_maxpressure \
 
 ### Day 2（8/11 周一）— 完善 Dockerfile
 
-- [ ] 完善 `docker/Dockerfile`：设置 `SUMO_HOME`、分层 COPY 减小镜像、清理 apt 缓存
-- [ ] 仅 COPY 必要目录（`core/ algorithms/ engine/ cloud/ experiments/ data/intersection_data/`），避免把 `output/`、`__pycache__/` 打入镜像
+- [x] 完善 `docker/Dockerfile`：设置 `SUMO_HOME`、分层 COPY 减小镜像、清理 apt 缓存
+- [x] 仅 COPY 必要目录（`core/ algorithms/ engine/ cloud/ experiments/ data/intersection_data/`），避免把 `output/`、`__pycache__/` 打入镜像
 - [ ] 构建镜像并测试单路口运行
 - [ ] 记录镜像大小（目标 < 2GB）
 
@@ -57,7 +58,7 @@ CMD ["1"]
 
 ### Day 3（8/12 周二）— docker-compose 编排
 
-- [ ] 编写 `docker-compose.yml`（简化版，单容器），把 `experiments/results` 挂载到宿主机
+- [x] 编写 `docker-compose.yml`（简化版，单容器），把 `experiments/results` 挂载到宿主机
 - [ ] 测试 `docker-compose up` 能跑通指定路口
 - [ ] 确认输出文件正确落到宿主机目录
 - [ ] 验证不同 `command` 参数（路口 ID）能切换运行目标
@@ -79,9 +80,9 @@ services:
 
 ### Day 4（8/13 周三）— 部署文档（PDF 硬性要求）
 
-- [ ] 完善 `docs/deployment.md`：添加 Docker 部署章节
-- [ ] 添加常见问题：`SUMO_HOME` 未设置、端口冲突、镜像拉取慢等
-- [ ] 添加 Windows / Mac / Linux 差异说明（路径分隔符、卷挂载语法）
+- [x] 完善 `docs/deployment.md`：添加 Docker 部署章节
+- [x] 添加常见问题：`SUMO_HOME` 未设置、端口冲突、镜像拉取慢等
+- [x] 添加 Windows / Mac / Linux 差异说明（路径分隔符、卷挂载语法）
 - [ ] 这是 PDF 硬性要求的"详细的部署运行说明文档"——必须完整
 
 ```markdown

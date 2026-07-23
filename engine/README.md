@@ -6,10 +6,11 @@
 
 ## 当前完成情况
 
-- [x] `traci_bridge.py`：`TraCIBridge` 类，负责启动 SUMO、读取联合状态、写入控制动作。
+- [x] `traci_bridge.py`：`TraCIBridge` 类，负责启动 SUMO、读取联合状态、写入控制动作。支持 `additional_files` 透传（2026-07-23 修复）。
 - [x] `mock_bridge.py`：`MockBridge` 类，与 TraCIBridge 接口一致的离线替代，用于无 SUMO 环境。
-- [x] `runner.py`：`SimulationRunner` 类，负责单次仿真的完整生命周期（启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭）。支持通过 `bridge` 参数注入 MockBridge。
+- [x] `runner.py`：`SimulationRunner` 类，负责单次仿真的完整生命周期（启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭）。支持通过 `bridge` 参数注入 MockBridge；优先使用 `configs/` 增强版配置（2026-07-23）。
 - [x] `collector.py`：`MetricsCollector` 类，按固定间隔将 `JointState` 和指标写入 CSV。
+- [x] `configs/`：增强版 sumocfg ×20（IA 生成），引用只读原始数据，含 tripinfo/fcd/summary 输出与 GUI 自动播放设置；20/20 通过 3600 步全量验证（`docs/batch_validate_report.md`）。
 
 ## 待完成情况
 
@@ -34,6 +35,7 @@
 | `mock_bridge.py` | 离线 Mock 桥接（无 SUMO） |
 | `runner.py` | 单次仿真实验运行器 |
 | `collector.py` | 仿真数据采集器 |
+| `configs/` | 增强版 sumocfg ×20（由 `scripts/generate_configs.py` 生成，勿手改） |
 
 ## 对外接口
 

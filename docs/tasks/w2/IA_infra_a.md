@@ -1,15 +1,16 @@
 # 仿真基础设施 A（IA） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：确保 20 路口在新版 SUMO 下稳定运行 3600 步，并协助实验组准备批量运行环境
+> **完成状态（2026-07-23）**：✅ 核心任务完成——3600 步 20/20 全通过（合计 82s，估算 360 次实验 ≈0.4h，见 `docs/batch_validate_report.md`）；`engine/configs/` 增强版 ×20（含 tripinfo/fcd/summary 与 GUI 自动播放）；`batch_validate.py` / `sumo_env_setup.md` / Docker 调研笔记已交付；`runner.py` 已切换增强版配置。⏳ 剩余：协助 EX 联调（Day 4）、第二台机器（Day 6）、Docker 实机构建。
 
 ## 每日任务
 
 ### Day 1（7/27 周日）— W1 迁移结果复查
 
-- [ ] 重新运行 `scripts/validate_all.py`，复查 W1 迁移结果
+- [x] 重新运行 `scripts/validate_all.py`，复查 W1 迁移结果
 - [ ] 对 W1 中标记为"有问题"的路口做最终修复
-- [ ] 确保 20/20 路口在 3600 步内全部跑通（不再只是 100 步）
-- [ ] 把 3600 步验证逻辑沉淀到 `scripts/batch_validate.py`（Day 3 完成）的早期版本
+- [x] 确保 20/20 路口在 3600 步内全部跑通（不再只是 100 步）
+- [x] 把 3600 步验证逻辑沉淀到 `scripts/batch_validate.py`（Day 3 完成）的早期版本
 
 ```bash
 # 单路口 3600 步全量验证
@@ -20,10 +21,10 @@ sumo -c data/intersection_data/1/sumo工程/demo_1.sumocfg --no-step-log -e 3600
 
 ### Day 2（7/28 周一）— 增强版 sumocfg（不修改原始文件）
 
-- [ ] 在 `engine/configs/` 下为每个路口生成增强版 `demo_N.sumocfg`，引用原始 `net.xml/rou.xml/flow.xml/turn.xml`
-- [ ] 增加三类输出：`tripinfo-output`（EX 采集）、`fcd-output`（DB 时空轨迹图）、`summary-output`
-- [ ] 更新 `engine/runner.py` 使用增强版 sumocfg（保持原始数据目录只读）
-- [ ] 抽查路口 1、11、16 跑 100 步，确认三类输出文件都生成
+- [x] 在 `engine/configs/` 下为每个路口生成增强版 `demo_N.sumocfg`，引用原始 `net.xml/rou.xml/flow.xml/turn.xml`
+- [x] 增加三类输出：`tripinfo-output`（EX 采集）、`fcd-output`（DB 时空轨迹图）、`summary-output`
+- [x] 更新 `engine/runner.py` 使用增强版 sumocfg（保持原始数据目录只读）
+- [x] 抽查路口 1、11、16 跑 100 步，确认三类输出文件都生成
 
 ```xml
 <!-- engine/configs/demo_1.sumocfg -->
@@ -48,10 +49,10 @@ sumo -c data/intersection_data/1/sumo工程/demo_1.sumocfg --no-step-log -e 3600
 
 ### Day 3（7/29 周二）— 批量 3600 步验证脚本
 
-- [ ] 编写 `scripts/batch_validate.py`：对 20 路口各跑 3600 步（无 GUI），使用 `engine/configs/` 下的增强版 cfg
-- [ ] 记录每个路口：运行时间、完成车辆数（从 `tripinfo.xml` 行数）、是否有报错
-- [ ] 输出汇总表（Markdown），并估算 360 次实验总时间
-- [ ] 标记运行时间显著偏长的路口（多为 0.1s 步长的 11-13、15-20）
+- [x] 编写 `scripts/batch_validate.py`：对 20 路口各跑 3600 步（无 GUI），使用 `engine/configs/` 下的增强版 cfg
+- [x] 记录每个路口：运行时间、完成车辆数（从 `tripinfo.xml` 行数）、是否有报错
+- [x] 输出汇总表（Markdown），并估算 360 次实验总时间
+- [x] 标记运行时间显著偏长的路口（多为 0.1s 步长的 11-13、15-20）
 
 ```python
 # scripts/batch_validate.py
@@ -104,10 +105,10 @@ ls experiments/results/smoke_1   # 应包含 tripinfo.xml / stats.xml / traj.xml
 
 ### Day 5（7/31 周四）— 文档与元数据收尾
 
-- [ ] 补全 `data/intersection_data/metadata/intersections.yaml`（如 W1 有遗漏）
-- [ ] 更新 `docs/edge_mapping.md`（如 W1 有遗漏）
-- [ ] 编写 `docs/sumo_env_setup.md`：SUMO 环境安装指南（Windows 安装步骤、环境变量配置、常见报错与解决）
-- [ ] 该文档将作为 W4 部署文档的素材
+- [x] 补全 `data/intersection_data/metadata/intersections.yaml`（如 W1 有遗漏）
+- [x] 更新 `docs/edge_mapping.md`（如 W1 有遗漏）
+- [x] 编写 `docs/sumo_env_setup.md`：SUMO 环境安装指南（Windows 安装步骤、环境变量配置、常见报错与解决）
+- [x] 该文档将作为 W4 部署文档的素材
 
 ```markdown
 <!-- docs/sumo_env_setup.md 章节骨架 -->
@@ -132,9 +133,9 @@ ls experiments/results/smoke_1   # 应包含 tripinfo.xml / stats.xml / traj.xml
 ### Day 7（8/2 周六）— Buffer + Docker 调研（W4 前置）
 
 - [ ] 修复本周发现的问题
-- [ ] 调研 Docker 中安装 SUMO 的方案：搜索 `sumo docker image`，确认是否有官方/社区镜像
-- [ ] 记录基础镜像选择（默认 `ubuntu:22.04` + apt 安装 `sumo sumo-tools`）与备选方案
-- [ ] 调研笔记落到 `docs/notes/docker_sumo_research.md`
+- [x] 调研 Docker 中安装 SUMO 的方案：搜索 `sumo docker image`，确认是否有官方/社区镜像
+- [x] 记录基础镜像选择（默认 `ubuntu:22.04` + apt 安装 `sumo sumo-tools`）与备选方案
+- [x] 调研笔记落到 `docs/notes/docker_sumo_research.md`
 
 **验证：** `docs/notes/docker_sumo_research.md` 存在，包含基础镜像结论与 apt 包名清单。
 

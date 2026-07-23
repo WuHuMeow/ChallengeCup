@@ -21,3 +21,6 @@ uvicorn[standard]>=0.23.0
 
 # 配置
 pyyaml>=6.0
+
+# XML 安全解析（批量脚本）
+defusedxml>=0.7.1

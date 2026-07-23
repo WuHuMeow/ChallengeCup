@@ -1,15 +1,16 @@
 # 仿真基础设施 A（IA） W5 任务书
 
 > 周期：8/17（周日）- 8/23（周六） | 核心目标：代码最终清理、Docker 最终验证、协助交付
+> **完成状态（2026-07-23）**：⏳ 部分完成——✅ Day 1 代码清理（无调试/临时文件、无硬编码路径、`.gitignore` 已修正覆盖 SUMO 输出）、`requirements.txt` 已补 `defusedxml`；⬜ Docker 最终验证（Day 2）、部署文档外人复现测试（Day 3）、协助 DA/DB（Day 4）、最终集成验证（Day 6）待后续。
 
 ## 每日任务
 
 ### Day 1（8/17 周日）— 代码最终清理
 
-- [ ] 删除所有调试代码、临时文件（`page_*.png`、`temp_doc.pdf` 等）
-- [ ] 确认无硬编码路径（所有路径用相对路径或配置）
-- [ ] 确认 `.gitignore` 正确（不提交 `results/`、`__pycache__/`、`output/`）
-- [ ] 确认仓库结构干净，无未跟踪的散落文件
+- [x] 删除所有调试代码、临时文件（`page_*.png`、`temp_doc.pdf` 等）
+- [x] 确认无硬编码路径（所有路径用相对路径或配置）
+- [x] 确认 `.gitignore` 正确（不提交 `results/`、`__pycache__/`、`output/`）
+- [x] 确认仓库结构干净，无未跟踪的散落文件
 
 ```bash
 # 清理检查
@@ -68,8 +69,8 @@ ls experiments/results/final/1/*   # 三个算法目录各有三件输出
 ### Day 5（8/21 周四）— 最终代码 review
 
 - [ ] 确认所有 Python 文件有 docstring
-- [ ] 确认 `requirements.txt` 完整（含 `defusedxml` 等本周新增依赖）
-- [ ] 确认 `README.md` 有项目简介和快速开始
+- [x] 确认 `requirements.txt` 完整（含 `defusedxml` 等本周新增依赖）
+- [x] 确认 `README.md` 有项目简介和快速开始
 - [ ] 提交最终代码给 TL
 
 ```bash

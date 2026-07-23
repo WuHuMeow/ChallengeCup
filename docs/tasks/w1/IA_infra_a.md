@@ -1,6 +1,7 @@
 # 仿真基础设施 A（IA） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：将 20 个路口全部迁移到统一 SUMO 版本，确保可运行
+> **完成状态（2026-07-23）**：✅ 本周任务基本完成——20/20 路口在 SUMO 1.27.1 下验证通过（100 步 + 3600 步全量），`migration_log.md` / `intersections.yaml` / `edge_mapping.md` 已交付；不兼容路口 0 个，Day 3 修复任务无需执行。⏳ 剩余：迁移结果 git 提交、SUMO-GUI 手动核查、协助 IB 联调。
 
 ## 本周背景
 
@@ -12,9 +13,9 @@
 
 ### Day 1（7/20 周日）— 环境搭建 + 单路口验证
 
-- [ ] 安装 SUMO 最新版（推荐 1.27.1），Windows 从 https://sumo.dlr.de/docs/Downloads.html 下载安装包
-- [ ] 设置环境变量 `SUMO_HOME=C:\Program Files\Eclipse\Sumo`（或实际安装路径），并将 `%SUMO_HOME%\bin` 加入 PATH
-- [ ] 验证 Python 接口可用（`traci` / `libsumo`）
+- [x] 安装 SUMO 最新版（推荐 1.27.1），Windows 从 https://sumo.dlr.de/docs/Downloads.html 下载安装包
+- [x] 设置环境变量 `SUMO_HOME=C:\Program Files\Eclipse\Sumo`（或实际安装路径），并将 `%SUMO_HOME%\bin` 加入 PATH
+- [x] 验证 Python 接口可用（`traci` / `libsumo`）
 - [ ] 用 SUMO-GUI 打开路口 1，能正常运行则记为"兼容"，否则记录错误信息
 - [ ] 在 `docs/` 下创建 `migration_log.md` 迁移记录表
 
@@ -31,10 +32,10 @@
 
 ### Day 2（7/21 周一）— 批量验证脚本（不修改文件）
 
-- [ ] 编写 `scripts/validate_all.py`，遍历 `data/intersection_data/{1-20}/sumo工程/demo_N.sumocfg`
-- [ ] 对每个路口执行 `sumo -c demo_N.sumocfg --no-step-log -e 100`，记录成功/失败、错误信息、运行时间
-- [ ] 输出汇总表（控制台 + 写入 `docs/migration_log.md`）
-- [ ] 根据运行结果回填每个路口的"原始版本"列（从 `.net.xml` 头部 `<net version="...">` 提取）
+- [x] 编写 `scripts/validate_all.py`，遍历 `data/intersection_data/{1-20}/sumo工程/demo_N.sumocfg`
+- [x] 对每个路口执行 `sumo -c demo_N.sumocfg --no-step-log -e 100`，记录成功/失败、错误信息、运行时间
+- [x] 输出汇总表（控制台 + 写入 `docs/migration_log.md`）
+- [x] 根据运行结果回填每个路口的"原始版本"列（从 `.net.xml` 头部 `<net version="...">` 提取）
 
 ```python
 # scripts/validate_all.py
@@ -70,7 +71,7 @@ if __name__ == "__main__":
 
 ### Day 3（7/22 周二）— 处理不兼容路口
 
-- [ ] 对报错路口分类：XML schema 变化 / 缺文件 / 已废弃属性
+- [x] 对报错路口分类：XML schema 变化 / 缺文件 / 已废弃属性
 - [ ] XML schema 问题用 `netconvert -s old.net.xml -o new.net.xml` 重新生成
 - [ ] **不修改 `data/intersection_data/` 原始文件**——修复方案与 TL 确认（在原目录覆盖 vs 在 `engine/configs/` 另建）
 - [ ] 每修复一个路口立即跑 `validate_all.py` 中该路口子集回归
@@ -88,9 +89,9 @@ sumo -c data/intersection_data/N/sumo工程/demo_N.sumocfg --no-step-log -e 100
 
 ### Day 4（7/23 周三）— 步长差异 + metadata 补全
 
-- [ ] 确认步长分布：路口 1-10、14 为 1s；路口 11-13、15-20 为 0.1s（**不统一步长**，算法按仿真步调用即可）
-- [ ] 在 `data/intersection_data/metadata/intersections.yaml` 中补全 20 个路口的 `timestep_s` / `sumo_versions`（统一后版本）/ `flow_count` / `has_queues` / `edge_naming`
-- [ ] 写一个一次性脚本从 `.sumocfg` 的 `<step-length>` 与 `.rou.xml` 的 vehicle 数自动提取，避免手填出错
+- [x] 确认步长分布：路口 1-10、14 为 1s；路口 11-13、15-20 为 0.1s（**不统一步长**，算法按仿真步调用即可）
+- [x] 在 `data/intersection_data/metadata/intersections.yaml` 中补全 20 个路口的 `timestep_s` / `sumo_versions`（统一后版本）/ `flow_count` / `has_queues` / `edge_naming`
+- [x] 写一个一次性脚本从 `.sumocfg` 的 `<step-length>` 与 `.rou.xml` 的 vehicle 数自动提取，避免手填出错
 
 ```yaml
 # data/intersection_data/metadata/intersections.yaml
@@ -114,10 +115,10 @@ intersections:
 
 ### Day 5（7/24 周四）— 边命名标准化文档
 
-- [ ] 编写 `docs/edge_mapping.md`，记录每个路口的边 ID → 方向（东/西/南/北）映射
-- [ ] 覆盖典型差异：路口 1（`E0/-E1/-E2/-E3`）、路口 11（`W_car/E_car/S_car/N_car`）、路口 16（含 `-E5`，5 进口道）
-- [ ] 字段：边 ID、方向、类型（进口/出口）、车道数、长度（从 `.net.xml` 提取）
-- [ ] 该映射表后续算法组（AA/AB）计算压力时直接使用
+- [x] 编写 `docs/edge_mapping.md`，记录每个路口的边 ID → 方向（东/西/南/北）映射
+- [x] 覆盖典型差异：路口 1（`E0/-E1/-E2/-E3`）、路口 11（`W_car/E_car/S_car/N_car`）、路口 16（含 `-E5`，5 进口道）
+- [x] 字段：边 ID、方向、类型（进口/出口）、车道数、长度（从 `.net.xml` 提取）
+- [x] 该映射表后续算法组（AA/AB）计算压力时直接使用
 
 ```markdown
 <!-- docs/edge_mapping.md -->
@@ -133,10 +134,10 @@ intersections:
 
 ### Day 6（7/25 周五）— 全量验证 + 提交
 
-- [ ] 再次运行 `scripts/validate_all.py`，目标 20/20 PASS
-- [ ] 用 `SceneRegistry` 端到端校验：能列出 20 个 scene
+- [x] 再次运行 `scripts/validate_all.py`，目标 20/20 PASS
+- [x] 用 `SceneRegistry` 端到端校验：能列出 20 个 scene
 - [ ] 将迁移结果（migration_log + edge_mapping + intersections.yaml）提交给 TL
-- [ ] 仍失败的路口记录原因并告知 TL（备选方案：跳过该路口或用原始版本单独跑）
+- [x] 仍失败的路口记录原因并告知 TL（备选方案：跳过该路口或用原始版本单独跑）
 
 ```python
 # 端到端校验

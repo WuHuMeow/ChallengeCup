@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 增强版配置：由 scripts/generate_configs.py 生成，引用原始数据（只读） -->
+<configuration>
+    <input>
+        <net-file value="../../data/intersection_data/11/sumo工程/demo_11.net.xml"/>
+        <route-files value="../../data/intersection_data/11/sumo工程/demo_11.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+        <step-length value="0.1"/>
+    </time>
+    <processing>
+        <ignore-route-errors value="true"/>
+    </processing>
+    <output>
+        <tripinfo-output value="tripinfo.xml"/>
+        <fcd-output value="traj.xml"/>
+        <summary-output value="stats.xml"/>
+        <queue-output value="queues.xml"/>
+    </output>
+    <!-- sumo-gui 打开后自动开始播放，步间隔 50ms。
+         命令行 sumo 会忽略本节，不影响批量跑批。 -->
+    <gui_only>
+        <start value="true"/>
+        <delay value="50"/>
+    </gui_only>
+</configuration>

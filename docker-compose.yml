@@ -1,0 +1,13 @@
+# 简化版单容器编排（IA W4 Day 3）
+# 用法：docker-compose up --build        # 跑默认路口 16
+#       docker-compose run --rm simulation 1   # 临时改跑路口 1
+services:
+  simulation:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ca-mp:latest
+    volumes:
+      - ./output:/app/output          # 仿真 CSV/指标输出落宿主机
+      - ./experiments/results:/app/experiments/results
+    command: ["16"]

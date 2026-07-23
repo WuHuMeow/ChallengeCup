@@ -52,8 +52,18 @@ class SimulationRunner:
         if bridge is not None:
             self.bridge = bridge
         else:
+            # 优先使用 engine/configs/ 下的增强版配置（IA W2：含 tripinfo/fcd/summary
+            # 输出，引用只读原始数据）；不存在时回退原始 sumocfg。
+            cfg = scene.meta.sumo_cfg
+            enhanced = (
+                Path(__file__).resolve().parent
+                / "configs"
+                / f"demo_{scene.meta.intersection_id}.sumocfg"
+            )
+            if enhanced.exists():
+                cfg = enhanced
             self.bridge = TraCIBridge(
-                scene.meta.sumo_cfg,
+                cfg,
                 binary=self.sumo_binary,
                 additional_files=self.additional_files,
             )

@@ -20,10 +20,11 @@ __pycache__/
 Thumbs.db
 
 # SUMO outputs (generated during simulation)
-*.tripinfo.xml
+*tripinfo.xml
 *fcd.xml
 *traj.xml
 *stats.xml
+*queues.xml
 
 # Experiment outputs
 output/

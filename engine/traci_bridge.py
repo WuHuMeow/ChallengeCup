@@ -32,9 +32,15 @@ except ImportError as exc:  # pragma: no cover
 class TraCIBridge:
     """SUMO 仿真与算法之间的桥接器。"""
 
-    def __init__(self, sumo_cfg: Path, binary: str = "sumo") -> None:
+    def __init__(
+        self,
+        sumo_cfg: Path,
+        binary: str = "sumo",
+        additional_files: Optional[List[Path]] = None,
+    ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.binary = binary
+        self.additional_files = list(additional_files or [])
         self.tls_id: Optional[str] = None
         self._controlled_lanes: List[str] = []
 
@@ -44,6 +50,8 @@ class TraCIBridge:
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
 
         cmd = [self.binary, "-c", str(self.sumo_cfg), "--no-step-log", "true"]
+        if self.additional_files:
+            cmd += ["-a", ",".join(str(f) for f in self.additional_files)]
         logger.info("启动 SUMO: %s", " ".join(cmd))
         traci.start(cmd)
 

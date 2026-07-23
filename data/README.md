@@ -8,6 +8,8 @@
 
 - [x] `intersection_data/`：20 个路口原始数据，每个路口包含 SUMO 工程、流量与配时 Excel、高精地图 PNG。
 - [x] `intersection_data.zip`：上述数据的完整压缩包（66.7 MB）。
+- [x] `intersection_data/metadata/intersections.yaml`：20 路口元数据已补全（IA，2026-07-23，由 `scripts/extract_metadata.py` 生成：timestep_s / sumo_versions / flow_count / has_queues / edge_naming）。
+- [x] 全量验证：20/20 路口在 SUMO 1.27.1 下 3600 步跑通（`docs/migration_log.md`、`docs/batch_validate_report.md`）；边-方向映射见 `docs/edge_mapping.md`。
 
 ## 待完成情况
 

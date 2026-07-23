@@ -1,6 +1,7 @@
 # 仿真基础设施 A（IA） W3 任务书
 
 > 周期：8/3（周日）- 8/9（周六） | 核心目标：保障全量实验运行环境稳定，处理运行中的技术问题，并启动 Docker 环境搭建
+> **完成状态（2026-07-23）**：⏳ 部分完成——✅ `split_jobs.py`、`check_outputs.py`、`docker/Dockerfile`（ppa:sumo/stable 方案）已就绪；⬜ 运行期监控（Day 1-2）、输出完整性检查执行（Day 4-5）、Docker 容器内验证（Day 6-7）待全量实验启动与 Docker 环境就绪后进行。
 
 ## 本周背景
 
@@ -45,7 +46,7 @@ while ($true) {
 ### Day 3（8/5 周二）— 并行运行环境（如有第二台机器）
 
 - [ ] 配置第二台机器的并行运行环境（SUMO + 仓库 + 依赖）
-- [ ] 编写并行运行脚本，按路口分配实验到两台机器
+- [x] 编写并行运行脚本，按路口分配实验到两台机器
 - [ ] 验证两台机器输出格式一致（避免后续采集出错）
 
 ```python
@@ -101,8 +102,8 @@ head -2 experiments/results/16/ca_maxpressure/0/tripinfo.xml
 
 ### Day 6（8/8 周五）— Docker 环境搭建（W4 前置）
 
-- [ ] 基于 W2 调研结论选择基础镜像（`ubuntu:22.04`）
-- [ ] 编写 `docker/Dockerfile` 初稿：apt 安装 `sumo sumo-tools python3 python3-pip`，pip 安装 `requirements.txt`
+- [x] 基于 W2 调研结论选择基础镜像（`ubuntu:22.04`）
+- [x] 编写 `docker/Dockerfile` 初稿：apt 安装 `sumo sumo-tools python3 python3-pip`，pip 安装 `requirements.txt`
 - [ ] 测试 Docker 内能否运行 SUMO（`sumo --version`）
 - [ ] 测试容器内能否跑通路口 1 的单次仿真
 
