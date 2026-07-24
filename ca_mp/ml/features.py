@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from core.types import JointState
+from ca_mp.core.types import JointState
 
 
 def extract_features(state: JointState, window: int = 5) -> Dict[str, list]:

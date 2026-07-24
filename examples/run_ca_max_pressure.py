@@ -7,21 +7,17 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
-# 兼容直接运行示例脚本
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from engine.runner import SimulationRunner
-from scenes.registry import SceneRegistry
+from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.scenes.registry import SceneRegistry
 
 logging.basicConfig(level=logging.INFO)
 
 
 def main() -> None:
     intersection_id = sys.argv[1] if len(sys.argv) > 1 else "1"
-    steps = int(sys.argv[2]) if len(sys.argv) > 2 else 3600
+    steps = int(sys.argv[2]) if len(sys.argv) > 2 else 36000
 
     registry = SceneRegistry()
     scene = registry.get_scene(intersection_id)

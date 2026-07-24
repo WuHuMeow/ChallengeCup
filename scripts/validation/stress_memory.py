@@ -8,14 +8,13 @@ import tracemalloc
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
 
-from experiments.runner import parse_args, run_single
+from ca_mp.experiments.runner import parse_args, run_single
 
 
 def main() -> None:
     intersection = sys.argv[1] if len(sys.argv) > 1 else "1"
-    steps = sys.argv[2] if len(sys.argv) > 2 else "3600"
+    steps = sys.argv[2] if len(sys.argv) > 2 else "36000"
     tracemalloc.start()
     args = parse_args([
         "--intersection", intersection, "--steps", steps,

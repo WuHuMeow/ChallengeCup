@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from core.config import get_config
-from core.types import JointState, PredictionResult
+from ca_mp.core.config import get_config
+from ca_mp.core.types import JointState, PredictionResult
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class CloudPolicy:
         cfg = get_config().get("algorithms.ca_maxpressure", {})
         self.alpha: float = cfg.get("ewma_alpha", 0.3)
         self.horizon: int = cfg.get("prediction_horizon", 300)
-        self.update_interval: int = cfg.get("cloud_update_interval", 60)
+        self.update_interval: int = cfg.get("cloud_update_interval", 600)
         self._prev_predicted: dict[str, float] = {}
         self._last_params: Optional[dict] = None
         self._last_dispatch_step: int = -10**9

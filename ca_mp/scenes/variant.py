@@ -10,8 +10,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict
 
-from core.config import get_config
-from core.types import SceneMeta, TrafficLevel
+from ca_mp.core.config import get_config
+from ca_mp.core.types import SceneMeta, TrafficLevel
 
 
 class VariantGenerator:

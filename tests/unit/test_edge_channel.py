@@ -1,6 +1,6 @@
 """EdgeChannel V2X 消息过滤与延迟测试（IB W2，PDF 加分项）。"""
-from core.types import JointState, QueueState
-from engine.edge_channel import EdgeChannel
+from ca_mp.core.types import JointState, QueueState
+from ca_mp.engine.edge_channel import EdgeChannel
 
 
 def _state(step: int, directions=("north", "south")) -> JointState:

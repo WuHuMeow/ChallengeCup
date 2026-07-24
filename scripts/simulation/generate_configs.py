@@ -34,11 +34,11 @@ TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
         <fcd-output value="traj.xml"/>
         <summary-output value="stats.xml"/>
 {queue_output}    </output>
-    <!-- sumo-gui 打开后自动开始播放，步间隔 50ms。
+    <!-- sumo-gui 打开后自动开始播放，步间隔 80ms。
          命令行 sumo 会忽略本节，不影响批量跑批。 -->
     <gui_only>
         <start value="true"/>
-        <delay value="50"/>
+        <delay value="80"/>
     </gui_only>
 </configuration>
 """
@@ -50,10 +50,8 @@ def main() -> None:
         src_dir = DATA / str(n) / "sumo工程"
         original = (src_dir / f"demo_{n}.sumocfg").read_text(encoding="utf-8")
 
-        m = re.search(r'<step-length\s+value="([^"]+)"', original)
-        step_length = (
-            f'        <step-length value="{m.group(1)}"/>\n' if m else ""
-        )
+        # 统一 step-length 为 0.1s，提高仿真精度。
+        step_length = '        <step-length value="0.1"/>\n'
         ignore = (
             "    <processing>\n"
             '        <ignore-route-errors value="true"/>\n'

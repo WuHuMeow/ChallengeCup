@@ -1,14 +1,12 @@
 """seed 复现性验证（IB W2）：同 seed 两次运行结果一致，异 seed 有差异。"""
 import csv
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
 
-from algorithms.fixed_time import FixedTimeAlgorithm
-from engine.runner import SimulationRunner
-from scenes.registry import SceneRegistry
+from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.scenes.registry import SceneRegistry
 
 STEPS = 300
 

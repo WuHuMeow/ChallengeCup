@@ -10,15 +10,11 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
-# 兼容直接运行示例脚本
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from algorithms.fixed_time import FixedTimeAlgorithm
-from core.config import get_config
-from engine.runner import SimulationRunner
-from scenes.registry import SceneRegistry
+from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
+from ca_mp.core.config import get_config
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.scenes.registry import SceneRegistry
 
 logging.basicConfig(level=logging.INFO)
 
@@ -42,7 +38,7 @@ def main() -> None:
     print(f"使用模式: {mode}")
 
     runner = SimulationRunner(scene, algorithm)
-    metrics = runner.run(steps=3600)
+    metrics = runner.run(steps=36000)
 
     print(f"仿真完成，共记录 {len(metrics)} 条指标快照")
     print(f"CSV 输出: {runner.output_csv}")

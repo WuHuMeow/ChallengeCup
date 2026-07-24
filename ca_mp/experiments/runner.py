@@ -9,21 +9,18 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
-import sys
 from pathlib import Path
 from typing import Dict, List
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from algorithms.base import BaseControlAlgorithm  # noqa: E402
-from algorithms.fixed_time import FixedTimeAlgorithm  # noqa: E402
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm  # noqa: E402
-from algorithms.rule_adaptive import RuleAdaptiveAlgorithm  # noqa: E402
-from core.config import get_config  # noqa: E402
-from core.types import TrafficLevel  # noqa: E402
-from engine.runner import SimulationRunner  # noqa: E402
-from scenes.registry import SceneRegistry  # noqa: E402
-from scenes.variant import VariantGenerator  # noqa: E402
+from ca_mp.algorithms.base import BaseControlAlgorithm
+from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
+from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from ca_mp.algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from ca_mp.core.config import get_config
+from ca_mp.core.types import TrafficLevel
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.scenes.registry import SceneRegistry
+from ca_mp.scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +37,7 @@ def run_batch(
     algorithms: List[str] | None = None,
     levels: List[TrafficLevel] | None = None,
     seeds: List[int] | None = None,
-    steps: int = 3600,
+    steps: int = 36000,
     output_root: Path | None = None,
 ) -> List[Dict[str, str]]:
     """批量运行仿真实验。
@@ -129,7 +126,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--output-dir", type=str, default=None,
                    help="输出根目录（CSV/变体写入其下），默认 config 的 paths.output_root")
     p.add_argument("--intersection", type=str, default="1", help="路口编号 1-20")
-    p.add_argument("--steps", type=int, default=3600, help="仿真步数")
+    p.add_argument("--steps", type=int, default=36000, help="仿真步数")
     p.add_argument("--algorithm", choices=list(ALGORITHM_MAP), default="fixed_time",
                    help="控制算法")
     return p.parse_args(argv)

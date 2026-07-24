@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from core.types import ControlAction, JointState, QueueState, VehicleState
+from ca_mp.core.types import ControlAction, JointState, QueueState, VehicleState
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class MockBridge:
         self,
         tls_id: str = "tls_0",
         directions: Optional[List[str]] = None,
-        step_length: float = 1.0,
+        step_length: float = 0.1,
         vehicle_sample_rate: int = 1,
     ) -> None:
         self.tls_id = tls_id
@@ -34,7 +34,7 @@ class MockBridge:
         self._current_step: int = 0
         self._started: bool = False
         self._applied_actions: List[ControlAction] = []
-        self._arrivals: List[int] = []  # 最近 300 步每步进入路网车辆数
+        self._arrivals: List[int] = []  # 最近 3000 步（= 300 秒）每步进入路网车辆数
         self.lane_directions: dict[str, str] = {}  # 与 TraCIBridge 接口对齐（Mock 无方位映射）
 
     def start(self) -> None:

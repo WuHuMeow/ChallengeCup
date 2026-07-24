@@ -10,8 +10,8 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from core.config import get_config
-from core.types import Scene, SceneMeta
+from ca_mp.core.config import get_config
+from ca_mp.core.types import Scene, SceneMeta
 
 logger = logging.getLogger(__name__)
 

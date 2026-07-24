@@ -1,7 +1,7 @@
 """API 端点接口测试。"""
 import pytest
 from fastapi.testclient import TestClient
-from api.server import app
+from ca_mp.api.server import app
 
 
 @pytest.fixture

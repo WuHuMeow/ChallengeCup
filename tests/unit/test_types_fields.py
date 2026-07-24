@@ -1,5 +1,5 @@
 """core/types.py 新增字段契约测试（IB W1/W4）。"""
-from core.types import JointState, QueueState, VehicleState
+from ca_mp.core.types import JointState, QueueState, VehicleState
 
 
 def test_queue_state_capacity_defaults_zero():

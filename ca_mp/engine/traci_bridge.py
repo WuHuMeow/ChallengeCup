@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
-from core.types import ControlAction, JointState, QueueState, VehicleState
+from ca_mp.core.types import ControlAction, JointState, QueueState, VehicleState
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class TraCIBridge:
         self._inbound_lanes: Optional[List[str]] = None  # edge_mapping 进口道筛选结果
         self.lane_directions: dict[str, str] = {}  # lane_id -> 方位（供 AB 压力映射）
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
-        self._arrival_window: deque[int] = deque(maxlen=300)  # 滚动 300 步到达历史
+        self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
 
     def _build_cmd(self) -> List[str]:
         """组装 traci.start 命令（含可选 --seed 与 additional files）。"""
@@ -112,7 +112,7 @@ class TraCIBridge:
         if not match:
             logger.warning("无法从 %s 解析路口编号，回退 getControlledLanes", self.sumo_cfg)
             return
-        from core.config import get_config
+        from ca_mp.core.config import get_config
         path = Path(get_config().path("paths.data_root")) / "metadata" / "edge_mapping.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

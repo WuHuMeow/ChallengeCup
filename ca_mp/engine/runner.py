@@ -9,13 +9,13 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from algorithms.base import BaseControlAlgorithm
-from core.config import get_config
-from core.types import ControlAction, Scene
-from engine.collector import MetricsCollector, StepLogger
-from engine.events import EventLogger
-from engine.traci_bridge import TraCIBridge, traci
-from experiments.metrics import compute_metrics
+from ca_mp.algorithms.base import BaseControlAlgorithm
+from ca_mp.core.config import get_config
+from ca_mp.core.types import ControlAction, Scene
+from ca_mp.engine.collector import MetricsCollector, StepLogger
+from ca_mp.engine.events import EventLogger
+from ca_mp.engine.traci_bridge import TraCIBridge, traci
+from ca_mp.experiments.metrics import compute_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class SimulationRunner:
             指标快照列表（每 snapshot_interval 步一条），含 avg_queue_length /
             max_queue_length / avg_delay / total_throughput。
         """
-        steps = steps or get_config().get("sumo.default_simulation_steps", 3600)
+        steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
 

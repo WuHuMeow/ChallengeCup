@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from core.types import ControlAction, JointState, PredictionResult, SceneMeta
-from scenes.registry import SceneRegistry
+from ca_mp.core.types import ControlAction, JointState, PredictionResult, SceneMeta
+from ca_mp.scenes.registry import SceneRegistry
 
 app = FastAPI(title="雄安新区车路云协同管控算法平台", version="0.1.0")
 
@@ -21,7 +21,7 @@ app = FastAPI(title="雄安新区车路云协同管控算法平台", version="0.
 class StartRequest(BaseModel):
     intersection_id: str
     algorithm: str = "fixed_time"
-    steps: int = 3600
+    steps: int = 36000
 
 
 class SwitchRequest(BaseModel):

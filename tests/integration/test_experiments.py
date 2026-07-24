@@ -1,6 +1,6 @@
 """实验框架接口测试。"""
 import inspect
-from experiments.runner import run_batch, ALGORITHM_MAP
+from ca_mp.experiments.runner import run_batch, ALGORITHM_MAP
 
 
 def test_algorithm_map_has_three_entries():
@@ -14,18 +14,18 @@ def test_run_batch_signature_accepts_seeds():
 
 
 def test_parse_args_defaults():
-    from experiments.runner import parse_args
+    from ca_mp.experiments.runner import parse_args
     args = parse_args([])
     assert args.seed == 42
     assert args.flow_multiplier == 1.0
     assert args.output_dir is None
     assert args.intersection == "1"
-    assert args.steps == 3600
+    assert args.steps == 36000
     assert args.algorithm == "fixed_time"
 
 
 def test_parse_args_custom():
-    from experiments.runner import parse_args
+    from ca_mp.experiments.runner import parse_args
     args = parse_args([
         "--seed", "7", "--flow-multiplier", "1.5",
         "--output-dir", "output/x", "--intersection", "16",

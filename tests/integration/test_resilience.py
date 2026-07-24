@@ -3,11 +3,11 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
-from algorithms.fixed_time import FixedTimeAlgorithm
-from core.types import Scene, SceneMeta
-from engine.mock_bridge import MockBridge
-from engine.runner import SimulationRunner
-from engine.traci_bridge import TraCIBridge, traci
+from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
+from ca_mp.core.types import Scene, SceneMeta
+from ca_mp.engine.mock_bridge import MockBridge
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.engine.traci_bridge import TraCIBridge, traci
 
 
 def _bridge(max_restarts: int = 0) -> TraCIBridge:

@@ -1,8 +1,8 @@
 """ML 模块接口契约测试。"""
-from core.types import JointState, QueueState
-from ml.features import extract_features
-from ml.train import train, predict
-from ml.evaluate import evaluate
+from ca_mp.core.types import JointState, QueueState
+from ca_mp.ml.features import extract_features
+from ca_mp.ml.train import train, predict
+from ca_mp.ml.evaluate import evaluate
 
 
 def _make_state() -> JointState:

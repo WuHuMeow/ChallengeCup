@@ -13,7 +13,7 @@ import logging
 from collections import deque
 from typing import Deque, List, Optional
 
-from core.types import JointState
+from ca_mp.core.types import JointState
 
 logger = logging.getLogger(__name__)
 

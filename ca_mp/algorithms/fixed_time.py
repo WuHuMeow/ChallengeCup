@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from algorithms.base import BaseControlAlgorithm
-from core.types import Scene
+from ca_mp.algorithms.base import BaseControlAlgorithm
+from ca_mp.core.types import Scene
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
             logger.warning("traci 未安装，无法应用 Excel 配时方案")
             return
 
-        from scenes.timing_loader import get_default_period_name, parse_timing_excel
+        from ca_mp.scenes.timing_loader import get_default_period_name, parse_timing_excel
 
         try:
             periods = parse_timing_excel(scene.meta.timing_xlsx)

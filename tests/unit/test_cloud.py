@@ -1,6 +1,6 @@
 """云端策略接口测试。"""
-from core.types import JointState, QueueState, PredictionResult
-from cloud.cloud_policy import CloudPolicy
+from ca_mp.core.types import JointState, QueueState, PredictionResult
+from ca_mp.cloud.cloud_policy import CloudPolicy
 
 
 def _make_state() -> JointState:
@@ -64,8 +64,8 @@ def test_dispatch_params_interval_and_logging(caplog):
     policy = CloudPolicy()
     with caplog.at_level(logging.INFO):
         p1 = policy.dispatch_params(_make_pressured_state(9.0, 10.0, step=0))
-        p2 = policy.dispatch_params(_make_pressured_state(0.0, 10.0, step=30))  # 未到 60 步
-        p3 = policy.dispatch_params(_make_pressured_state(0.0, 10.0, step=60))  # 重新分档
+        p2 = policy.dispatch_params(_make_pressured_state(0.0, 10.0, step=300))  # 未到 600 步
+        p3 = policy.dispatch_params(_make_pressured_state(0.0, 10.0, step=600))  # 重新分档
     assert p1["min_green"] == 20.0
     assert p2 == p1  # 周期内返回缓存
     assert p3["min_green"] == 10.0  # 压力回落 → 常规档

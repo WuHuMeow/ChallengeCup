@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import List
 
-from core.types import JointState, SimulationMetrics
+from ca_mp.core.types import JointState, SimulationMetrics
 
 logger = logging.getLogger(__name__)
 
