@@ -49,7 +49,7 @@ done; done; done
 
 ## 三、断线韧性测试结论引用（Task 11）
 
-本批次未触发断线路径，韧性结论来自 Task 11 的真实断线实证（详见 `.superpowers/sdd/task-11-report.md`）：仿真运行中 `taskkill //F //IM sumo.exe` 强杀 SUMO 进程，runner 以 `exit=0` 优雅退出，日志含 `TraCI 连接断开: Connection closed by SUMO.; closing gracefully`，无 Traceback，且正常走完 finally 收尾（保存 CSV）。实证覆盖了 `engine.runner._tick`（异常从 `get_state()` 抛出）与 `engine.traci_bridge.step`（内部捕获返回 None）双路径；单测 `tests/integration/test_resilience.py` 4 例常驻回归。
+本批次未触发断线路径，韧性结论来自 Task 11 的真实断线实证，命令与结果汇总在 `docs/reports/w5-verification.md`：仿真运行中 `taskkill //F //IM sumo.exe` 强杀 SUMO 进程，runner 以 `exit=0` 优雅退出，日志含 `TraCI 连接断开: Connection closed by SUMO.; closing gracefully`，无 Traceback，且正常走完 finally 收尾（保存 CSV）。实证覆盖了 `engine.runner._tick`（异常从 `get_state()` 抛出）与 `engine.traci_bridge.step`（内部捕获返回 None）双路径；单测 `tests/integration/test_resilience.py` 4 例常驻回归。
 
 ## 四、内存观察
 

@@ -138,8 +138,7 @@ ChallengeCup/
 │   │   ├── project-roadmap.md   # 本文件
 │   │   └── tasks/w1/ ~ w6/      # 各周任务书
 │   ├── guides/                  # 协作指南
-│   ├── notes/                   # 研究记录
-│   └── superpowers/specs/       # 设计文档
+│   └── notes/                   # 研究记录
 ├── docker/                      # 容器化部署（待实现）
 ├── requirements.txt
 ├── LICENSE

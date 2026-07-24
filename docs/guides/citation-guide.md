@@ -76,7 +76,7 @@ https://sumo.dlr.de/docs/TraCI.html
 ### 相对路径写法
 
 ```markdown
-详见 [系统设计文档](../superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)。
+详见 [系统架构](../architecture/README.md)。
 ```
 
 ### 引用其他目录 README
@@ -128,7 +128,7 @@ https://sumo.dlr.de/docs/TraCI.html
 | 错误 | 正确 |
 |------|------|
 | `详见[这里](http://...)` | `详见 [SUMO 官方文档](http://...)` |
-| `![图片]` | `![系统架构图](./images/architecture.svg)` |
+| `![图片]` | `![系统架构图](../architecture/images/architecture.svg)` |
 | 使用绝对路径 `C:\Users\...\file.md` | 使用相对路径 `./docs/...` |
 | 引用不存在的文件 | 提交前验证链接可访问 |
 

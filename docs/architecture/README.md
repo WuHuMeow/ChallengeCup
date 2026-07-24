@@ -17,7 +17,7 @@
 
 ## 使用方式
 
-在 Markdown 中从文档所在目录使用相对链接引用 `images/` 下资源；SVG 是首选格式，PNG 用于不支持 SVG 的查看器。原始设计资料仍保留在 `docs/superpowers/specs/images/`，不作为当前导航入口。
+在 Markdown 中从文档所在目录使用相对链接引用 `images/` 下资源；SVG 是首选格式，PNG 用于不支持 SVG 的查看器。`images/` 是项目架构图的唯一规范目录。
 
 ## 依赖与限制
 

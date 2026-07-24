@@ -36,5 +36,7 @@ experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv
 
-# Subagent-driven development scratch files
-.superpowers/sdd/
+# Local agent/tool scratch files
+.superpowers/
+.agents/
+.pytest_cache/

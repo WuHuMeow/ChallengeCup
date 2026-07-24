@@ -322,8 +322,7 @@ ChallengeCup/
 │   ├── reference/              # 边映射与赛题资料
 │   ├── reports/                # 验证、迁移和审查报告
 │   ├── team/                   # 路线图与六周任务书
-│   ├── guides/                 # 协作指南
-│   └── superpowers/            # 历史设计与实施计划
+│   └── guides/                 # 协作指南
 ├── output/                     # 运行时输出、历史归档与提交物
 ├── docker/                     # 容器化部署
 │   └── Dockerfile              # ubuntu:22.04 + ppa:sumo/stable（SUMO 1.27.x）
