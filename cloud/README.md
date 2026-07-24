@@ -1,46 +1,42 @@
-# cloud/
+# Cloud
 
 ## 模块职责
 
-云端策略层（CloudCoordinator），负责全局参数下发与 EWMA 流量预测。在赛道 B 单机实现中，以模块边界模拟"云端"，周期性向边缘节点下发 `min_green`/`max_green`/`base_green` 等参数，并根据全局压力动态调整。
+`cloud/` 在单机进程内模拟云端策略服务：维护每个方向的 EWMA 流量预测，并按全局平均压力周期性下发绿灯参数。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `cloud_policy.py`：`CloudPolicy` 类，EWMA 流量预测已实现（`predict()`），`dispatch_base_green()` MVI 已添加。
-
-## 待完成情况
-
-- [ ] `dispatch_base_green()`：根据全局压力评估动态调整 base_green（当前返回配置固定值）。
-- [ ] 接入 ML 模型（XGBoost）作为 EWMA 的增强预测。
-- [ ] 实现周期性参数下发调度逻辑。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 参数下发 | 周期性向边缘下发 min_green/max_green/base_green |
-| EWMA 预测 | 轻量流量预测修正压力值 |
-| 兜底机制 | 预测未就绪时使用默认参数，避免阻塞仿真 |
-| 云-边接口 | 清晰定义 PredictionResult 输入输出 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `cloud_policy.py` | CloudCoordinator 全局参数下发（待重构） |
+| 文件 | 作用 |
+| --- | --- |
+| `cloud_policy.py` | `CloudPolicy` 预测、压力分档、参数缓存和重置 |
 
 ## 对外接口
 
 ```python
 from cloud.cloud_policy import CloudPolicy
-from core.types import JointState
 
 policy = CloudPolicy()
-pred = policy.predict(state)          # -> PredictionResult
-base_green = policy.dispatch_base_green(state)  # -> float
+prediction = policy.predict(state)
+params = policy.dispatch_params(state)
+base_green = policy.dispatch_base_green(state)
+policy.reset()
 ```
 
-## 负责人
+## 输入与输出
 
-- AB（算法 B）：CAMaxPressureController + EWMA 预测
-- IB（仿真基础设施 B）：云-边-端消息流贯通
+- 输入：包含 `flows`、`queues`、`step` 的 `JointState`。
+- `predict()` 输出 `PredictionResult`，其中包含预测时域和各方向预测流量。
+- `dispatch_params()` 输出 `min_green`、`max_green`、`base_green` 字典，并在配置的更新间隔内复用缓存。
+
+## 依赖
+
+- 参数来自 `config/default.yaml` 的 `algorithms.ca_maxpressure`。
+- 数据契约来自 `core.types`。
+- 若 `paths.model_path` 指向有效文件，会尝试通过 joblib 加载模型。
+
+## 已知限制
+
+- 已加载的模型当前不参与 `predict()`；在线预测始终使用进程内 EWMA 状态。
+- 压力分档阈值和下发参数硬编码在 `PRESSURE_TIERS`，不从配置读取。
+- `horizon_seconds` 直接等于步数，假设仿真步长为 1 秒。
+- 云端边界仅是 Python 模块调用，没有网络传输、鉴权或多路口全局聚合服务。

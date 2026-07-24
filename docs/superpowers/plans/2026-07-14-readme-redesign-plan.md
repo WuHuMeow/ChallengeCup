@@ -1,5 +1,7 @@
 # README Redesign Implementation Plan
 
+> **历史快照：** 本计划记录 2026-07-14 的实施范围，早于当前仓库 taxonomy。文中的旧路径只用于还原当时上下文；当前导航与命令以 `README.md` 和 `docs/README.md` 为准。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rewrite `README.md` into a comprehensive dual-audience entry point (judges + developers), create supporting project scaffolding, and fix inconsistent project-structure descriptions in existing Markdown docs.
@@ -786,7 +788,7 @@ Run:
 cd /c/Users/peng/Desktop/project/ChallengeCup
 python -c "
 import re, os
-with open('docs/tasks/README.md', 'r', encoding='utf-8') as f:
+with open('docs/README.md', 'r', encoding='utf-8') as f:
     text = f.read()
 links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', text)
 broken = []
@@ -811,7 +813,7 @@ If no changes were made, skip this step. If links were fixed:
 
 ```bash
 cd /c/Users/peng/Desktop/project/ChallengeCup
-git add docs/tasks/README.md
+git add docs/README.md
 git commit -m "docs: fix team README internal links"
 ```
 

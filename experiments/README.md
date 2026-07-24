@@ -1,50 +1,49 @@
-# experiments/
+# Experiments
 
 ## 模块职责
 
-实验分析框架，负责多场景多算法交叉跑批、指标采集、结果汇总与统计检验。
+`experiments/` 提供单次实验 CLI、批量实验矩阵和基于 `JointState` 的指标计算。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `runner.py`：`run_batch` 支持 20 路口 × 2 流量 × 3 算法 × 3 种子 = 360 次批量实验。
-- [x] `metrics.py`：基于 `JointState` 的单步指标计算（排队、延误、吞吐量近似）。
+| 文件 | 作用 |
+| --- | --- |
+| `runner.py` | 算法映射、单次 CLI、流量变体和批量组合运行 |
+| `metrics.py` | 每步排队、延误、吞吐量、停车和燃油近似指标 |
 
-## 待完成情况
+## 命令与接口
 
-- [ ] `runner.py`：支持断点续跑、异常处理、结果汇总 CSV。
-- [ ] `metrics.py`：接入精确的行程时间、燃油消耗（需 `tripinfo` 输出或 TraCI 精确读取）。
-- [ ] 实现配对 t 检验、效应量、汇总表生成（统计检验模块）。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 跑批规模 | 20 路口 × 3 算法 × 2 流量 × 3 种子 = 360 次仿真 |
-| 指标覆盖 | 平均行程时间、排队长度、吞吐量、油耗、延误、停车次数 |
-| 统计检验 | 配对 t 检验，量化 CA-MP 相对固定配时的改进 |
-| 断点续跑 | 支持分批完成 360 次仿真 |
-| 结果汇总 | 生成 `output/full_comparison.csv` 供可视化使用 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `runner.py` | 批量跑批框架（360 次） |
-| `metrics.py` | 指标计算 |
-
-## 对外接口
+```powershell
+python experiments/runner.py --intersection 1 --algorithm ca_maxpressure `
+  --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
+```
 
 ```python
 from experiments.runner import run_batch
 
 results = run_batch(
-    intersection_ids=["1", "2", "3"],
+    intersection_ids=["1", "2"],
     algorithms=["fixed_time", "actuated", "ca_maxpressure"],
     seeds=[42, 123, 456],
     steps=3600,
 )
 ```
 
-## 负责人
+## 输入与输出
 
-- EX（实验组）：实验矩阵设计、批量运行、指标采集、统计分析
+- 输入：路口 ID、算法名称、流量倍率/等级、随机种子、步数和输出根目录。
+- 单次 CLI 输出：`csv/` 指标、`logs/` 逐步与事件日志、非 1.0 倍时的 `variants/` 流量文件。
+- `run_batch()` 输出：每次实验的摘要字典列表；每个运行的指标 CSV 写入输出根目录。
+
+## 依赖
+
+- 依赖 `SceneRegistry`、`VariantGenerator`、三种算法和 `SimulationRunner`。
+- 真实运行需要 SUMO/TraCI 和有效路口数据。
+- 默认输出根目录来自 `config/default.yaml`。
+
+## 已知限制
+
+- `run_batch()` 默认矩阵是 20 路口 × 3 算法 × 2 流量等级 × 3 种子，共 360 次，且串行执行。
+- 批量运行没有断点续跑、失败重试或汇总 CSV；返回值仅存在于调用进程。
+- `avg_travel_time` 当前为 0，停车与燃油是近似值，不能替代 `tripinfo` 指标。
+- 尚未提供配对检验、效应量或显著性分析模块。

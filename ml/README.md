@@ -1,53 +1,45 @@
-# ml/
+# ML
 
 ## 模块职责
 
-机器学习模块，负责 EWMA（指数加权移动平均）轻量流量预测，为 CA-MP 算法提供短期流量趋势，修正压力值计算。
+`ml/` 定义从 `JointState` 提取特征、生成轻量模型参数、执行预测和计算预测误差的最小接口。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `features.py`：特征工程 MVI，提供 `extract_features(state, window=5) -> dict` 接口。
-- [x] `train.py`：训练与预测 MVI，提供 `train(features, labels, alpha) -> dict` 和 `predict(model, features) -> float`。
-- [x] `evaluate.py`：模型评估，提供 `evaluate(predictions, actuals) -> dict`（MAE、RMSE）。
+| 文件 | 作用 |
+| --- | --- |
+| `features.py` | 提取队列、流量、等待时间和当前相位特征 |
+| `train.py` | 返回模型参数字典并基于流量均值预测 |
+| `evaluate.py` | 计算 MAE 和 RMSE |
 
-## 待完成情况
-
-- [ ] `features.py`：实现 EWMA 滑动窗口特征（历史流量、排队趋势），利用 `window` 参数。
-- [ ] `train.py`：实现 EWMA 参数校准（α 值选择），替换当前 MVI 默认返回。
-- [ ] `train.py`：`predict()` 接入真实模型推理，替换当前流量均值返回。
-- [ ] 产出 EWMA 模型参数供 CloudCoordinator 使用。
-
-## 接口签名
+## 对外接口
 
 ```python
-# features.py
-def extract_features(state: JointState, window: int = 5) -> Dict[str, list]: ...
+from ml.evaluate import evaluate
+from ml.features import extract_features
+from ml.train import predict, train
 
-# train.py
-def train(features: Dict[str, list], labels: Dict[str, float], alpha: float = 0.3) -> Dict[str, float]: ...
-def predict(model: Dict[str, float], features: Dict[str, list]) -> float: ...
-
-# evaluate.py
-def evaluate(predictions: List[float], actuals: List[float]) -> Dict[str, float]: ...  # {"mae": ..., "rmse": ...}
+features = extract_features(state, window=5)
+model = train(features, labels, alpha=0.3)
+value = predict(model, features)
+metrics = evaluate([value], actuals)
 ```
 
-## 需求分析
+## 输入与输出
 
-| 需求 | 说明 |
-|------|------|
-| 预测目标 | 根据历史流量 EWMA 预测未来短期流量趋势 |
-| 轻量级 | EWMA 不需要 GPU，计算开销极小 |
-| 修正压力 | 预测结果用于修正 CA-MP 的 pressure 计算 |
-| 评估指标 | MAE、RMSE |
+- `extract_features()` 输入 `JointState`，输出列表型特征字典。
+- `train()` 输入特征、标签和 alpha，输出模型参数字典。
+- `predict()` 输出单个浮点预测值。
+- `evaluate()` 输出 `{"mae": ..., "rmse": ...}`。
 
-## 关键文件
+## 依赖
 
-| 文件 | 说明 |
-|------|------|
-| `features.py` | EWMA 特征工程 |
-| `train.py` | EWMA 参数校准 + 预测 |
-| `evaluate.py` | 预测精度评估 |
+- 仅依赖 Python 标准库和 `core.types.JointState`。
+- `CloudPolicy` 有独立 EWMA 实现，当前不调用本目录的训练/预测函数。
 
-## 负责人
+## 已知限制
 
-- AB（算法 B）：EWMA 预测实现与 CA-MP 集成
+- `window` 参数当前未使用，特征不包含历史窗口。
+- `train()` 不执行拟合并返回 `trained=False`。
+- `predict()` 忽略模型参数，返回当前流量特征的均值。
+- 空预测或真实值列表会返回零误差，调用方需自行区分“无样本”和“完美预测”。

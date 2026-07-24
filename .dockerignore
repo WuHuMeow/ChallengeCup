@@ -6,7 +6,6 @@ __pycache__
 output
 experiments/results
 docs
-scripts
 tests
 *.pyc
 .dockerignore

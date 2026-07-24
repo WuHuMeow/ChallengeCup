@@ -36,7 +36,7 @@ XGBoost 是一种常用的梯度提升算法[^1]。
 图片应放在项目内部，避免使用外部图床链接，防止失效。
 
 ```markdown
-![系统架构](./superpowers/specs/images/architecture.png)
+![系统架构](../architecture/images/architecture.png)
 ```
 
 ### 图片规范
@@ -76,7 +76,7 @@ https://sumo.dlr.de/docs/TraCI.html
 ### 相对路径写法
 
 ```markdown
-详见 [系统设计文档](./superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)。
+详见 [系统设计文档](../superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)。
 ```
 
 ### 引用其他目录 README
@@ -90,7 +90,7 @@ https://sumo.dlr.de/docs/TraCI.html
 ## 5. 引用赛题 PDF
 
 ```markdown
-根据 [赛题 PDF](../pdf/XH-202613_面向雄安新区“城市大脑”的车路云.pdf) 第八点要求……
+根据 [赛题 PDF](../reference/competition/XH-202613_面向雄安新区“城市大脑”的车路云.pdf) 第八点要求……
 ```
 
 ---

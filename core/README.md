@@ -1,44 +1,42 @@
-# core/
+# Core
 
 ## 模块职责
 
-全项目共享的核心层，定义数据契约、配置加载和跨模块使用的通用类型。所有算法、仿真引擎、云端策略、API 层均依赖本模块。
+`core/` 定义跨模块共享的数据契约和配置访问方式，是场景、引擎、算法、云端、API 和实验代码的基础依赖。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `types.py`：定义 `SceneMeta`、`Scene`、`JointState`、`ControlAction`、`PredictionResult`、`SimulationMetrics`、`QueueState`、`PhaseInfo`、`TimingPlan` 等核心数据类。
-- [x] `config.py`：实现 YAML 配置加载，支持通过 `CC_DATA_ROOT` 环境变量覆盖数据根目录。
-
-## 待完成情况
-
-- [ ] 根据后续接口演进补充新的共享类型（如 `VehicleState`、`TrafficLightState` 等）。
-- [ ] 如需支持多环境配置（dev/test/prod），可在 `config/` 下增加对应 YAML 文件。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 类型统一 | 避免各模块自行定义同名但结构不同的数据结构 |
-| 配置集中 | 数据路径、SUMO 参数、算法参数统一从 YAML 读取 |
-| 环境兼容 | Windows/Linux/macOS 路径解析一致 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `types.py` | 核心数据契约 |
-| `config.py` | 配置加载器 |
+| 文件 | 作用 |
+| --- | --- |
+| `types.py` | 场景、队列、车辆、联合状态、动作、预测和指标数据类 |
+| `config.py` | YAML 加载、点号键访问和仓库相对路径解析 |
 
 ## 对外接口
 
 ```python
-from core.types import JointState, ControlAction, SceneMeta
 from core.config import get_config
+from core.types import ControlAction, JointState, QueueState, SceneMeta
 
 config = get_config()
-data_root = config.path("paths.data_root")
+output_root = config.path("paths.output_root")
 ```
 
-## 负责人
+`JointState` 是算法与云端策略的主要输入，`ControlAction` 是控制器输出，`SimulationMetrics` 是采集与实验输出契约。
 
-- TL（Tech Lead）：统一维护接口契约，其他人按需使用。
+## 输入与输出
+
+- `Config` 输入 `config/default.yaml` 或首次实例化时提供的 YAML 路径。
+- `Config.get()` 输出配置值，`Config.path()` 输出规范化绝对路径。
+- 数据类只承载状态，不执行 I/O；字段定义见 `docs/architecture/interface.md`。
+
+## 依赖
+
+- `config.py` 依赖 PyYAML。
+- `types.py` 仅依赖 Python 标准库。
+
+## 已知限制
+
+- `QueueState.capacity=0` 表示未知，消费者必须避免除零或提供退化策略。
+- `arrival_history` 是每步进入路网车辆数列表，不区分进口方向。
+- 数据类没有运行时 schema 校验或序列化层；API 需要自行转换。
+- `Config` 单例不会自动检测磁盘配置变化。

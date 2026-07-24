@@ -1,49 +1,45 @@
-# api/
+# API
 
 ## 模块职责
 
-REST API 层，基于 FastAPI 提供实验控制、场景管理、算法切换、指标查询等接口，同时暴露云-边-端协同端点。
+`api/` 使用 FastAPI 暴露健康检查、场景查询、运行状态和车路云协同接口，供 Swagger、Postman 或演示前端调用。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `server.py`：FastAPI 应用，已定义全部端点。
-- [x] 根级接口：`/health`、`/scenes`（接入 SceneRegistry）、`/run`、`/status` 可正常运行。
-- [ ] `/api/*` 端点仍返回 mock 数据，未接入真实 runner。
+| 文件 | 作用 |
+| --- | --- |
+| `server.py` | FastAPI 应用、请求模型和全部路由 |
 
-## 待完成情况
+## 命令与接口
 
-- [ ] 接入 `scenes.registry.SceneRegistry`，实现 `/api/scenes` 真实数据。
-- [ ] 接入 `engine.runner.SimulationRunner`，实现 `/api/simulation/start|stop`。
-- [ ] 接入 `experiments.runner.run_batch`，实现 `/api/experiments/run`。
-- [ ] 接入 `cloud.cloud_policy.CloudPolicy`，实现 `/api/cloud/predict`。
-- [ ] 接入 `algorithms.ca_max_pressure.CAMaxPressureAlgorithm`，实现 `/api/edge/control`。
-- [ ] 编写 `docs/api-spec.md` 接口文档与 Postman Collection。
-- [ ] 绘制 `docs/数据流图.png`。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 实验控制 | 启动/停止仿真、切换算法、启动跑批 |
-| 场景管理 | 列出场景、加载场景 |
-| 结果查询 | 当前指标、对比结果 |
-| 云-边-端接口 | `/api/cloud/*`、`/api/edge/*`、`/api/vehicle/*` 体现三层协同 |
-| 接口文档 | Postman Collection + Swagger UI |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `server.py` | FastAPI 应用 |
-
-## 对外接口
-
-```bash
+```powershell
 uvicorn api.server:app --reload
-# 访问 http://127.0.0.1:8000/docs
 ```
 
-## 负责人
+| 路由 | 当前行为 |
+| --- | --- |
+| `GET /health` | 返回服务健康状态 |
+| `GET /scenes` | 通过 `SceneRegistry` 返回可发现路口 |
+| `POST /run` | 生成运行 ID 并记录内存状态，不启动 SUMO |
+| `GET /status` | 返回内存中的最近运行状态 |
+| `/api/scenes`、`/api/simulation/*` | 接口占位或静态响应 |
+| `/api/cloud/predict`、`/api/edge/control`、`/api/vehicle/status` | 协同接口占位响应 |
 
-- IB（仿真基础设施 B）：云-边-端消息流、API 接口
-- TL（Tech Lead）：接口定义与集成协调
+## 输入与输出
+
+- `StartRequest` 输入 `intersection_id`、`algorithm` 和 `steps`。
+- `SwitchRequest` 输入算法名称。
+- 输出为 JSON；交互式 OpenAPI 文档位于 `/docs`。
+
+## 依赖
+
+- 依赖 FastAPI、Pydantic 和 Uvicorn。
+- `/scenes` 依赖 `scenes.SceneRegistry` 与本地路口数据。
+- 请求/响应数据契约与核心类型定义见 `docs/architecture/interface.md`。
+
+## 已知限制
+
+- `/run` 和 `/api/simulation/*` 不会创建后台任务或启动 `SimulationRunner`。
+- 多数 `/api/*` 路由尚未接入 `CloudPolicy`、控制算法或实时指标。
+- 运行状态仅保存在当前 Python 进程内，不支持并发隔离、持久化或跨进程查询。
+- `/scenes` 捕获所有异常并返回空列表，调用方无法从响应区分空数据与配置错误。

@@ -1,3 +1,4 @@
+# 默认运行时配置。相对路径由 core.config 以仓库根目录为基准解析。
 project:
   name: "雄安新区城市大脑车路云一体化协同管控算法与仿真平台"
   version: "0.1.0"
@@ -43,6 +44,8 @@ algorithms:
     ewma_alpha: 0.3
     # 云端流量预测时域（秒）
     prediction_horizon: 300
+    # 云端参数下发间隔（秒），与 cloud/cloud_policy.py dispatch_params 默认值对应
+    cloud_update_interval: 60
 
 metrics:
   # 每 60 仿真秒记录一次快照，降低 CSV 体积。

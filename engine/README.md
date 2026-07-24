@@ -1,62 +1,50 @@
-# engine/
+# Engine
 
 ## 模块职责
 
-仿真引擎层，负责 SUMO 生命周期管理、TraCI 数据读写、每步仿真状态与指标采集。是算法层与 SUMO 之间的唯一桥接。
+`engine/` 封装 SUMO/TraCI 生命周期、离线 Mock 状态、每步控制循环、指标采集、详细日志、事件日志和可选 V2X 延迟通道。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `traci_bridge.py`：`TraCIBridge` 类，负责启动 SUMO、读取联合状态、写入控制动作。支持 `additional_files` 透传（2026-07-23 修复）。
-- [x] `mock_bridge.py`：`MockBridge` 类，与 TraCIBridge 接口一致的离线替代，用于无 SUMO 环境。
-- [x] `runner.py`：`SimulationRunner` 类，负责单次仿真的完整生命周期（启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭）。支持通过 `bridge` 参数注入 MockBridge；优先使用 `configs/` 增强版配置（2026-07-23）。
-- [x] `collector.py`：`MetricsCollector` 类，按固定间隔将 `JointState` 和指标写入 CSV。
-- [x] `configs/`：增强版 sumocfg ×20（IA 生成），引用只读原始数据，含 tripinfo/fcd/summary 输出与 GUI 自动播放设置；20/20 通过 3600 步全量验证（`docs/batch_validate_report.md`）。
-
-## 待完成情况
-
-- [ ] `traci_bridge.py`：完善车道 ID 到方向（north/south/east/west）的映射；精确读取行程时间（`travelTime`）和燃油消耗（`fuel`）。
-- [ ] `runner.py`：支持按流量变体替换 `.flow.xml` 后运行；支持异常中断恢复。
-- [ ] `collector.py`：根据 ML 训练需求调整 CSV 列（如增加 `vehicles_json`、`signals_json` 等）。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| SUMO 生命周期封装 | 算法层无需关心 `traci.start`/`traci.close` 细节 |
-| 实时状态读取 | 每步提供排队长度、流量、当前相位等联合状态 |
-| 控制指令写入 | 支持设置信号灯相位、相位时长、切换程序 |
-| CSV 输出 | 为 ML 训练和实验分析提供标准化数据 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `traci_bridge.py` | TraCI 批量读写桥接 |
-| `mock_bridge.py` | 离线 Mock 桥接（无 SUMO） |
-| `runner.py` | 单次仿真实验运行器 |
-| `collector.py` | 仿真数据采集器 |
-| `configs/` | 增强版 sumocfg ×20（由 `scripts/generate_configs.py` 生成，勿手改） |
+| 文件 | 作用 |
+| --- | --- |
+| `runner.py` | `SimulationRunner` 运行循环和输出协调 |
+| `traci_bridge.py` | SUMO 启停、状态读取、车辆采样和动作写入 |
+| `mock_bridge.py` | 与运行器兼容的确定性离线桥接 |
+| `collector.py` | 指标快照 CSV 和逐步日志 CSV |
+| `events.py` | 运行生命周期与控制动作事件 CSV |
+| `edge_channel.py` | 方向过滤和固定步数延迟的内存消息通道 |
+| `configs/` | 由 `scripts/simulation/generate_configs.py` 生成的 20 个增强 SUMO 配置 |
 
 ## 对外接口
 
 ```python
-from engine.runner import SimulationRunner
 from engine.mock_bridge import MockBridge
-from scenes.registry import SceneRegistry
+from engine.runner import SimulationRunner
 
-scene = SceneRegistry().get_scene("1")
-
-# SUMO 模式
-runner = SimulationRunner(scene, algorithm)
-runner.run(steps=3600)
-
-# Mock 模式（无 SUMO）
 bridge = MockBridge(tls_id="tls_0", directions=["E0", "E1", "E2", "E3"])
 runner = SimulationRunner(scene, algorithm, bridge=bridge)
-runner.run(steps=10)
+history = runner.run(steps=10)
 ```
 
-## 负责人
+未传入 `bridge` 时，`SimulationRunner` 创建 `TraCIBridge`，优先使用 `engine/configs/demo_N.sumocfg`。
 
-- IB（仿真基础设施 B）：SumoSimulator 封装、TraCI 接口、云-边-端消息流
-- IA（仿真基础设施 A）：配合校验 SUMO 文件可用性
+## 输入与输出
+
+- 输入：`Scene`、实现 `BaseControlAlgorithm` 的控制器、步数、随机种子和可选附加 flow 文件。
+- 状态：桥接层生成 `JointState`，算法返回 `ControlAction`。
+- 输出：指标 CSV、可选逐步日志 CSV、可选事件 CSV，以及内存中的指标快照列表。
+
+## 依赖
+
+- 真实桥接依赖 SUMO/TraCI、路口工程和边映射元数据。
+- 运行器依赖 `algorithms`、`core` 和 `experiments.metrics`。
+- Mock 模式不启动 SUMO，但仍需要有效 `Scene` 元数据。
+
+## 已知限制
+
+- `SimulationRunner` 能在 FatalTraCIError 后关闭并保存已有输出，但不支持断点恢复。
+- `MockBridge` 只验证接口与确定性行为，不模拟真实交通动力学。
+- 车辆快照最多保留 500 辆并可采样；`arrival_history` 只记录 departed 数，不区分方向。
+- 行程时间和燃油指标仍需通过 SUMO `tripinfo` 二次校准。
+- `engine/configs/` 是生成文件，修改应回到生成脚本后重新生成。

@@ -1,5 +1,7 @@
 # 雄安"城市大脑"车路云 — 赛道B 实施计划
 
+> **历史快照：** 本计划包含项目初始骨架阶段的测试与脚本路径，其中部分从未成为当前仓库接口。所有命令仅保留为历史实施记录，不可直接执行；现行命令见根 `README.md`、`scripts/README.md` 和 `tests/README.md`。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 构建 ML 增强的交通管控算法优化系统——SUMO 仿真引擎 + 场景管理 + 三种递进算法（固定基线/规则自适应/ML增强）+ 实验跑批框架 + 可视化报告。
@@ -193,7 +195,7 @@ def test_runner_start_and_close():
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-pytest tests/test_engine/test_runner.py::test_runner_start_and_close -v
+# Historical command (path no longer exists): pytest tests/test_engine/test_runner.py::test_runner_start_and_close -v
 ```
 
 - [ ] **Step 3: 实现 SimulationRunner**
@@ -243,7 +245,7 @@ class SimulationRunner:
 - [ ] **Step 4: 运行测试确认通过**
 
 ```bash
-pytest tests/test_engine/test_runner.py::test_runner_start_and_close -v
+# Historical command (path no longer exists): pytest tests/test_engine/test_runner.py::test_runner_start_and_close -v
 ```
 
 - [ ] **Step 5: 实现 TraciBridge**
@@ -520,7 +522,7 @@ def test_registry_loads_all_scenes():
 - [ ] **Step 3: 运行测试**
 
 ```bash
-pytest tests/test_scenes/test_registry.py -v
+# Historical command (path no longer exists): pytest tests/test_scenes/test_registry.py -v
 ```
 
 - [ ] **Step 4: 实现 SceneValidator**
@@ -859,7 +861,7 @@ def test_algorithm_interface():
 - [ ] **Step 4: 运行测试**
 
 ```bash
-pytest tests/test_algorithms/test_base.py -v
+# Historical command (path no longer exists): pytest tests/test_algorithms/test_base.py -v
 ```
 
 - [ ] **Step 5: Commit**
@@ -990,7 +992,7 @@ print(f"共 {len(collector.get_dataframe())} 步数据")
 
 ```bash
 mkdir -p output
-python scripts/run_baseline.py
+# Historical command (path no longer exists): python scripts/run_baseline.py
 ```
 
 - [ ] **Step 3: 验证 CSV 产出**
@@ -1054,7 +1056,7 @@ def test_extract_features_shape():
 - [ ] **Step 2: 运行测试确认失败**
 
 ```bash
-pytest tests/test_ml/test_features.py -v
+# Historical command (path no longer exists): pytest tests/test_ml/test_features.py -v
 ```
 
 - [ ] **Step 3: 实现特征工程**
@@ -1140,7 +1142,7 @@ def split_data(
 - [ ] **Step 4: 运行测试**
 
 ```bash
-pytest tests/test_ml/test_features.py -v
+# Historical command (path no longer exists): pytest tests/test_ml/test_features.py -v
 ```
 
 - [ ] **Step 5: Commit**
@@ -1753,7 +1755,7 @@ def test_switch_algorithm_invalid():
 ```
 
 ```bash
-pytest tests/test_api/test_routes.py -v
+# Historical command (path no longer exists): pytest tests/test_api/test_routes.py -v
 ```
 
 - [ ] **Step 4: Commit**
@@ -1964,7 +1966,7 @@ def test_compute_metrics(tmp_path):
 ```
 
 ```bash
-pytest tests/test_experiments/test_metrics.py -v
+# Historical command (path no longer exists): pytest tests/test_experiments/test_metrics.py -v
 ```
 
 - [ ] **Step 3: Commit**
@@ -2336,13 +2338,13 @@ if __name__ == '__main__':
 - [ ] **Step 2: 生成报告**
 
 ```bash
-python visualization/report.py
+# Historical command (path no longer exists): python visualization/report.py
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add visualization/report.py docs/experiment-report.md
+# Historical command (paths no longer exist): git add visualization/report.py docs/experiment-report.md
 git commit -m "feat: Markdown experiment report generator"
 ```
 

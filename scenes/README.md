@@ -1,57 +1,46 @@
-# scenes/
+# Scenes
 
 ## 模块职责
 
-场景管理层，负责 20 个路口数据的统一注册、索引、变体生成、Excel 配时读取，以及场景校验和扰动事件注入。
+`scenes/` 将 20 个路口工程注册为统一 `Scene`，读取 Excel 信号配时，并生成不修改原始数据的流量 XML 变体。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `registry.py`：`SceneRegistry` 自动发现 20 个路口，输出 `SceneMeta`，兼容 `高精地图`/`高清地图` 命名差异。
-- [x] `variant.py`：`VariantGenerator` 支持生成 1.0x（NORMAL）/ 1.5x（HIGH）流量变体。
-- [x] `timing_loader.py`：从 Excel 读取信号配时方案，输出 `TimingPlan`。
-- [ ] `validator.py`：尚未实现（规划中，不在当前项目结构内）。
-- [ ] `perturbation.py`：尚未实现（规划中）。
-- [ ] `osm_importer.py`：尚未实现（规划中，可扩展接口）。
-
-## 待完成情况
-
-- [ ] `validator.py`：实现无算法仿真校验，检测死锁、未完成任务车辆比例。
-- [ ] `perturbation.py`：实现施工占道（关闭车道）、大型活动（临时 OD 流量）、学校高峰等扰动事件注入。
-- [ ] `osm_importer.py`：可选实现 OSM / 规划图纸路网导入骨架。
-
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 统一索引 | 20 个路口分散在不同目录，需要统一入口 |
-| 变体生成 | 支持 40 个场景（20 路口 × 2 流量等级）用于对比实验 |
-| 配时读取 | 固定配时基线需读取 Excel 配时方案 |
-| 扰动注入 | PDF 功能二要求支持施工占道、大型活动等扰动 |
-| 场景校验 | 跑批前需确认场景不会死锁 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `registry.py` | 20 路口元数据索引 |
-| `variant.py` | 流量变体生成 |
-| `timing_loader.py` | Excel 配时读取 |
+| 文件 | 作用 |
+| --- | --- |
+| `registry.py` | 扫描数字路口目录并构建 `SceneMeta` |
+| `variant.py` | 缩放 flow 数量并重命名 vType/flow ID，避免重复定义 |
+| `timing_loader.py` | 解析 Excel 配时工作表为 `TimingPlan` |
 
 ## 对外接口
 
 ```python
+from core.types import TrafficLevel
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
-from core.types import TrafficLevel
 
 registry = SceneRegistry()
 scene = registry.get_scene("1")
-
-vg = VariantGenerator()
-flow_file = vg.generate(scene.meta, TrafficLevel.HIGH, output_dir)
+variant = VariantGenerator().generate(scene.meta, TrafficLevel.HIGH, output_dir)
 ```
 
-## 负责人
+`parse_timing_excel(path)` 返回时段名称到 `TimingPlan` 的映射。
 
-- IA（仿真基础设施 A）：SUMO 版本统一、20 路口迁移验证
-- IB（仿真基础设施 B）：配合校验
+## 输入与输出
+
+- 输入：`data/intersection_data/{id}/` 下的 SUMO XML、流量/配时 Excel 和可选地图 PNG。
+- `SceneRegistry` 输出 `SceneMeta` 或 `Scene`。
+- `VariantGenerator` 输出新的 `.flow.xml`，不覆盖原始 flow 文件。
+- 配时加载器输出内存中的 `TimingPlan`。
+
+## 依赖
+
+- 依赖 `core.config`、`core.types`、pandas 和 Python XML 标准库。
+- 默认数据根目录来自 `config/default.yaml`，可由 `CC_DATA_ROOT` 覆盖。
+
+## 已知限制
+
+- 注册表只扫描名称为数字的一级目录，并要求固定的中文子目录和文件命名。
+- 路口缺少 net、route、flow、sumocfg 或 Excel 任一必要文件时会被跳过。
+- 变体生成只缩放 `<flow number>`；不会缩放 `probability` 或 `vehsPerHour`。
+- 当前没有场景死锁验证、施工占道、活动扰动或 OSM 导入模块。

@@ -129,7 +129,7 @@ class JointState:
 
 ## 10. 测试计划
 
-更新 `tests/test_algorithms.py` 与（如需）`tests/test_mock_bridge.py`：
+更新 `tests/unit/test_algorithms.py` 与（如需）`tests/unit/test_mock_bridge.py`：
 
 - 替换 `test_ca_maxpressure_mvi_selects_max_queue_phase`（断言 "MVI" 字样，随实现废弃）为：
   - 容量归一化：短车道高 queue/capacity 时优先于长车道低比率方向；

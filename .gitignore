@@ -27,7 +27,11 @@ Thumbs.db
 *queues.xml
 
 # Experiment outputs
-output/
+output/*
+!output/README.md
+!output/deliverables/
+output/deliverables/*
+!output/deliverables/README.md
 experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv

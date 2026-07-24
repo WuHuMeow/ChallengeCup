@@ -1,6 +1,6 @@
 # 20 路口元数据 - 供批量脚本读取
 # 维护者：A 组
-# 本文件由 scripts/extract_metadata.py 自动生成，请勿手改；更新规则：发现新信息时在脚本的 NOTES 中补充后重新生成
+# 本文件由 scripts/data/extract_metadata.py 自动生成，请勿手改；更新规则：发现新信息时在脚本的 NOTES 中补充后重新生成
 
 intersections:
 - id: 1
@@ -85,7 +85,7 @@ intersections:
   has_queues: false
   edge_naming: -E0/-E1/-E2/-E3/-E4/E0/E1/E2/E3/E4
   map_folder: 高精地图
-  notes: 配时缺黄灯相位（原始文件遗留，见 docs/migration_log.md）
+  notes: 配时缺黄灯相位（原始文件遗留，见 docs/reports/sumo-migration-log.md）
 - id: 10
   timestep_s: 1.0
   sumo_versions:
@@ -114,7 +114,7 @@ intersections:
   has_queues: true
   edge_naming: -E0/-E1/-E2/-E3/E0/E1/E2/E3
   map_folder: 高精地图
-  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）
+  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/reports/sumo-migration-log.md）
 - id: 13
   timestep_s: 0.1
   sumo_versions:
@@ -170,7 +170,7 @@ intersections:
   has_queues: true
   edge_naming: -E0/-E1/-E1.42/-E2/-E2.41/-E3/E0/E0.40/E1/E2/E3
   map_folder: 高精地图
-  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）
+  notes: tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/reports/sumo-migration-log.md）
 - id: 19
   timestep_s: 0.1
   sumo_versions:

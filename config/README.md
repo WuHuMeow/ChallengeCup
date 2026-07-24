@@ -1,41 +1,45 @@
-# config/
+# Config
 
 ## 模块职责
 
-存放项目全局配置文件，包括数据路径、SUMO 参数、算法参数、指标采集间隔等。
+`config/` 保存项目默认运行时配置，集中管理仓库路径、SUMO 参数、场景流量等级、算法阈值、指标采样和日志格式。
 
-## 当前完成情况
+## 文件索引
 
-- [x] `default.yaml`：已包含项目信息、路径配置、SUMO 参数、场景流量等级、算法参数、指标采集间隔、日志格式。
+| 文件 | 作用 |
+| --- | --- |
+| `default.yaml` | `core.config.Config` 默认加载的 YAML 配置 |
 
-## 待完成情况
+## 对外接口
 
-- [ ] 根据实验需要增加 `test.yaml` 或 `prod.yaml` 等多环境配置。
-- [ ] 根据算法调参进展更新 `algorithms.*` 参数。
+```python
+from core.config import get_config
 
-## 需求分析
-
-| 需求 | 说明 |
-|------|------|
-| 路径可配置 | 数据根目录、输出目录可集中修改 |
-| 算法参数可配置 | 固定配时、感应控制、CA-MP 的参数集中管理 |
-| 环境变量覆盖 | 支持 `CC_DATA_ROOT` 等环境变量临时覆盖 |
-
-## 关键文件
-
-| 文件 | 说明 |
-|------|------|
-| `default.yaml` | 默认全局配置 |
-
-## 当前配置说明
-
-```yaml
-paths.data_root: "./data/intersection_data"   # 20 个路口数据目录
-sumo.binary: "sumo"                           # 批量跑批用命令行版
-scene.default_traffic_levels: {normal:1.0, high:1.5}  # 原始 + 1.5 倍压力
-algorithms.fixed_time.use_excel_timing: false # 是否使用 Excel 配时
+config = get_config()
+steps = config.get("sumo.default_simulation_steps", 3600)
+data_root = config.path("paths.data_root")
 ```
 
-## 负责人
+可用环境变量覆盖路口数据根目录：
 
-- TL：维护配置结构，其他人按模块读取对应参数。
+```powershell
+$env:CC_DATA_ROOT = "D:\data\intersection_data"
+```
+
+## 输入与输出
+
+- 输入：UTF-8 YAML；相对路径按仓库根目录解析。
+- 输出：`Config.get()` 返回标量或嵌套对象，`Config.path()` 返回绝对 `Path`。
+- 主要路径：`data/intersection_data`、`output` 和可选 `ml/model.pkl`。
+
+## 依赖
+
+- 配置加载依赖 PyYAML。
+- 字段消费者包括 `core`、`scenes`、`engine`、`algorithms` 和 `cloud`。
+
+## 已知限制
+
+- `Config` 是进程级单例；首次加载后再次传入其他 YAML 路径不会重新加载。
+- 仅 `CC_DATA_ROOT` 有环境变量覆盖逻辑，其他字段不能直接用环境变量覆盖。
+- 配置不进行 schema 校验；拼写错误通常会在消费者读取时才暴露。
+- `paths.model_path` 可以不存在，此时 `CloudPolicy` 回退到 EWMA。

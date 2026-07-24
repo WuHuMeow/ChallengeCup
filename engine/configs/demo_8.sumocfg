@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- 增强版配置：由 scripts/generate_configs.py 生成，引用原始数据（只读） -->
+<!-- 增强版配置：由 scripts/simulation/generate_configs.py 生成，引用原始数据（只读） -->
 <configuration>
     <input>
         <net-file value="../../data/intersection_data/8/sumo工程/demo_8.net.xml"/>

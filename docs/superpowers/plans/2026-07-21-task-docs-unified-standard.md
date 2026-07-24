@@ -1,5 +1,7 @@
 # 任务书统一标准 Implementation Plan
 
+> **历史快照：** 本计划记录任务书迁移前的文件名和目录。旧 `docs/tasks/` 路径属于原始实施范围，不可作为当前命令；现行任务入口见 `docs/team/tasks/`。
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将 TL 角色的 W1-W6 任务书改写为统一标准模板，作为其余 7 个角色的参考。
@@ -160,13 +162,13 @@ class BaseControlAlgorithm(ABC):
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w1/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w1/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W1 任务书`，第三行以 `> 周期：7/20–7/26` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w1/TL_tech_lead.md
+git add docs/team/tasks/w1/tl-technical-lead.md
 git commit -m "docs: rewrite TL W1 task doc to unified standard"
 ```
 
@@ -228,7 +230,7 @@ git commit -m "docs: rewrite TL W1 task doc to unified standard"
 - [ ] 提出修改意见，记录到 Issue 或文档中
 - [ ] 跟踪修复进度
 
-**验证：** `python -m pytest tests/test_algorithms.py tests/test_cloud.py -v` → 全部 passed
+**验证：** `python -m pytest tests/unit/test_algorithms.py tests/unit/test_cloud.py -v` → 全部 passed
 
 ### Day 5（7/31）
 
@@ -301,13 +303,13 @@ def predict(self, state: JointState) -> PredictionResult:
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w2/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w2/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W2 任务书`，第三行以 `> 周期：7/27–8/2` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w2/TL_tech_lead.md
+git add docs/team/tasks/w2/tl-technical-lead.md
 git commit -m "docs: rewrite TL W2 task doc to unified standard"
 ```
 
@@ -426,13 +428,13 @@ results = run_batch(
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w3/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w3/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W3 任务书`，第三行以 `> 周期：8/3–8/9` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w3/TL_tech_lead.md
+git add docs/team/tasks/w3/tl-technical-lead.md
 git commit -m "docs: rewrite TL W3 task doc to unified standard"
 ```
 
@@ -476,7 +478,7 @@ git commit -m "docs: rewrite TL W3 task doc to unified standard"
 - [ ] 如 EWMA 效果不明显或引入 bug，与 AB 讨论是否保留
 - [ ] 记录结论到文档
 
-**验证：** `python -m pytest tests/test_cloud.py -v` → 全部 passed
+**验证：** `python -m pytest tests/unit/test_cloud.py -v` → 全部 passed
 
 ### Day 3（8/12）
 
@@ -564,13 +566,13 @@ class CloudPolicy:
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w4/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w4/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W4 任务书`，第三行以 `> 周期：8/10–8/16` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w4/TL_tech_lead.md
+git add docs/team/tasks/w4/tl-technical-lead.md
 git commit -m "docs: rewrite TL W4 task doc to unified standard"
 ```
 
@@ -686,13 +688,13 @@ print(df[["avg_queue_length", "avg_delay", "total_throughput"]].mean())
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w5/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w5/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W5 任务书`，第三行以 `> 周期：8/17–8/23` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w5/TL_tech_lead.md
+git add docs/team/tasks/w5/tl-technical-lead.md
 git commit -m "docs: rewrite TL W5 task doc to unified standard"
 ```
 
@@ -817,13 +819,13 @@ git tag -l  # 应包含 v0.1 ~ v1.0-final
 
 - [ ] **Step 2: 验证文件格式**
 
-Run: `head -5 docs/tasks/w6/TL_tech_lead.md`
+Run: `head -5 docs/team/tasks/w6/tl-technical-lead.md`
 Expected: 第一行为 `# Tech Lead W6 任务书`，第三行以 `> 周期：8/24–8/31` 开头
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/tasks/w6/TL_tech_lead.md
+git add docs/team/tasks/w6/tl-technical-lead.md
 git commit -m "docs: rewrite TL W6 task doc to unified standard"
 ```
 
@@ -838,7 +840,7 @@ git commit -m "docs: rewrite TL W6 task doc to unified standard"
 
 Run:
 ```bash
-for i in 1 2 3 4 5 6; do echo "=== W$i ==="; grep "^## " docs/tasks/w$i/TL_tech_lead.md; done
+for i in 1 2 3 4 5 6; do echo "=== W$i ==="; grep "^## " docs/team/tasks/w$i/tl-technical-lead.md; done
 ```
 
 Expected: 每个文件都包含以下段落（顺序一致）：
@@ -852,7 +854,7 @@ Expected: 每个文件都包含以下段落（顺序一致）：
 
 Run:
 ```bash
-for i in 1 2 3 4 5 6; do echo "W$i:"; grep -c "验证" docs/tasks/w$i/TL_tech_lead.md; done
+for i in 1 2 3 4 5 6; do echo "W$i:"; grep -c "验证" docs/team/tasks/w$i/tl-technical-lead.md; done
 ```
 
 Expected: 每个文件 ≥ 7（每天至少一条）
@@ -861,7 +863,7 @@ Expected: 每个文件 ≥ 7（每天至少一条）
 
 Run:
 ```bash
-for i in 1 2 3 4 5 6; do lines=$(wc -l < docs/tasks/w$i/TL_tech_lead.md); echo "W$i: $lines lines"; done
+for i in 1 2 3 4 5 6; do lines=$(wc -l < docs/team/tasks/w$i/tl-technical-lead.md); echo "W$i: $lines lines"; done
 ```
 
 Expected: 每个文件 80-150 行（W1 原文 237 行应大幅缩短，W2-W6 原文 54-83 行应适当增长）
@@ -869,6 +871,6 @@ Expected: 每个文件 80-150 行（W1 原文 237 行应大幅缩短，W2-W6 原
 - [ ] **Step 4: Final commit**
 
 ```bash
-git add docs/tasks/
+git add docs/team/tasks/
 git commit -m "docs: TL W1-W6 task docs rewritten to unified standard (template)"
 ```

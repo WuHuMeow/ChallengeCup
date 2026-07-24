@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from core.types import ControlAction, JointState, QueueState
+from core.types import ControlAction, JointState, QueueState, VehicleState
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +25,17 @@ class MockBridge:
         tls_id: str = "tls_0",
         directions: Optional[List[str]] = None,
         step_length: float = 1.0,
+        vehicle_sample_rate: int = 1,
     ) -> None:
         self.tls_id = tls_id
         self.directions = directions or list(DEFAULT_DIRECTIONS)
         self.step_length = step_length
+        self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self._current_step: int = 0
         self._started: bool = False
         self._applied_actions: List[ControlAction] = []
+        self._arrivals: List[int] = []  # 最近 300 步每步进入路网车辆数
+        self.lane_directions: dict[str, str] = {}  # 与 TraCIBridge 接口对齐（Mock 无方位映射）
 
     def start(self) -> None:
         """模拟启动，标记桥接器为已启动状态。"""
@@ -46,6 +50,8 @@ class MockBridge:
     def step(self) -> float:
         """推进一个仿真步，返回当前仿真时间。"""
         self._current_step += 1
+        self._arrivals.append(1)  # Mock: 每步 1 辆进入
+        self._arrivals = self._arrivals[-300:]  # 保持最近 300 条
         current_time = self._current_step * self.step_length
         return current_time
 
@@ -65,6 +71,7 @@ class MockBridge:
                     queue_length=queue_length,
                     waiting_time=waiting_time,
                     vehicle_count=vehicle_count,
+                    capacity=self.get_lane_capacity(direction),
                 )
             )
             flows[direction] = float(vehicle_count) * 3600.0
@@ -80,7 +87,18 @@ class MockBridge:
             queues=queues,
             flows=flows,
             detector_values={},
+            vehicles=self._mock_vehicles(),
+            arrival_history=list(self._arrivals),
         )
+
+    def _mock_vehicles(self) -> List[VehicleState]:
+        """确定性车辆快照：每个方向 4 辆，按 sample_rate 抽稀。"""
+        vehicles = [
+            VehicleState(vehicle_id=f"mock_{d}_{i}", lane_id=d, speed=10.0)
+            for d in self.directions
+            for i in range(4)
+        ]
+        return vehicles[:: self.vehicle_sample_rate]
 
     def apply_actions(self, actions: List[ControlAction]) -> None:
         """记录控制动作（无实际操作）。"""
@@ -92,3 +110,7 @@ class MockBridge:
                 action.value,
             )
         self._applied_actions.extend(actions)
+
+    def get_lane_capacity(self, lane_id: str) -> float:
+        """确定性容量：20 辆（对应 150m 车道 / 7.5m）。"""
+        return 20.0

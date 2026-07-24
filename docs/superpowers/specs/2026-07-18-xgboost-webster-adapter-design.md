@@ -1,5 +1,5 @@
 > **（注意） 已废弃**：本设计文档（XGBoost + Webster 方案）已被 CA-MP（Capacity-Aware MaxPressure）方案取代。
-> 当前项目算法方向为 CA-MP，详见 `docs/tasks/roadmap.md` 和根目录 `README.md`。
+> 当前项目算法方向为 CA-MP，详见 `docs/team/project-roadmap.md` 和根目录 `README.md`。
 > 本文件仅作历史参考保留。
 
 ---

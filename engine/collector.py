@@ -57,3 +57,47 @@ class MetricsCollector:
             writer.writerows(self._rows)
 
         logger.info("已保存 %d 条记录到 %s", len(self._rows), self.output_file)
+
+
+class StepLogger:
+    """每步仿真日志（simulation_log.csv）：相位 + 各方向排队/压力。
+
+    Args:
+        output_file: 输出 CSV 路径（父目录自动创建）。
+    """
+
+    def __init__(self, output_file: Path) -> None:
+        self.output_file = Path(output_file)
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        self._rows: List[dict] = []
+
+    def record(self, step: int, state: JointState) -> None:
+        """记录单步：pressure = queue_length / capacity（capacity=0 时记空）。
+
+        Args:
+            step: 当前仿真步。
+            state: 当前联合状态。
+        """
+        row: dict = {
+            "step": step,
+            "timestamp": state.timestamp,
+            "current_phase": state.current_phase,
+        }
+        for q in state.queues:
+            row[f"queue_{q.direction}"] = q.queue_length
+            row[f"pressure_{q.direction}"] = (
+                round(q.queue_length / q.capacity, 4) if q.capacity > 0 else ""
+            )
+        self._rows.append(row)
+
+    def save(self) -> None:
+        """写入 CSV 文件；无记录时为 no-op。"""
+        if not self._rows:
+            logger.warning("没有数据可保存")
+            return
+        fieldnames = list(self._rows[0].keys())
+        with open(self.output_file, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self._rows)
+        logger.info("已保存每步日志 %d 行到 %s", len(self._rows), self.output_file)
