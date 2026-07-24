@@ -13,7 +13,7 @@ fi
 check_forbidden() {
     pattern="$1"
     message="$2"
-    if matches=$(git grep --no-index --exclude-standard -nE "$pattern" -- engine cloud experiments); then
+    if matches=$(git grep --no-index --exclude-standard -nE "$pattern" -- ca_mp/engine ca_mp/cloud ca_mp/experiments); then
         printf '%s\n' "$matches"
         echo "$message"
         return 1
@@ -26,7 +26,7 @@ check_forbidden() {
     fi
 }
 
-python -m flake8 engine/ cloud/ experiments/ --max-line-length=100
+python -m flake8 ca_mp/engine/ ca_mp/cloud/ ca_mp/experiments/ --max-line-length=100
 check_forbidden "breakpoint\(\)|pdb\.set_trace" "FOUND DEBUG CODE"
 check_forbidden "TODO|FIXME|XXX" "FOUND TODO"
 echo "clean"

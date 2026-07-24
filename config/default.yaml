@@ -8,13 +8,13 @@ paths:
   # 如需使用本地其他路径，可通过环境变量 CC_DATA_ROOT 覆盖。
   data_root: "./data/intersection_data"
   output_root: "./output"
-  model_path: "./ml/model.pkl"
+  model_path: "./ca_mp/ml/model.pkl"
 
 sumo:
   # 批量跑批推荐用命令行版 sumo；需要可视化观察时改为 sumo-gui。
   binary: "sumo"
-  step_length: 1.0
-  default_simulation_steps: 3600
+  step_length: 0.1
+  default_simulation_steps: 36000
 
 scene:
   # 20 路口 × 2 流量等级 = 40 个变体
@@ -44,12 +44,12 @@ algorithms:
     ewma_alpha: 0.3
     # 云端流量预测时域（秒）
     prediction_horizon: 300
-    # 云端参数下发间隔（秒），与 cloud/cloud_policy.py dispatch_params 默认值对应
-    cloud_update_interval: 60
+    # 云端参数下发间隔（步），600 步 = 60 仿真秒，与 cloud/cloud_policy.py dispatch_params 默认值对应
+    cloud_update_interval: 600
 
 metrics:
-  # 每 60 仿真秒记录一次快照，降低 CSV 体积。
-  snapshot_interval: 60
+  # 每 600 步（= 60 仿真秒）记录一次快照，降低 CSV 体积。
+  snapshot_interval: 600
 
 logging:
   level: "INFO"

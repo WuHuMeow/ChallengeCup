@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data" / "intersection_data"
-OUT_DIR = ROOT / "engine" / "configs"
+OUT_DIR = ROOT / "ca_mp" / "engine" / "configs"
 
 TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <!-- 增强版配置：由 scripts/simulation/generate_configs.py 生成，引用原始数据（只读） -->
@@ -66,8 +66,8 @@ def main() -> None:
         )
 
         cfg = TEMPLATE.format(
-            net=f"../../data/intersection_data/{n}/sumo工程/demo_{n}.net.xml",
-            rou=f"../../data/intersection_data/{n}/sumo工程/demo_{n}.rou.xml",
+            net=f"../../../data/intersection_data/{n}/sumo工程/demo_{n}.net.xml",
+            rou=f"../../../data/intersection_data/{n}/sumo工程/demo_{n}.rou.xml",
             step_length=step_length,
             ignore_route_errors=ignore,
             queue_output=queue,

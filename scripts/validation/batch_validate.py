@@ -20,7 +20,7 @@ from pathlib import Path
 from defusedxml import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
-CFG_DIR = ROOT / "engine" / "configs"
+CFG_DIR = ROOT / "ca_mp" / "engine" / "configs"
 OUT_ROOT = ROOT / "output" / "validate"
 REPORT = ROOT / "docs" / "reports" / "batch-validation-report.md"
 
