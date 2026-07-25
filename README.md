@@ -77,11 +77,11 @@
 
 基础框架已完成，源码模块具备可运行骨架，队友可直接在对应文件中继续填充业务逻辑：
 
-- 核心数据契约（`core/types.py`）已定义 JointState、ControlAction、SceneMeta 等共享类型。
-- 场景注册（`scenes/registry.py`）已可自动发现 20 个路口，并兼容地图目录命名差异。
-- 仿真引擎（`engine/`）已可启动 SUMO、读取状态、写入控制、输出 CSV。
-- 算法库（`algorithms/`）已完成标准接口与三种策略骨架，固定配时基线支持 Excel 配时读取。
-- 云端策略（`cloud/cloud_policy.py`）、REST API（`api/server.py`）、实验框架（`experiments/`）、可视化（`visualization/`）均已搭好骨架。
+- 核心数据契约（`ca_mp/core/types.py`）已定义 JointState、ControlAction、SceneMeta 等共享类型。
+- 场景注册（`ca_mp/scenes/registry.py`）已可自动发现 20 个路口，并兼容地图目录命名差异。
+- 仿真引擎（`ca_mp/engine/`）已可启动 SUMO、读取状态、写入控制、输出 CSV。
+- 算法库（`ca_mp/algorithms/`）已完成标准接口与三种策略骨架，固定配时基线支持 Excel 配时读取。
+- 云端策略（`ca_mp/cloud/cloud_policy.py`）、REST API（`ca_mp/api/server.py`）、实验框架（`ca_mp/experiments/`）、可视化（`ca_mp/visualization/`）均已搭好骨架。
 
 **IA（仿真基础设施 A）状态（2026-07-24）**：已完成 20 个路口在 SUMO 1.27.1 下的迁移、增强配置、边映射和批量验证；Docker 定义已就绪，真实跨机器镜像构建仍待验证。
 
@@ -131,7 +131,7 @@
 | [docs/reports/w5-verification.md](docs/reports/w5-verification.md) | W5 验证报告 |
 | [docs/reports/w6-review-issues.md](docs/reports/w6-review-issues.md) | W6 审查问题记录 |
 | [docs/README.md](docs/README.md) | 文档分类、规范入口与模块文档索引 |
-| [docs/guides/](docs/guides/) | 协作指南（Git 工作流、Markdown、引用方法） |
+| [docs/guides/](docs/guides/) | 操作指南（11 篇）与协作规范 |
 
 ---
 
@@ -174,6 +174,7 @@ cd ChallengeCup
 python -m venv .venv
 .venv\Scripts\activate        # Windows
 # source .venv/bin/activate   # Linux/macOS
+pip install -e .
 pip install -r requirements.txt
 ```
 
@@ -195,14 +196,14 @@ python -c "import pandas, numpy; print('all dependencies OK')"
 ```powershell
 python examples/run_fixed_time.py 1
 python examples/run_ca_max_pressure.py 1 3600
-python experiments/runner.py --intersection 1 --algorithm ca_maxpressure `
+python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure `
   --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 ```
 
 启动 FastAPI 服务（可选）：
 
 ```bash
-uvicorn api.server:app --reload
+uvicorn ca_mp.api.server:app --reload
 ```
 
 服务启动后访问 http://127.0.0.1:8000/docs 查看自动生成的 API 文档。多数 `/api/*` 协作路由仍为占位实现。
@@ -245,8 +246,8 @@ bash scripts/quality/lint_check.sh
 | 指南 | 说明 |
 |------|------|
 | [Git 工作流](docs/guides/git-workflow.md) | 如何克隆仓库、提交修改、推送代码、解决冲突 |
-| [Markdown 书写方法](docs/guides/markdown-guide.md) | README、任务书、报告常用 Markdown 语法 |
 | [引用方法](docs/guides/citation-guide.md) | 如何规范引用文献、图片、代码和内部文档 |
+| [操作指南（11 篇）](docs/guides/README.md) | 算法配置、仿真运行、批量实验、Docker 部署等 |
 
 ### 分支策略
 
@@ -270,36 +271,37 @@ bash scripts/quality/lint_check.sh
 
 ```text
 ChallengeCup/
-├── core/                       # 全项目共享核心
-│   ├── types.py                # JointState / ControlAction / SceneMeta 等数据契约
-│   └── config.py               # YAML 配置加载（支持 CC_DATA_ROOT 环境变量覆盖）
-├── engine/                     # 仿真引擎（SUMO + TraCI）
-│   ├── runner.py               # 单次仿真实验运行器（启动 -> 逐步 -> 决策 -> 采集 -> 关闭，优先使用增强版配置）
-│   ├── traci_bridge.py         # TraCI 批量读写桥接（JointState <-> SUMO）
-│   ├── collector.py            # 每 60 步状态与指标 CSV 采集
-│   └── configs/                # 增强版 sumocfg x20（含 tripinfo/fcd/summary 输出与 GUI 自动播放）
-├── scenes/                     # 场景管理
-│   ├── registry.py             # 20 路口元数据索引（兼容高精地图/高清地图命名差异）
-│   ├── variant.py              # 流量变体生成（1.0x / 1.5x）
-│   └── timing_loader.py        # 从 Excel 读取信号配时方案（GBK 兼容）
-├── algorithms/                 # 算法库
-│   ├── base.py                 # BaseControlAlgorithm 标准接口（ABC）
-│   ├── fixed_time.py           # 固定配时基线（支持 Excel 配时写入）
-│   ├── rule_adaptive.py        # 感应控制 Actuated（排队阈值延长/切换）
-│   └── ca_max_pressure.py      # CA-MP 容量感知最大压力
-├── cloud/                      # 云端策略层
-│   └── cloud_policy.py         # CloudCoordinator 全局参数下发 + EWMA 预测
-├── ml/                         # ML 模型模块
-│   ├── train.py                # EWMA 参数校准
-│   ├── features.py             # 特征工程
-│   └── evaluate.py             # 模型评估（MAE、RMSE）
-├── api/                        # REST API（功能一要求）
-│   └── server.py               # FastAPI 应用（场景管理、仿真控制、云-边-端接口）
-├── experiments/                # 实验分析框架
-│   ├── runner.py               # 多场景多算法交叉跑批（360 次仿真）
-│   └── metrics.py              # 指标计算（排队、延误、吞吐量、油耗）
-├── visualization/              # 可视化
-│   └── plots.py                # Matplotlib 图表（对比曲线、热力图）
+├── ca_mp/                      # 主包（pip install -e . 后可直接 import）
+│   ├── core/                   # 全项目共享核心
+│   │   ├── types.py            # JointState / ControlAction / SceneMeta 等数据契约
+│   │   └── config.py           # YAML 配置加载（支持 CC_DATA_ROOT 环境变量覆盖）
+│   ├── engine/                 # 仿真引擎（SUMO + TraCI）
+│   │   ├── runner.py           # 单次仿真实验运行器
+│   │   ├── traci_bridge.py     # TraCI 批量读写桥接（JointState <-> SUMO）
+│   │   ├── collector.py        # 每 60 步状态与指标 CSV 采集
+│   │   └── configs/            # 增强版 sumocfg x20
+│   ├── scenes/                 # 场景管理
+│   │   ├── registry.py         # 20 路口元数据索引
+│   │   ├── variant.py          # 流量变体生成（1.0x / 1.5x）
+│   │   └── timing_loader.py    # 从 Excel 读取信号配时方案
+│   ├── algorithms/             # 算法库
+│   │   ├── base.py             # BaseControlAlgorithm 标准接口（ABC）
+│   │   ├── fixed_time.py       # 固定配时基线
+│   │   ├── rule_adaptive.py    # 感应控制 Actuated
+│   │   └── ca_max_pressure.py  # CA-MP 容量感知最大压力
+│   ├── cloud/                  # 云端策略层
+│   │   └── cloud_policy.py     # CloudCoordinator 全局参数下发 + EWMA 预测
+│   ├── ml/                     # ML 模型模块
+│   │   ├── train.py            # EWMA 参数校准
+│   │   ├── features.py         # 特征工程
+│   │   └── evaluate.py         # 模型评估（MAE、RMSE）
+│   ├── api/                    # REST API（功能一要求）
+│   │   └── server.py           # FastAPI 应用
+│   ├── experiments/            # 实验分析框架
+│   │   ├── runner.py           # 多场景多算法交叉跑批（360 次仿真）
+│   │   └── metrics.py          # 指标计算
+│   └── visualization/          # 可视化
+│       └── plots.py            # Matplotlib 图表
 ├── config/
 │   └── default.yaml            # 全局配置
 ├── data/                       # 数据集
@@ -318,16 +320,17 @@ ChallengeCup/
 │   └── integration/            # 跨模块与真实流程测试
 ├── docs/
 │   ├── architecture/           # 接口与架构图
+│   ├── guides/                 # 操作指南（11 篇）与协作规范
 │   ├── operations/             # 部署与 SUMO 环境
 │   ├── reference/              # 边映射与赛题资料
 │   ├── reports/                # 验证、迁移和审查报告
 │   ├── team/                   # 路线图与六周任务书
-│   └── guides/                 # 协作指南
+│   └── notes/                  # 调研笔记
 ├── output/                     # 运行时输出、历史归档与提交物
 ├── docker/                     # 容器化部署
 │   └── Dockerfile              # ubuntu:22.04 + ppa:sumo/stable（SUMO 1.27.x）
 ├── docker-compose.yml          # 单容器编排（输出挂载宿主机）
-├── .dockerignore               # Docker 构建上下文排除清单
+├── pyproject.toml              # 包定义与工具配置
 ├── requirements.txt
 ├── LICENSE                     # MIT
 ├── .gitignore
@@ -413,9 +416,9 @@ intersection_data/{id}/
 
 | 层级 | 模块 | 职责 | 数据契约 |
 |------|------|------|----------|
-| 云端 | `cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
-| 边缘 | `algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` -> `ControlAction` |
-| 车端/路侧 | `engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
+| 云端 | `ca_mp/cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
+| 边缘 | `ca_mp/algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` -> `ControlAction` |
+| 车端/路侧 | `ca_mp/engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
 
 <a id="仿真数据流"></a>
 
@@ -464,9 +467,9 @@ def ca_mp_decide(state: JointState, prediction: PredictionResult) -> List[Contro
 
 | 算法 | 类型 | ML 介入 | 协同层级 | 实现文件 |
 |------|------|---------|----------|----------|
-| 固定配时 | 基线 | 无 | 无协同 | `algorithms/fixed_time.py` |
-| 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `algorithms/rule_adaptive.py` |
-| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ca_max_pressure.py` |
+| 固定配时 | 基线 | 无 | 无协同 | `ca_mp/algorithms/fixed_time.py` |
+| 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `ca_mp/algorithms/rule_adaptive.py` |
+| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `ca_mp/algorithms/ca_max_pressure.py` |
 
 <a id="ewma-预测"></a>
 
