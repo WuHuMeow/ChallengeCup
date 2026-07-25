@@ -9,6 +9,13 @@ description = "Capacity-Aware MaxPressure 信号控制平台"
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9",
+  "flake8>=7.0,<8",
+  "httpx2",
+]
+
 [tool.setuptools.packages.find]
 include = [
   "algorithms*",
