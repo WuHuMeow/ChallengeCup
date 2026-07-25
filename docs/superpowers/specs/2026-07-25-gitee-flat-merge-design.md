@@ -10,6 +10,7 @@
 - 保留本地较新的算法、仿真、云端策略、测试、元数据和验证能力。
 - 合并 Gitee 独有文件，避免简单覆盖造成内容丢失。
 - 更新全部 Python 导入、配置路径、脚本入口、Markdown 和 README 引用。
+- 以 Gitee `origin/master` 为合并源，以 GitHub `github/main` 为最终覆盖目标。
 - 完成本地验证后暂停，等待用户检查，再决定是否覆盖推送 GitHub。
 
 ## 2. 最终结构与迁移边界
@@ -35,6 +36,7 @@
 - 本地 `tests/unit/` 与 `tests/integration/` 中的新增测试能力。
 - 本地 `pyproject.toml`，并调整包发现配置以适配平铺模块。
 - `output/` 运行产物目录与 Gitee `report/` 报告目录；二者职责不同，不互相覆盖。
+- 临时对比目录 `.remote-gitee-inspect/` 只用于迁移分析，完成差异核对后清理，不进入最终提交。
 
 最终代码不再以 `ca_mp/` 作为运行时主入口。所有导入统一改为 `from core...`、`from engine...`、`from algorithms...` 等平铺形式。
 
@@ -81,4 +83,4 @@
 - 测试与验证命令及结果。
 - 仍受环境限制的项目。
 
-在用户明确检查并确认前，不推送 GitHub。确认后再将结果覆盖推送到 `WuHuMeow/ChallengeCup` 的目标分支。
+在用户明确检查并确认前，不推送 GitHub。确认后使用 `git push --force-with-lease github HEAD:main` 覆盖 `WuHuMeow/ChallengeCup` 的 `main` 分支，并用远程提交哈希复核推送结果。
