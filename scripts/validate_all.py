@@ -4,8 +4,8 @@
 记录成功/失败、错误信息、运行时间，并从 `.net.xml` 提取原始版本信息。
 
 用法：
-    python scripts/validation/validate_all.py            # 验证全部 20 个路口
-    python scripts/validation/validate_all.py 1 11 16    # 只验证指定路口
+    python scripts/validate_all.py            # 验证全部 20 个路口
+    python scripts/validate_all.py 1 11 16    # 只验证指定路口
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "intersection_data"
 
 

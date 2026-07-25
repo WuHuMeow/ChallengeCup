@@ -6,7 +6,7 @@
 - 统一输出 tripinfo（EX 采集）、fcd（DB 时空轨迹）、summary 三类文件，
   原始配置含 queue-output 的路口（11-13、15-20）保留 queues.xml 输出。
 
-用法：python scripts/simulation/generate_configs.py
+用法：python scripts/generate_configs.py
 """
 
 from __future__ import annotations
@@ -14,12 +14,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "intersection_data"
-OUT_DIR = ROOT / "ca_mp" / "engine" / "configs"
+OUT_DIR = ROOT / "engine" / "configs"
 
 TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
-<!-- 增强版配置：由 scripts/simulation/generate_configs.py 生成，引用原始数据（只读） -->
+<!-- 增强版配置：由 scripts/generate_configs.py 生成，引用原始数据（只读） -->
 <configuration>
     <input>
         <net-file value="{net}"/>

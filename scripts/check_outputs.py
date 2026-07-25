@@ -4,8 +4,8 @@
 三件齐全且非空，输出缺失/空文件清单。
 
 用法：
-    python scripts/validation/check_outputs.py                              # 默认检查 experiments/results
-    python scripts/validation/check_outputs.py --root experiments/results/stress_1.5x
+    python scripts/check_outputs.py                              # 默认检查 experiments/results
+    python scripts/check_outputs.py --root experiments/results/stress_1.5x
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = ["tripinfo.xml", "stats.xml", "traj.xml"]
 
 

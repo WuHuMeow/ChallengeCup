@@ -5,8 +5,8 @@
 两侧计算量大体相当（0.1s 路口单步计算量约为 1s 路口的 10 倍）。
 
 用法：
-    python scripts/simulation/split_jobs.py            # 打印分配汇总
-    python scripts/simulation/split_jobs.py --machine a   # 输出 A 机的任务清单（每行一条）
+    python scripts/split_jobs.py            # 打印分配汇总
+    python scripts/split_jobs.py --machine a   # 输出 A 机的任务清单（每行一条）
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 
 ALGOS = ["fixed_time", "actuated", "ca_maxpressure"]
 FLOW_MULTIPLIERS = [1.0, 1.5]

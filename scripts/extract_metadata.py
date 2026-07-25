@@ -8,7 +8,7 @@
 - edge_naming    ← .net.xml 中外部边（非 internal）ID 列表
 - map_folder     ← 实际存在的地图目录名（高精地图/高清地图）
 
-用法：python scripts/data/extract_metadata.py
+用法：python scripts/extract_metadata.py
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "intersection_data"
 OUT = DATA / "metadata" / "intersections.yaml"
 UNIFIED_VERSION = "1.27.1"
@@ -26,11 +26,11 @@ UNIFIED_VERSION = "1.27.1"
 # 既有 notes 保留（验证后补充的信息）
 NOTES = {
     1: "标准十字路口，边命名 E0/-E1/-E2/-E3",
-    9: "配时缺黄灯相位（原始文件遗留，见 docs/reports/sumo-migration-log.md）",
+    9: "配时缺黄灯相位（原始文件遗留，见 docs/migration_log.md）",
     11: "流ID为 W_car/E_car/S_car/N_car，方向映射与路口1不同；tlLogic 有 unsafe green warning",
-    12: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/reports/sumo-migration-log.md）",
+    12: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）",
     16: "含 -E5 进口道（5进口道路口）",
-    18: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/reports/sumo-migration-log.md）",
+    18: "tlLogic 有 unsafe green phase warning（原始文件遗留，见 docs/migration_log.md）",
 }
 
 
@@ -72,7 +72,7 @@ def main() -> None:
     header = (
         "# 20 路口元数据 - 供批量脚本读取\n"
         "# 维护者：A 组\n"
-        "# 本文件由 scripts/data/extract_metadata.py 自动生成，请勿手改；"
+        "# 本文件由 scripts/extract_metadata.py 自动生成，请勿手改；"
         "更新规则：发现新信息时在脚本的 NOTES 中补充后重新生成\n\n"
     )
     OUT.write_text(

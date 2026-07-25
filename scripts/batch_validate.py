@@ -2,12 +2,12 @@
 
 对 20 个路口使用 `engine/configs/` 增强版配置各跑一次完整仿真（3600 仿真秒，
 无 GUI），记录运行时间、完成车辆数（tripinfo 行数）、报错信息，
-输出控制台汇总并写入 `docs/reports/batch-validation-report.md`，
+输出控制台汇总并写入 `docs/batch_validate_report.md`，
 最后估算 360 次实验（20 路口 × 3 算法 × 2 流量 × 3 种子）总时长。
 
 用法：
-    python scripts/validation/batch_validate.py            # 全部 20 路口
-    python scripts/validation/batch_validate.py 1 11 16    # 指定路口
+    python scripts/batch_validate.py            # 全部 20 路口
+    python scripts/batch_validate.py 1 11 16    # 指定路口
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from pathlib import Path
 
 from defusedxml import ElementTree as ET
 
-ROOT = Path(__file__).resolve().parents[2]
-CFG_DIR = ROOT / "ca_mp" / "engine" / "configs"
+ROOT = Path(__file__).resolve().parents[1]
+CFG_DIR = ROOT / "engine" / "configs"
 OUT_ROOT = ROOT / "output" / "validate"
 REPORT = ROOT / "docs" / "reports" / "batch-validation-report.md"
 
@@ -77,7 +77,7 @@ def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
         "# 批量 3600 步验证报告（IA W2）\n\n"
-        f"> 由 `scripts/validation/batch_validate.py` 生成；输出目录 `output/validate/`。\n\n"
+        f"> 由 `scripts/batch_validate.py` 生成；输出目录 `output/validate/`。\n\n"
         "```text\n" + "\n".join(lines) + f"\n{summary}\n```\n",
         encoding="utf-8",
     )

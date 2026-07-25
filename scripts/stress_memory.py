@@ -1,13 +1,13 @@
 """1.5 倍流量压力测试 + 内存峰值测量（IB W4 Day 1）。
 
-用法: python scripts/validation/stress_memory.py [intersection] [steps]
+用法: python scripts/stress_memory.py [intersection] [steps]
 验收: 完整跑完，tracemalloc 峰值 < 1GB。
 """
 import sys
 import tracemalloc
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 
 from experiments.runner import parse_args, run_single
 

@@ -1,4 +1,4 @@
-"""生成 docs/reference/edge-mapping.md：20 路口的边 ID → 方向映射表（IA W1 Day 5）。
+"""生成 docs/edge_mapping.md：20 路口的边 ID → 方向映射表（IA W1 Day 5）。
 
 方法：
 - 用 sumolib 读取每个路口的 .net.xml；
@@ -11,7 +11,7 @@
 
 产物供 AA/AB 计算压力时做方向映射，也可用于核对 TraCI 车道 ID。
 
-用法：python scripts/data/generate_edge_mapping.py
+用法：python scripts/generate_edge_mapping.py
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import sumolib
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "intersection_data"
 OUT = ROOT / "docs" / "reference" / "edge-mapping.md"
 JSON_OUT = DATA / "metadata" / "edge_mapping.json"
@@ -141,7 +141,7 @@ def main() -> None:
     lines = [
         "# 边 ID → 方向映射表（IA W1 Day 5）",
         "",
-        "> 由 `scripts/data/generate_edge_mapping.py` 自动生成，请勿手改。",
+        "> 由 `scripts/generate_edge_mapping.py` 自动生成，请勿手改。",
         "> 方向按 8 方位几何推断（信号节点 → 边远端向量）；",
         "> 进口 = 终点为信号节点的边，出口 = 起点为信号节点的边。",
         "> 带 * 的边经一个普通子节点连接到路口（延续边，如路口 16 的 -E4/-E5），",
