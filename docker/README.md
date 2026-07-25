@@ -33,7 +33,7 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validation/validate_al
 
 - 构建输入：`requirements.txt`、运行时 Python 模块、示例、验证脚本和 `data/intersection_data/`。
 - 默认入口：`python3 examples/run_fixed_time.py`；位置参数是路口 ID。
-- 宿主机输出：Compose 将 `output/` 和 `experiments/results/` 挂载到容器对应目录。
+- 宿主机输出：Compose 将 `output/` 挂载到容器对应目录。
 
 ## 依赖
 

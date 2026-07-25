@@ -118,7 +118,7 @@ https://sumo.dlr.de/docs/TraCI.html
 在实验报告中引用项目数据时，写明路径和生成方式：
 
 ```markdown
-实验数据保存在 `output/full_comparison.csv`，由 `experiments/runner.py` 运行 180 次仿真生成。
+实验数据保存在 `output/full_comparison.csv`，由 `ca_mp/experiments/runner.py` 运行 180 次仿真生成。
 ```
 
 ---

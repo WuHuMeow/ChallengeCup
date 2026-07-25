@@ -41,7 +41,7 @@ docker build -t ca-mp:latest -f docker/Dockerfile .
 # 运行指定路口（ENTRYPOINT 为 examples/run_fixed_time.py，参数即路口 ID）
 docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 16
 
-# 或用 compose（默认路口 16，output 与 experiments/results 挂载到宿主机）
+# 或用 compose（默认路口 16，output 挂载到宿主机）
 docker compose up --build
 docker compose run --rm simulation 1    # 临时切换路口
 ```
@@ -70,7 +70,7 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validation/validate_al
 |------|------|--------|
 | `output/csv/{路口}_{算法}.csv` | 每 60 步指标快照（排队、延误、吞吐量） | EX 分析、DB 图表 |
 | `output/validate/{N}/` | 批量验证产物（tripinfo / traj / stats / queues） | IA 环境验收 |
-| `experiments/results/…` | 实验矩阵输出（EX 管理） | EX 统计分析 |
+| `output/…` | 实验矩阵输出（EX 管理） | EX 统计分析 |
 | `tripinfo.xml` | 每车行程时间、等待、停车次数、油耗 | EX 指标计算 |
 | `traj.xml`（fcd） | 每步车辆位置速度 | DB 时空轨迹图 |
 | `stats.xml`（summary） | 每步全网统计 | 运行健康检查 |
@@ -82,7 +82,7 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validation/validate_al
 python scripts/validation/validate_all.py              # 20/20 PASS
 
 # 2. 单次实验（路口 1，CA-MP，1.5 倍流量，seed=42）
-python experiments/runner.py --intersection 1 --algorithm ca_maxpressure \
+python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure \
     --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 
 # 3. 输出完整性检查

@@ -40,4 +40,4 @@ python examples/run_ca_max_pressure.py 1 3600
 - `run_demo.py --sumo` 固定运行 3600 步；当前没有独立步数参数。
 - `run_fixed_time.py` 固定运行 3600 步。
 - CA-MP 示例调用的是当前 MVI 控制器，尚未实现完整容量感知压力与溢出门控。
-- 示例不负责批量矩阵、断点续跑或统计汇总；这些入口在 `experiments/runner.py`。
+- 示例不负责批量矩阵、断点续跑或统计汇总；这些入口在 `ca_mp/experiments/runner.py`。

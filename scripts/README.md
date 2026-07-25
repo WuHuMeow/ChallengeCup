@@ -24,8 +24,8 @@
 | `validation/validate_all.py` | `python scripts/validation/validate_all.py 1 11 16` | 指定路口 ID | 指定路口的验证结果 |
 | `validation/batch_validate.py` | `python scripts/validation/batch_validate.py` | `ca_mp/engine/configs/` 及 `sumo` 命令 | `output/validate/`、`docs/reports/batch-validation-report.md` |
 | `validation/batch_validate.py` | `python scripts/validation/batch_validate.py 1 11 16` | 指定路口 ID | 指定路口的批量验证结果和报告 |
-| `validation/check_outputs.py` | `python scripts/validation/check_outputs.py` | `experiments/results/` | 控制台缺失或空 XML 文件清单 |
-| `validation/check_outputs.py` | `python scripts/validation/check_outputs.py --root experiments/results/stress_1.5x` | 指定结果目录 | 控制台缺失或空 XML 文件清单 |
+| `validation/check_outputs.py` | `python scripts/validation/check_outputs.py` | `output/` | 控制台缺失或空 XML 文件清单 |
+| `validation/check_outputs.py` | `python scripts/validation/check_outputs.py --root output/stress_1.5x` | 指定结果目录 | 控制台缺失或空 XML 文件清单 |
 | `validation/check_seed_repro.py` | `python scripts/validation/check_seed_repro.py` | 路口 1、固定时制算法、seed 42 和 7 | `output/seed_check/*.csv` 及复现性断言结果 |
 | `validation/stress_memory.py` | `python scripts/validation/stress_memory.py 1 100` | 路口 ID、步数、1.5 倍流量 | `output/stress/`、CSV 路径和 Python 内存峰值 |
 | `quality/lint_check.sh` | `bash scripts/quality/lint_check.sh` | `ca_mp/engine/`、`ca_mp/cloud/`、`ca_mp/experiments/` 中跟踪和未跟踪的源码 | 成功时仅打印 `clean` |
