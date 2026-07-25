@@ -14,12 +14,12 @@
 ## 命令与接口
 
 ```powershell
-python experiments/runner.py --intersection 1 --algorithm ca_maxpressure `
+python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure `
   --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 ```
 
 ```python
-from experiments.runner import run_batch
+from ca_mp.experiments.runner import run_batch
 
 results = run_batch(
     intersection_ids=["1", "2"],

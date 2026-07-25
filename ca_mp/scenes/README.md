@@ -15,9 +15,9 @@
 ## 对外接口
 
 ```python
-from core.types import TrafficLevel
-from scenes.registry import SceneRegistry
-from scenes.variant import VariantGenerator
+from ca_mp.core.types import TrafficLevel
+from ca_mp.scenes.registry import SceneRegistry
+from ca_mp.scenes.variant import VariantGenerator
 
 registry = SceneRegistry()
 scene = registry.get_scene("1")
@@ -35,7 +35,7 @@ variant = VariantGenerator().generate(scene.meta, TrafficLevel.HIGH, output_dir)
 
 ## 依赖
 
-- 依赖 `core.config`、`core.types`、pandas 和 Python XML 标准库。
+- 依赖 `ca_mp.core.config`、`ca_mp.core.types`、pandas 和 Python XML 标准库。
 - 默认数据根目录来自 `config/default.yaml`，可由 `CC_DATA_ROOT` 覆盖。
 
 ## 已知限制

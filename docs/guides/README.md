@@ -1,17 +1,26 @@
-# docs/guides/
+# 操作指南索引
 
-本目录存放项目协作与文档书写指南，供全队成员参考。
+面向团队成员的 step-by-step 操作手册。每篇遵循：目的 → 前置条件 → 操作步骤 → 示例 → 常见问题。
 
 ## 指南列表
 
-| 文件 | 说明 |
+| 编号 | 文件 | 内容 |
+|------|------|------|
+| 01 | [01-algorithm-config.md](01-algorithm-config.md) | 如何配置算法参数 |
+| 02 | [02-import-intersection.md](02-import-intersection.md) | 如何导入新路口数据 |
+| 03 | [03-run-simulation.md](03-run-simulation.md) | 如何运行单路口仿真 |
+| 04 | [04-batch-experiments.md](04-batch-experiments.md) | 如何跑批量实验 |
+| 05 | [05-cloud-coordinator.md](05-cloud-coordinator.md) | 如何配置云端协调器 |
+| 06 | [06-generate-configs.md](06-generate-configs.md) | 如何生成仿真配置文件 |
+| 07 | [07-view-results.md](07-view-results.md) | 如何查看/导出结果 |
+| 08 | [08-visualization.md](08-visualization.md) | 如何生成图表 |
+| 09 | [09-docker-deploy.md](09-docker-deploy.md) | Docker 部署与运行 |
+| 10 | [10-testing.md](10-testing.md) | 如何跑测试/质量检查 |
+| 11 | [11-new-algorithm.md](11-new-algorithm.md) | 如何实现新算法 |
+
+## 协作规范
+
+| 文件 | 内容 |
 |------|------|
-| [git-workflow.md](./git-workflow.md) | 常见仓库上传方法：克隆、提交、推送、拉取、冲突解决 |
-| [markdown-guide.md](./markdown-guide.md) | Markdown 书写方法：标题、列表、表格、代码块、图片等 |
-| [citation-guide.md](./citation-guide.md) | 引用方法：文献、图片、代码、内部文档、网页、数据 |
-
-## 使用建议
-
-- 新队员加入时，先阅读 `git-workflow.md`，确保能正确上传修改。
-- 编写 README 或任务书前，阅读 `markdown-guide.md` 和 `citation-guide.md`。
-- 提交文档前，检查内部链接是否有效。
+| [git-workflow.md](git-workflow.md) | Git 分支与提交规范 |
+| [citation-guide.md](citation-guide.md) | 引用与参考文献格式 |

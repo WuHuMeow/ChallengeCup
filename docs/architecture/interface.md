@@ -1,7 +1,7 @@
 # 接口文档
 
-> 本文件描述 `core/types.py` 和 `algorithms/base.py` 中所有共享数据类型的字段含义与使用方式。
-> 全员开发必须基于本文档中的契约，不得自行修改 `core/types.py`。
+> 本文件描述 `ca_mp/core/types.py` 和 `ca_mp/algorithms/base.py` 中所有共享数据类型的字段含义与使用方式。
+> 全员开发必须基于本文档中的契约，不得自行修改 `ca_mp/core/types.py`。
 > 如有疑问找 TL，不要猜。
 
 ---
@@ -32,9 +32,9 @@
 
 ## 算法标准接口（BaseControlAlgorithm）
 
-**文件**：`algorithms/base.py`
+**文件**：`ca_mp/algorithms/base.py`
 
-所有交通管控算法必须继承此抽象基类。`engine/runner.py` 和 `experiments/runner.py` 通过此接口统一调度算法。
+所有交通管控算法必须继承此抽象基类。`ca_mp/engine/runner.py` 和 `ca_mp/experiments/runner.py` 通过此接口统一调度算法。
 
 ```python
 class BaseControlAlgorithm(ABC):
@@ -54,7 +54,7 @@ class BaseControlAlgorithm(ABC):
 
 **关键约束**：
 - `step()` 必须是纯决策——不要在里面启动 SUMO 或写文件。
-- 返回的 `ControlAction` 由 `engine/traci_bridge.py` 负责写入 SUMO，算法不直接调用 TraCI。
+- 返回的 `ControlAction` 由 `ca_mp/engine/traci_bridge.py` 负责写入 SUMO，算法不直接调用 TraCI。
 - 云端预测通过构造函数注入 `CloudPolicy` 对象，在 `step()` 内调用 `cloud_policy.predict(state)` 获取。
 
 ---
@@ -63,9 +63,9 @@ class BaseControlAlgorithm(ABC):
 
 ## JointState（算法输入）
 
-**文件**：`core/types.py`
+**文件**：`ca_mp/core/types.py`
 
-每个仿真步由 `engine/traci_bridge.py` 从 SUMO 读取并组装，作为 `algorithm.step()` 的唯一输入。
+每个仿真步由 `ca_mp/engine/traci_bridge.py` 从 SUMO 读取并组装，作为 `algorithm.step()` 的唯一输入。
 
 | 字段 | 类型 | 含义 | 示例 |
 |------|------|------|------|
@@ -108,7 +108,7 @@ class BaseControlAlgorithm(ABC):
 
 ## VehicleState（车辆快照）
 
-**文件**：`core/types.py`
+**文件**：`ca_mp/core/types.py`
 
 单辆车采样快照，组成 `JointState.vehicles`。采集逻辑见 `TraCIBridge._collect_vehicles`。
 
@@ -124,9 +124,9 @@ class BaseControlAlgorithm(ABC):
 
 ## ControlAction（算法输出）
 
-**文件**：`core/types.py`
+**文件**：`ca_mp/core/types.py`
 
-算法 `step()` 的返回值。由 `engine/traci_bridge.py` 解析并写入 SUMO。
+算法 `step()` 的返回值。由 `ca_mp/engine/traci_bridge.py` 解析并写入 SUMO。
 
 | 字段 | 类型 | 含义 | 示例 |
 |------|------|------|------|
@@ -156,7 +156,7 @@ class BaseControlAlgorithm(ABC):
 
 ### SceneMeta
 
-描述一个 SUMO 工程的所有输入文件路径。由 `scenes/registry.py` 自动发现并构建。
+描述一个 SUMO 工程的所有输入文件路径。由 `ca_mp/scenes/registry.py` 自动发现并构建。
 
 | 字段 | 类型 | 含义 | 示例 |
 |------|------|------|------|
@@ -186,9 +186,9 @@ class BaseControlAlgorithm(ABC):
 
 ## PredictionResult（云端预测）
 
-**文件**：`core/types.py`
+**文件**：`ca_mp/core/types.py`
 
-由 `cloud/cloud_policy.py` 的 `CloudPolicy.predict(state)` 返回。
+由 `ca_mp/cloud/cloud_policy.py` 的 `CloudPolicy.predict(state)` 返回。
 
 | 字段 | 类型 | 含义 | 示例 |
 |------|------|------|------|
@@ -211,7 +211,7 @@ pred = self.cloud_policy.predict(state)
 
 ## TimingPlan / PhaseInfo（配时方案）
 
-由 `scenes/timing_loader.py` 从 Excel 读取。
+由 `ca_mp/scenes/timing_loader.py` 从 Excel 读取。
 
 ### TimingPlan
 
@@ -236,9 +236,9 @@ pred = self.cloud_policy.predict(state)
 
 ## SimulationMetrics（仿真指标）
 
-**文件**：`core/types.py`
+**文件**：`ca_mp/core/types.py`
 
-由 `experiments/metrics.py` 的 `compute_metrics()` 计算，对应竞赛 PDF 评分中的效率、安全、能耗维度。
+由 `ca_mp/experiments/metrics.py` 的 `compute_metrics()` 计算，对应竞赛 PDF 评分中的效率、安全、能耗维度。
 
 | 字段 | 类型 | 含义 | 对应评分维度 |
 |------|------|------|-------------|
@@ -264,7 +264,7 @@ class TrafficLevel(str, Enum):
     HIGH = "high"      # 1.5x 原始流量（压力测试）
 ```
 
-由 `scenes/variant.py` 的 `VariantGenerator` 使用，生成不同流量倍率的 `.flow.xml` 变体文件。
+由 `ca_mp/scenes/variant.py` 的 `VariantGenerator` 使用，生成不同流量倍率的 `.flow.xml` 变体文件。
 
 ---
 
@@ -272,7 +272,7 @@ class TrafficLevel(str, Enum):
 
 ## TraCIBridge（SUMO 桥接器）
 
-**文件**：`engine/traci_bridge.py`
+**文件**：`ca_mp/engine/traci_bridge.py`
 
 封装 SUMO 进程生命周期与 TraCI 读写，把底层调用转换为 `JointState` / `ControlAction`。
 
@@ -308,12 +308,12 @@ TraCIBridge(
 
 ## EdgeChannel（V2X 边缘通道）
 
-**文件**：`engine/edge_channel.py`
+**文件**：`ca_mp/engine/edge_channel.py`
 
 模拟 V2X 消息的发送 / 接收 / 固定步数延迟 / 方向过滤。
 
 ```python
-from engine.edge_channel import EdgeChannel
+from ca_mp.engine.edge_channel import EdgeChannel
 
 channel = EdgeChannel(delay_steps=1, allowed_directions=["north", "south"])
 channel.send(state)              # allowed_directions 非空时先按方向过滤 queues/flows
@@ -331,7 +331,7 @@ delayed = channel.receive()      # 返回 delay_steps 步前发送的 JointState
 
 ## CloudPolicy.dispatch_params（云端参数下发）
 
-**文件**：`cloud/cloud_policy.py`
+**文件**：`ca_mp/cloud/cloud_policy.py`
 
 云端按全局平均压力分档周期性下发控制参数（min/max/base_green），下发周期 = `algorithms.ca_maxpressure.cloud_update_interval`（默认 60 步）。周期内返回缓存值，每次重新下发打 `logger.info("云端下发参数: ...")`。
 
@@ -351,7 +351,7 @@ delayed = channel.receive()      # 返回 delay_steps 步前发送的 JointState
 
 ## SimulationRunner（单次仿真运行器）
 
-**文件**：`engine/runner.py`
+**文件**：`ca_mp/engine/runner.py`
 
 ```python
 SimulationRunner(
@@ -377,11 +377,11 @@ SimulationRunner(
 
 ## experiments CLI（单次实验入口）
 
-**文件**：`experiments/runner.py`
+**文件**：`ca_mp/experiments/runner.py`
 
 ```bash
 # 单次实验（路口 1，CA-MP，1.5 倍流量，seed=42）
-python experiments/runner.py --intersection 1 --algorithm ca_maxpressure \
+python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure \
     --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 ```
 
@@ -423,8 +423,8 @@ python experiments/runner.py --intersection 1 --algorithm ca_maxpressure \
 
 ```python
 from typing import List
-from algorithms.base import BaseControlAlgorithm
-from core.types import ControlAction, JointState, Scene
+from ca_mp.algorithms.base import BaseControlAlgorithm
+from ca_mp.core.types import ControlAction, JointState, Scene
 
 
 class MyAlgorithm(BaseControlAlgorithm):
@@ -454,9 +454,9 @@ class MyAlgorithm(BaseControlAlgorithm):
 ### 运行单次仿真
 
 ```python
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from engine.runner import SimulationRunner
-from scenes.registry import SceneRegistry
+from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from ca_mp.engine.runner import SimulationRunner
+from ca_mp.scenes.registry import SceneRegistry
 
 registry = SceneRegistry()
 scene = registry.get_scene("16")  # 路口 16（24m 短边，CA-MP 效果最显著）
@@ -471,7 +471,7 @@ print(f"平均排队: {metrics[-1]['avg_queue_length']:.1f}")
 ### 批量实验
 
 ```python
-from experiments.runner import run_batch
+from ca_mp.experiments.runner import run_batch
 
 results = run_batch(
     intersection_ids=["1", "16"],
@@ -491,5 +491,5 @@ results = run_batch(
 | 2026-07-20 | 初始版本，接口冻结 | TL |
 | 2026-07-23 | 增补 QueueState.capacity / VehicleState / JointState.vehicles+arrival_history；新增 TraCIBridge / EdgeChannel / CloudPolicy.dispatch_params / SimulationRunner / experiments CLI / 输出文件表小节 | IB |
 
-> **7/23 后接口冻结**。此后 `core/types.py` 和 `algorithms/base.py` 不再修改。
+> **7/23 后接口冻结**。此后 `ca_mp/core/types.py` 和 `ca_mp/algorithms/base.py` 不再修改。
 > 如需扩展，只能向后兼容（加字段、加方法），不得删改已有字段。

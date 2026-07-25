@@ -13,7 +13,7 @@
 ## 对外接口
 
 ```python
-from cloud.cloud_policy import CloudPolicy
+from ca_mp.cloud.cloud_policy import CloudPolicy
 
 policy = CloudPolicy()
 prediction = policy.predict(state)
@@ -31,7 +31,7 @@ policy.reset()
 ## 依赖
 
 - 参数来自 `config/default.yaml` 的 `algorithms.ca_maxpressure`。
-- 数据契约来自 `core.types`。
+- 数据契约来自 `ca_mp.core.types`。
 - 若 `paths.model_path` 指向有效文件，会尝试通过 joblib 加载模型。
 
 ## 已知限制

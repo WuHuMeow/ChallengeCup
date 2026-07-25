@@ -18,7 +18,7 @@
 所有控制器实现 `init(scene)`、`step(state)`、`reset()` 和 `name`：
 
 ```python
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 
 algorithm = CAMaxPressureAlgorithm()
 algorithm.init(scene)
@@ -27,15 +27,15 @@ actions = algorithm.step(state)  # list[ControlAction]
 
 ## 输入与输出
 
-- 输入：`core.types.Scene` 和每步 `core.types.JointState`。
+- 输入：`ca_mp.core.types.Scene` 和每步 `ca_mp.core.types.JointState`。
 - 输出：`list[ControlAction]`；空列表表示本步不修改 SUMO 信号程序。
 - 配置：感应控制和 CA-MP 参数来自 `config/default.yaml` 的 `algorithms.*`。
 
 ## 依赖
 
-- 依赖 `core.types` 和 `core.config`。
+- 依赖 `ca_mp.core.types` 和 `ca_mp.core.config`。
 - `FixedTimeAlgorithm(use_excel_timing=True)` 依赖 pandas、Excel 配时文件和已启动的 TraCI 连接。
-- `CAMaxPressureAlgorithm` 依赖 `cloud.CloudPolicy`。
+- `CAMaxPressureAlgorithm` 依赖 `ca_mp.cloud.CloudPolicy`。
 
 ## 已知限制
 

@@ -15,9 +15,9 @@
 ## 对外接口
 
 ```python
-from ml.evaluate import evaluate
-from ml.features import extract_features
-from ml.train import predict, train
+from ca_mp.ml.evaluate import evaluate
+from ca_mp.ml.features import extract_features
+from ca_mp.ml.train import predict, train
 
 features = extract_features(state, window=5)
 model = train(features, labels, alpha=0.3)
@@ -34,7 +34,7 @@ metrics = evaluate([value], actuals)
 
 ## 依赖
 
-- 仅依赖 Python 标准库和 `core.types.JointState`。
+- 仅依赖 Python 标准库和 `ca_mp.core.types.JointState`。
 - `CloudPolicy` 有独立 EWMA 实现，当前不调用本目录的训练/预测函数。
 
 ## 已知限制

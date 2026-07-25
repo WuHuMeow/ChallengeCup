@@ -19,15 +19,15 @@
 ## 对外接口
 
 ```python
-from engine.mock_bridge import MockBridge
-from engine.runner import SimulationRunner
+from ca_mp.engine.mock_bridge import MockBridge
+from ca_mp.engine.runner import SimulationRunner
 
 bridge = MockBridge(tls_id="tls_0", directions=["E0", "E1", "E2", "E3"])
 runner = SimulationRunner(scene, algorithm, bridge=bridge)
 history = runner.run(steps=10)
 ```
 
-未传入 `bridge` 时，`SimulationRunner` 创建 `TraCIBridge`，优先使用 `engine/configs/demo_N.sumocfg`。
+未传入 `bridge` 时，`SimulationRunner` 创建 `TraCIBridge`，优先使用 `ca_mp/engine/configs/demo_N.sumocfg`。
 
 ## 输入与输出
 
@@ -38,7 +38,7 @@ history = runner.run(steps=10)
 ## 依赖
 
 - 真实桥接依赖 SUMO/TraCI、路口工程和边映射元数据。
-- 运行器依赖 `algorithms`、`core` 和 `experiments.metrics`。
+- 运行器依赖 `ca_mp.algorithms`、`ca_mp.core` 和 `ca_mp.experiments.metrics`。
 - Mock 模式不启动 SUMO，但仍需要有效 `Scene` 元数据。
 
 ## 已知限制
@@ -47,4 +47,4 @@ history = runner.run(steps=10)
 - `MockBridge` 只验证接口与确定性行为，不模拟真实交通动力学。
 - 车辆快照最多保留 500 辆并可采样；`arrival_history` 只记录 departed 数，不区分方向。
 - 行程时间和燃油指标仍需通过 SUMO `tripinfo` 二次校准。
-- `engine/configs/` 是生成文件，修改应回到生成脚本后重新生成。
+- `ca_mp/engine/configs/` 是生成文件，修改应回到生成脚本后重新生成。

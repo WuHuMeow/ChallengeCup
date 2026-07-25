@@ -14,8 +14,8 @@
 ## 对外接口
 
 ```python
-from core.config import get_config
-from core.types import ControlAction, JointState, QueueState, SceneMeta
+from ca_mp.core.config import get_config
+from ca_mp.core.types import ControlAction, JointState, QueueState, SceneMeta
 
 config = get_config()
 output_root = config.path("paths.output_root")
