@@ -4,7 +4,6 @@
 __pycache__
 **/__pycache__
 output
-experiments/results
 docs
 tests
 *.pyc
