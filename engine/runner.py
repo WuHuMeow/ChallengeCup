@@ -1,18 +1,19 @@
-"""单次仿真运行器。
-
-封装 SUMO 生命周期：启动 → 逐步运行 → 算法决策 → 采集指标 → 关闭。
-"""
+"""Single-run simulation lifecycle."""
 
 from __future__ import annotations
 
 import logging
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
 from core.types import ControlAction, Scene
+from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
+from engine.edge_channel import EdgeChannel
 from engine.events import EventLogger
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.metrics import compute_metrics
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class SimulationRunner:
-    """单次仿真实验运行器。"""
+    """Run one SUMO simulation and persist its outputs."""
 
     def __init__(
         self,
@@ -35,6 +36,8 @@ class SimulationRunner:
         seed: Optional[int] = None,
         step_log_csv: Optional[Path] = None,
         events_csv: Optional[Path] = None,
+        artifacts: Optional[RunArtifacts] = None,
+        state_channel: Optional[EdgeChannel] = None,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -44,7 +47,13 @@ class SimulationRunner:
             "metrics.snapshot_interval", 60
         )
         self.additional_files = additional_files or []
+        self.artifacts = artifacts
+        self.state_channel = state_channel
 
+        if artifacts is not None:
+            output_csv = artifacts.metrics
+            step_log_csv = artifacts.step_log
+            events_csv = artifacts.events
         if output_csv is None:
             output_root = Path(get_config().get("paths.output_root", "./output"))
             output_csv = (
@@ -57,8 +66,6 @@ class SimulationRunner:
         if bridge is not None:
             self.bridge = bridge
         else:
-            # 优先使用 engine/configs/ 下的增强版配置（IA W2：含 tripinfo/fcd/summary
-            # 输出，引用只读原始数据）；不存在时回退原始 sumocfg。
             cfg = scene.meta.sumo_cfg
             enhanced = (
                 Path(__file__).resolve().parent
@@ -71,61 +78,130 @@ class SimulationRunner:
                 cfg,
                 binary=self.sumo_binary,
                 additional_files=self.additional_files,
+                artifacts=artifacts,
                 seed=self.seed,
             )
         self.collector: Optional[MetricsCollector] = None
         self.metrics_history: List[dict] = []
         self.step_logger = StepLogger(step_log_csv) if step_log_csv else None
         self.event_logger = EventLogger(events_csv) if events_csv else None
+        self._terminal_reason = ""
+        self._sumo_version_value = "unknown"
 
     def run(self, steps: Optional[int] = None) -> List[dict]:
-        """运行完整仿真并返回指标历史。
-
-        Args:
-            steps: 仿真步数；None 时使用配置 sumo.default_simulation_steps。
-
-        Returns:
-            指标快照列表（每 snapshot_interval 步一条），含 avg_queue_length /
-            max_queue_length / avg_delay / total_throughput。
-        """
+        """Run the simulation and return snapshot metrics."""
         steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
+        started_at = datetime.now(timezone.utc).isoformat()
+        status = "completed"
+        reason = ""
+        body_exception = False
 
         try:
-            # 先启动 SUMO，让算法 init() 可以查询信号灯状态并写入配时方案。
             self.bridge.start()
+            self._sumo_version_value = self._sumo_version()
             self.algorithm.init(self.scene)
             if self.event_logger:
                 self.event_logger.log(
-                    0, "run_start",
+                    0,
+                    "run_start",
                     f"intersection={self.scene.meta.intersection_id}"
                     f" algorithm={self.algorithm.name}",
                 )
             for step in range(steps):
                 if not self._tick(step):
+                    status = "disconnected"
+                    reason = self._terminal_reason
                     break
+        except KeyboardInterrupt:
+            status = "interrupted"
+            reason = "KeyboardInterrupt"
+            body_exception = True
+            raise
+        except Exception as exc:
+            status = "failed"
+            reason = str(exc) or type(exc).__name__
+            body_exception = True
+            raise
         finally:
-            self.bridge.close()
-            if self.collector:
-                self.collector.save()
-            if self.step_logger:
-                self.step_logger.save()
-            if self.event_logger:
-                self.event_logger.log(
-                    len(self.metrics_history), "run_end",
-                    f"snapshots={len(self.metrics_history)}",
-                )
-                self.event_logger.save()
+            cleanup_errors: list[Exception] = []
+            try:
+                if self.collector:
+                    self.collector.save()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+            try:
+                if self.step_logger:
+                    self.step_logger.save()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+            try:
+                if self.event_logger:
+                    self.event_logger.log(
+                        len(self.metrics_history),
+                        "run_end",
+                        f"snapshots={len(self.metrics_history)}",
+                    )
+                    self.event_logger.save()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+            try:
+                self.bridge.close()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+
+            if cleanup_errors and not body_exception:
+                status = "failed"
+                reason = str(cleanup_errors[0]) or type(cleanup_errors[0]).__name__
+            if self.artifacts is not None:
+                generated_files = [
+                    self.artifacts.metrics,
+                    self.artifacts.step_log,
+                    self.artifacts.events,
+                    self.artifacts.tripinfo,
+                    self.artifacts.stats,
+                    self.artifacts.trajectory,
+                    self.artifacts.queues,
+                ]
+                try:
+                    self.artifacts.write_metadata(
+                        status,
+                        reason,
+                        generated_files,
+                        started_at=started_at,
+                        ended_at=datetime.now(timezone.utc).isoformat(),
+                        sumo_version=self._sumo_version_value,
+                    )
+                except Exception as exc:
+                    cleanup_errors.append(exc)
+                    if not body_exception:
+                        status = "failed"
+                        reason = str(exc) or type(exc).__name__
+            if cleanup_errors and not body_exception:
+                raise cleanup_errors[0]
 
         return self.metrics_history
 
     def _tick(self, step: int) -> bool:
-        """单个仿真步；返回 False 表示仿真已断开，应停止。"""
+        """Advance one simulation step; return False after disconnection."""
         try:
-            state = self.bridge.get_state()
-            actions: List[ControlAction] = self.algorithm.step(state)
-            self.bridge.apply_actions(actions)
+            raw_state = self.bridge.get_state()
+            control_state = raw_state
+            if self.state_channel is not None:
+                self.state_channel.send(raw_state)
+                control_state = self.state_channel.receive()
+            if control_state is None:
+                actions: List[ControlAction] = []
+                if self.event_logger:
+                    self.event_logger.log(
+                        step, "channel_wait", "delayed state unavailable"
+                    )
+            else:
+                actions = self.algorithm.step(control_state)
+            for detail in self.bridge.apply_actions(actions) or []:
+                if self.event_logger:
+                    self.event_logger.log(step, "invalid_action", detail)
             if self.event_logger:
                 for action in actions:
                     self.event_logger.log(
@@ -133,20 +209,19 @@ class SimulationRunner:
                     )
             sim_time = self.bridge.step()
         except traci.exceptions.FatalTraCIError as exc:
-            # SUMO 进程被杀时，异常可能从 get_state 等任意 TraCI 调用抛出。
-            logger.error("TraCI 连接断开: %s; closing gracefully", exc)
+            logger.error("TraCI connection closed: %s; closing gracefully", exc)
+            self._terminal_reason = "fatal TraCI error"
             return False
         if sim_time is None:
-            logger.warning("仿真在 step %d 断开，提前结束", step)
+            logger.warning("Simulation stopped at step %d", step)
+            self._terminal_reason = "bridge returned no simulation time"
             return False
 
         if self.step_logger:
-            self.step_logger.record(step, state)
-
-        # 记录间隔快照，避免 CSV 过大。
+            self.step_logger.record(step, raw_state)
         if step % self.snapshot_interval == 0:
-            metrics = compute_metrics(step, state)
-            self.collector.record(step, state, metrics)
+            metrics = compute_metrics(step, raw_state)
+            self.collector.record(step, raw_state, metrics)
             self.metrics_history.append(
                 {
                     "step": step,
@@ -157,6 +232,19 @@ class SimulationRunner:
                 }
             )
         return True
+
+    def _sumo_version(self) -> str:
+        version = getattr(self.bridge, "sumo_version", None)
+        if version:
+            raw = str(version)
+        else:
+            try:
+                response = traci.getVersion()
+                raw = response[0] if isinstance(response, tuple) else response
+            except Exception:
+                raw = getattr(traci, "__version__", None) or "unknown"
+        match = re.search(r"\d+(?:\.\d+)+", str(raw))
+        return match.group(0) if match else str(raw)
 
     def __enter__(self) -> "SimulationRunner":
         return self
