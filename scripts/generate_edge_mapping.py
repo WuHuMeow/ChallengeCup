@@ -83,7 +83,6 @@ def edge_data(net: sumolib.net.Net) -> dict[str, dict]:
     # —— 复用 edge_rows 中的 entry/exit_ 传播计算，抽为内部函数 _classify(net) ——
     entry, exit_, external = _classify(net)
     data: dict[str, dict] = {}
-    tls_junctions = {j.getID() for j in net.getNodes() if j.getType() == "traffic_light"}
     for edge in external:
         eid = edge.getID()
         from_j, to_j = edge.getFromNode(), edge.getToNode()
