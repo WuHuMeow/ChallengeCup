@@ -2,8 +2,8 @@
 <!-- 增强版配置：由 scripts/generate_configs.py 生成，引用原始数据（只读） -->
 <configuration>
     <input>
-        <net-file value="../../../data/intersection_data/11/sumo工程/demo_11.net.xml"/>
-        <route-files value="../../../data/intersection_data/11/sumo工程/demo_11.rou.xml"/>
+        <net-file value="../../data/intersection_data/11/sumo工程/demo_11.net.xml"/>
+        <route-files value="../../data/intersection_data/11/sumo工程/demo_11.rou.xml"/>
     </input>
     <time>
         <begin value="0"/>

@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -44,14 +45,25 @@ TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def relative_input_path(source: Path, output_dir: Path) -> str:
+    return Path(os.path.relpath(source, output_dir)).as_posix()
+
+
+def generate_configs(
+    data_root: Path = DATA, output_dir: Path = OUT_DIR
+) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
     for n in range(1, 21):
-        src_dir = DATA / str(n) / "sumo工程"
+        src_dir = data_root / str(n) / "sumo工程"
         original = (src_dir / f"demo_{n}.sumocfg").read_text(encoding="utf-8")
 
-        # 统一 step-length 为 0.1s，提高仿真精度。
-        step_length = '        <step-length value="0.1"/>\n'
+        step_match = re.search(r'<step-length\s+value="([^"]+)"', original)
+        step_length = (
+            f'        <step-length value="{step_match.group(1)}"/>\n'
+            if step_match
+            else ""
+        )
         ignore = (
             "    <processing>\n"
             '        <ignore-route-errors value="true"/>\n'
@@ -66,14 +78,21 @@ def main() -> None:
         )
 
         cfg = TEMPLATE.format(
-            net=f"../../../data/intersection_data/{n}/sumo工程/demo_{n}.net.xml",
-            rou=f"../../../data/intersection_data/{n}/sumo工程/demo_{n}.rou.xml",
+            net=relative_input_path(src_dir / f"demo_{n}.net.xml", output_dir),
+            rou=relative_input_path(src_dir / f"demo_{n}.rou.xml", output_dir),
             step_length=step_length,
             ignore_route_errors=ignore,
             queue_output=queue,
         )
-        (OUT_DIR / f"demo_{n}.sumocfg").write_text(cfg, encoding="utf-8")
-    print(f"已生成 20 个增强版配置到 {OUT_DIR}")
+        target = output_dir / f"demo_{n}.sumocfg"
+        target.write_text(cfg, encoding="utf-8")
+        written.append(target)
+    return written
+
+
+def main() -> None:
+    written = generate_configs()
+    print(f"已生成 {len(written)} 个增强版配置到 {OUT_DIR}")
 
 
 if __name__ == "__main__":
