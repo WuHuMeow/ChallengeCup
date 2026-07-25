@@ -19,6 +19,7 @@ from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from core.config import get_config
 from core.types import TrafficLevel
 from engine.runner import SimulationRunner
+from engine.artifacts import RunArtifacts
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
@@ -129,7 +130,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--steps", type=int, default=36000, help="仿真步数")
     p.add_argument("--algorithm", choices=list(ALGORITHM_MAP), default="fixed_time",
                    help="控制算法")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    try:
+        intersection = int(args.intersection)
+    except (TypeError, ValueError):
+        p.error("--intersection must be an integer in 1..20")
+    if not 1 <= intersection <= 20:
+        p.error("--intersection must be in 1..20")
+    if args.steps <= 0:
+        p.error("--steps must be > 0")
+    if args.seed < 0:
+        p.error("--seed must be >= 0")
+    if args.flow_multiplier <= 0:
+        p.error("--flow-multiplier must be > 0")
+    return args
+
+
+def build_artifacts(args: argparse.Namespace) -> RunArtifacts:
+    """Create the deterministic, run-scoped output layout for CLI arguments."""
+    root = (
+        Path(args.output_dir)
+        if args.output_dir
+        else get_config().path("paths.output_root") / "runs"
+    )
+    return RunArtifacts.create(
+        root,
+        args.intersection,
+        args.algorithm,
+        args.flow_multiplier,
+        args.seed,
+    )
 
 
 def run_single(args: argparse.Namespace) -> Path:
@@ -144,38 +174,28 @@ def run_single(args: argparse.Namespace) -> Path:
     Raises:
         ValueError: --flow-multiplier <= 0。
     """
+    # Keep direct callers safe even when they bypass parse_args().
     if args.flow_multiplier <= 0:
-        raise ValueError(f"--flow-multiplier 必须 > 0，收到: {args.flow_multiplier}")
+        raise ValueError("--flow-multiplier must be > 0")
 
     registry = SceneRegistry()
     scene = registry.get_scene(args.intersection)
-    output_root = (
-        Path(args.output_dir) if args.output_dir
-        else get_config().path("paths.output_root")
-    )
+    artifacts = build_artifacts(args)
 
     additional_files: List[Path] = []
     if args.flow_multiplier != 1.0:
         flow_file = VariantGenerator().generate_scaled(
             scene.meta, args.flow_multiplier,
-            output_root / "variants" / args.intersection,
+            artifacts.run_dir / "variants",
         )
         additional_files.append(flow_file)
 
     runner = SimulationRunner(
         scene=scene,
         algorithm=ALGORITHM_MAP[args.algorithm](),
-        output_csv=output_root / "csv"
-        / f"{args.intersection}_x{args.flow_multiplier:g}_{args.algorithm}_s{args.seed}.csv",
-        step_log_csv=(
-            output_root / "logs"
-            / f"{args.intersection}_x{args.flow_multiplier:g}"
-              f"_{args.algorithm}_s{args.seed}_simulation_log.csv"
-        ),
-        events_csv=output_root / "logs"
-        / f"{args.intersection}_x{args.flow_multiplier:g}_{args.algorithm}_s{args.seed}_events.csv",
         additional_files=additional_files,
         seed=args.seed,
+        artifacts=artifacts,
     )
     runner.run(args.steps)
     logger.info("实验完成: %s", runner.output_csv)

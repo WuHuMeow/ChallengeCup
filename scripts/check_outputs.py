@@ -14,7 +14,15 @@ import argparse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRED = ["tripinfo.xml", "stats.xml", "traj.xml"]
+REQUIRED = [
+    "run_metadata.json",
+    "metrics.csv",
+    "simulation_log.csv",
+    "events.csv",
+    "tripinfo.xml",
+    "stats.xml",
+    "traj.xml",
+]
 
 
 def main() -> int:
@@ -30,17 +38,22 @@ def main() -> int:
         return 1
 
     missing: list[str] = []
-    n_dirs = 0
-    for d in root.glob("*/*/*"):  # intersection/algo/seed
-        if not d.is_dir():
+    run_dirs: set[Path] = set()
+    for metadata in root.rglob("run_metadata.json"):
+        if not metadata.is_file():
             continue
-        n_dirs += 1
-        for f in REQUIRED:
-            p = d / f
-            if not p.exists() or p.stat().st_size == 0:
-                missing.append(f"{d}/{f}")
+        run_dir = metadata.parent
+        run_dirs.add(run_dir)
+        for filename in REQUIRED:
+            path = run_dir / filename
+            if not path.is_file() or path.stat().st_size == 0:
+                missing.append(str(path))
 
-    print(f"检查目录: {root}（{n_dirs} 个实验目录）")
+    if not run_dirs:
+        print(f"未发现包含 run_metadata.json 的实验目录: {root}")
+        return 1
+
+    print(f"检查目录: {root}（{len(run_dirs)} 个实验目录）")
     print(f"缺失/空文件: {len(missing)}")
     for m in missing[:50]:
         print(" -", m)

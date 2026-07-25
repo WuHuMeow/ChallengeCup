@@ -32,3 +32,26 @@ def test_runner_passes_seed_to_bridge():
     with patch("engine.runner.TraCIBridge") as mock_cls:
         SimulationRunner(Scene(meta=meta), FixedTimeAlgorithm(), seed=42)
         assert mock_cls.call_args.kwargs.get("seed") == 42
+
+
+def test_seed_script_accepts_steps_and_output_root(tmp_path):
+    from scripts.check_seed_repro import parse_args
+
+    args = parse_args(["--steps", "12", "--output-root", str(tmp_path)])
+    assert args.steps == 12
+    assert args.output_root == tmp_path
+
+
+def test_check_outputs_recurses_and_rejects_missing_files(tmp_path, monkeypatch):
+    from scripts import check_outputs
+
+    run_dir = tmp_path / "nested" / "i1" / "fixed_time" / "x1" / "s42"
+    run_dir.mkdir(parents=True)
+    required = check_outputs.REQUIRED
+    for name in required:
+        (run_dir / name).write_text("data", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["check_outputs.py", "--root", str(tmp_path)])
+    assert check_outputs.main() == 0
+
+    (run_dir / "events.csv").unlink()
+    assert check_outputs.main() == 1
