@@ -2,7 +2,7 @@
 
 ## 目的
 
-使用 `ca_mp.visualization` 模块从仿真结果 CSV 生成对比图表。
+使用 `visualization` 模块从仿真结果 CSV 生成对比图表。
 
 ## 前置条件
 
@@ -12,7 +12,7 @@
 ## 操作步骤
 
 ```python
-from ca_mp.visualization.plots import plot_comparison
+from visualization.plots import plot_comparison
 
 # 对比多算法的排队长度时序
 plot_comparison(
@@ -28,13 +28,13 @@ plot_comparison(
 
 ### 可用图表函数
 
-查看 `ca_mp/visualization/plots.py` 中的公开函数。典型用法：
+查看 `visualization/plots.py` 中的公开函数。典型用法：
 
 ```python
 import matplotlib.pyplot as plt
-from ca_mp.visualization import plots
+from visualization import plots
 
-# 具体函数签名见模块 README：ca_mp/visualization/README.md
+# 具体函数签名见模块 README：visualization/README.md
 ```
 
 ## 示例
@@ -42,7 +42,7 @@ from ca_mp.visualization import plots
 生成完整对比图后保存：
 ```bash
 python -c "
-from ca_mp.visualization.plots import plot_comparison
+from visualization.plots import plot_comparison
 plot_comparison(
     csv_paths=['output/csv/16_fixed_time.csv', 'output/csv/16_ca_maxpressure.csv'],
     metric='avg_delay',

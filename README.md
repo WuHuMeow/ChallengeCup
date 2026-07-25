@@ -1,8 +1,8 @@
 # 雄安新区"城市大脑"车路云一体化协同管控算法平台
 
 [![挑战杯 2026](https://img.shields.io/badge/%E6%8C%91%E6%88%98%E6%9D%AF-2026-blue)](https://www.tiaozhanbei.net)
-[![编号 XH-202613](https://img.shields.io/badge/%E7%BC%96%E5%8F%B7-XH--202613-orange)](docs/reference/competition/)
-[![赛道 B](https://img.shields.io/badge/%E8%B5%9B%E9%81%93-B%EF%BC%88%E7%AE%97%E6%B3%95%E8%B0%83%E4%BC%98%E5%9E%8B%EF%BC%89-green)](docs/reference/competition/)
+[![编号 XH-202613](https://img.shields.io/badge/%E7%BC%96%E5%8F%B7-XH--202613-orange)](docs/pdf/)
+[![赛道 B](https://img.shields.io/badge/%E8%B5%9B%E9%81%93-B%EF%BC%88%E7%AE%97%E6%B3%95%E8%B0%83%E4%BC%98%E5%9E%8B%EF%BC%89-green)](docs/pdf/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://www.python.org)
 [![SUMO](https://img.shields.io/badge/SUMO-1.27.1-brightgreen)](https://www.eclipse.org/sumo/)
 [![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -77,11 +77,11 @@
 
 基础框架已完成，源码模块具备可运行骨架，队友可直接在对应文件中继续填充业务逻辑：
 
-- 核心数据契约（`ca_mp/core/types.py`）已定义 JointState、ControlAction、SceneMeta 等共享类型。
-- 场景注册（`ca_mp/scenes/registry.py`）已可自动发现 20 个路口，并兼容地图目录命名差异。
-- 仿真引擎（`ca_mp/engine/`）已可启动 SUMO、读取状态、写入控制、输出 CSV。
-- 算法库（`ca_mp/algorithms/`）已完成标准接口与三种策略骨架，固定配时基线支持 Excel 配时读取。
-- 云端策略（`ca_mp/cloud/cloud_policy.py`）、REST API（`ca_mp/api/server.py`）、实验框架（`ca_mp/experiments/`）、可视化（`ca_mp/visualization/`）均已搭好骨架。
+- 核心数据契约（`core/types.py`）已定义 JointState、ControlAction、SceneMeta 等共享类型。
+- 场景注册（`scenes/registry.py`）已可自动发现 20 个路口，并兼容地图目录命名差异。
+- 仿真引擎（`engine/`）已可启动 SUMO、读取状态、写入控制、输出 CSV。
+- 算法库（`algorithms/`）已完成标准接口与三种策略骨架，固定配时基线支持 Excel 配时读取。
+- 云端策略（`cloud/cloud_policy.py`）、REST API（`api/server.py`）、实验框架（`experiments/`）、可视化（`visualization/`）均已搭好骨架。
 
 **IA（仿真基础设施 A）状态（2026-07-24）**：已完成 20 个路口在 SUMO 1.27.1 下的迁移、增强配置、边映射和批量验证；Docker 定义已就绪，真实跨机器镜像构建仍待验证。
 
@@ -111,7 +111,7 @@
 
 | 路径 | 说明 |
 |------|------|
-| [docs/reference/competition/](docs/reference/competition/) | 发榜单位提供的原始赛题资料，含功能要求、评分标准与提交说明 |
+| [docs/pdf/](docs/pdf/) | 发榜单位提供的原始赛题资料，含功能要求、评分标准与提交说明 |
 
 <a id="设计文档"></a>
 
@@ -119,17 +119,17 @@
 
 | 路径 | 说明 |
 |------|------|
-| [docs/team/project-roadmap.md](docs/team/project-roadmap.md) | 项目总路线图（六周里程碑、团队角色、实验设计、风险应对） |
-| [docs/team/tasks/w1/](docs/team/tasks/w1/) 至 [docs/team/tasks/w6/](docs/team/tasks/w6/) | 各周个人任务书（8 人 x 6 周） |
-| [docs/architecture/interface.md](docs/architecture/interface.md) | 数据契约、模块接口与架构说明 |
-| [docs/operations/deployment.md](docs/operations/deployment.md) | 部署运行说明文档 |
-| [docs/operations/sumo-environment-setup.md](docs/operations/sumo-environment-setup.md) | SUMO 环境安装指南 |
-| [docs/reference/edge-mapping.md](docs/reference/edge-mapping.md) | 20 路口边 ID 到方向映射表 |
-| [docs/reports/sumo-migration-log.md](docs/reports/sumo-migration-log.md) | SUMO 版本迁移记录 |
-| [docs/reports/batch-validation-report.md](docs/reports/batch-validation-report.md) | 3600 步全量验证报告 |
-| [docs/reports/w3-log-audit.md](docs/reports/w3-log-audit.md) | W3 日志审计报告 |
-| [docs/reports/w5-verification.md](docs/reports/w5-verification.md) | W5 验证报告 |
-| [docs/reports/w6-review-issues.md](docs/reports/w6-review-issues.md) | W6 审查问题记录 |
+| [docs/总路线.md](docs/总路线.md) | 项目总路线图（六周里程碑、团队角色、实验设计、风险应对） |
+| [docs/tasks/w1/](docs/tasks/w1/) 至 [docs/tasks/w6/](docs/tasks/w6/) | 各周个人任务书（8 人 x 6 周） |
+| [docs/interface.md](docs/interface.md) | 数据契约、模块接口与架构说明 |
+| [docs/deployment.md](docs/deployment.md) | 部署运行说明文档 |
+| [docs/sumo_env_setup.md](docs/sumo_env_setup.md) | SUMO 环境安装指南 |
+| [docs/edge_mapping.md](docs/edge_mapping.md) | 20 路口边 ID 到方向映射表 |
+| [docs/migration_log.md](docs/migration_log.md) | SUMO 版本迁移记录 |
+| [docs/batch_validate_report.md](docs/batch_validate_report.md) | 3600 步全量验证报告 |
+| [docs/w3-log-audit.md](docs/w3-log-audit.md) | W3 日志审计报告 |
+| [docs/w5-verification.md](docs/w5-verification.md) | W5 验证报告 |
+| [docs/w6-review-issues.md](docs/w6-review-issues.md) | W6 审查问题记录 |
 | [docs/README.md](docs/README.md) | 文档分类、规范入口与模块文档索引 |
 | [docs/guides/](docs/guides/) | 操作指南（11 篇）与协作规范 |
 
@@ -196,14 +196,14 @@ python -c "import pandas, numpy; print('all dependencies OK')"
 ```powershell
 python examples/run_fixed_time.py 1
 python examples/run_ca_max_pressure.py 1 3600
-python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure `
+python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
   --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 ```
 
 启动 FastAPI 服务（可选）：
 
 ```bash
-uvicorn ca_mp.api.server:app --reload
+uvicorn api.server:app --reload
 ```
 
 服务启动后访问 http://127.0.0.1:8000/docs 查看自动生成的 API 文档。多数 `/api/*` 协作路由仍为占位实现。
@@ -228,7 +228,7 @@ export CC_DATA_ROOT=/path/to/路口数据
 
 ```powershell
 python -m pytest tests/ -q
-python scripts/validation/validate_all.py
+python scripts/validate_all.py
 ```
 
 ```bash
@@ -271,7 +271,7 @@ bash scripts/quality/lint_check.sh
 
 ```text
 ChallengeCup/
-├── ca_mp/                      # 主包（pip install -e . 后可直接 import）
+├──                       # 主包（pip install -e . 后可直接 import）
 │   ├── core/                   # 全项目共享核心
 │   │   ├── types.py            # JointState / ControlAction / SceneMeta 等数据契约
 │   │   └── config.py           # YAML 配置加载（支持 CC_DATA_ROOT 环境变量覆盖）
@@ -311,21 +311,21 @@ ChallengeCup/
 ├── examples/
 │   └── run_fixed_time.py       # 最小可运行示例
 ├── scripts/
-│   ├── data/                   # 元数据与边映射生成
-│   ├── simulation/             # SUMO 配置生成与任务拆分
-│   ├── validation/             # 环境、输出、seed 与压力验证
-│   └── quality/                # lint 与静态检查
-├── tests/
-│   ├── unit/                   # 单模块行为测试
-│   └── integration/            # 跨模块与真实流程测试
+│   ├── extract_metadata.py       # 元数据提取
+│   ├── generate_edge_mapping.py  # 边方向映射生成
+│   ├── generate_configs.py       # SUMO 配置生成
+│   ├── validate_all.py            # 快速验证
+│   ├── batch_validate.py         # 批量验证
+│   └── quality/                  # lint 与静态检查
+├── tests/                        # 扁平测试入口
 ├── docs/
-│   ├── architecture/           # 接口与架构图
-│   ├── guides/                 # 操作指南（11 篇）与协作规范
-│   ├── operations/             # 部署与 SUMO 环境
-│   ├── reference/              # 边映射与赛题资料
-│   ├── reports/                # 验证、迁移和审查报告
-│   ├── team/                   # 路线图与六周任务书
-│   └── notes/                  # 调研笔记
+│   ├── 总路线.md                  # 项目路线图
+│   ├── interface.md              # 数据契约与模块接口
+│   ├── deployment.md             # 部署说明
+│   ├── tasks/                    # W1-W6 任务书
+│   ├── guides/                   # 操作指南
+│   ├── superpowers/              # 设计规格、计划与架构图
+│   └── pdf/                      # 赛题 PDF
 ├── output/                     # 运行时输出、历史归档与提交物
 ├── docker/                     # 容器化部署
 │   └── Dockerfile              # ubuntu:22.04 + ppa:sumo/stable（SUMO 1.27.x）
@@ -406,7 +406,7 @@ intersection_data/{id}/
 
 ## 系统架构
 
-![系统架构](docs/architecture/images/architecture.png)
+![系统架构](docs/superpowers/specs/images/architecture.png)
 
 <a id="云-边-端协同框架"></a>
 
@@ -416,15 +416,15 @@ intersection_data/{id}/
 
 | 层级 | 模块 | 职责 | 数据契约 |
 |------|------|------|----------|
-| 云端 | `ca_mp/cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
-| 边缘 | `ca_mp/algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` -> `ControlAction` |
-| 车端/路侧 | `ca_mp/engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
+| 云端 | `cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
+| 边缘 | `algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` -> `ControlAction` |
+| 车端/路侧 | `engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
 
 <a id="仿真数据流"></a>
 
 ### 仿真数据流
 
-![仿真数据流](docs/architecture/images/simulation-loop.png)
+![仿真数据流](docs/superpowers/specs/images/simulation-loop.png)
 
 每个仿真步的完整循环：
 
@@ -467,9 +467,9 @@ def ca_mp_decide(state: JointState, prediction: PredictionResult) -> List[Contro
 
 | 算法 | 类型 | ML 介入 | 协同层级 | 实现文件 |
 |------|------|---------|----------|----------|
-| 固定配时 | 基线 | 无 | 无协同 | `ca_mp/algorithms/fixed_time.py` |
-| 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `ca_mp/algorithms/rule_adaptive.py` |
-| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `ca_mp/algorithms/ca_max_pressure.py` |
+| 固定配时 | 基线 | 无 | 无协同 | `algorithms/fixed_time.py` |
+| 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `algorithms/rule_adaptive.py` |
+| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ca_max_pressure.py` |
 
 <a id="ewma-预测"></a>
 
@@ -525,7 +525,7 @@ CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warn
 
 ## 团队分工
 
-![团队组织](docs/architecture/images/team-org.png)
+![团队组织](docs/superpowers/specs/images/team-org.png)
 
 | 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-24） |
 |------|------|------|----------|----------|--------------------|
@@ -542,16 +542,16 @@ CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warn
 
 | 代号 | 角色 | W1 | W2 | W3 | W4 | W5 | W6 |
 |------|------|----|----|----|----|----|----|
-| TL | Tech Lead | [W1](docs/team/tasks/w1/tl-technical-lead.md) | [W2](docs/team/tasks/w2/tl-technical-lead.md) | [W3](docs/team/tasks/w3/tl-technical-lead.md) | [W4](docs/team/tasks/w4/tl-technical-lead.md) | [W5](docs/team/tasks/w5/tl-technical-lead.md) | [W6](docs/team/tasks/w6/tl-technical-lead.md) |
-| IA | 仿真基础设施 A | [W1](docs/team/tasks/w1/ia-infrastructure-a.md) | [W2](docs/team/tasks/w2/ia-infrastructure-a.md) | [W3](docs/team/tasks/w3/ia-infrastructure-a.md) | [W4](docs/team/tasks/w4/ia-infrastructure-a.md) | [W5](docs/team/tasks/w5/ia-infrastructure-a.md) | [W6](docs/team/tasks/w6/ia-infrastructure-a.md) |
-| IB | 仿真基础设施 B | [W1](docs/team/tasks/w1/ib-infrastructure-b.md) | [W2](docs/team/tasks/w2/ib-infrastructure-b.md) | [W3](docs/team/tasks/w3/ib-infrastructure-b.md) | [W4](docs/team/tasks/w4/ib-infrastructure-b.md) | [W5](docs/team/tasks/w5/ib-infrastructure-b.md) | [W6](docs/team/tasks/w6/ib-infrastructure-b.md) |
-| AA | 算法 A | [W1](docs/team/tasks/w1/aa-algorithm-a.md) | [W2](docs/team/tasks/w2/aa-algorithm-a.md) | [W3](docs/team/tasks/w3/aa-algorithm-a.md) | [W4](docs/team/tasks/w4/aa-algorithm-a.md) | [W5](docs/team/tasks/w5/aa-algorithm-a.md) | [W6](docs/team/tasks/w6/aa-algorithm-a.md) |
-| AB | 算法 B | [W1](docs/team/tasks/w1/ab-algorithm-b.md) | [W2](docs/team/tasks/w2/ab-algorithm-b.md) | [W3](docs/team/tasks/w3/ab-algorithm-b.md) | [W4](docs/team/tasks/w4/ab-algorithm-b.md) | [W5](docs/team/tasks/w5/ab-algorithm-b.md) | [W6](docs/team/tasks/w6/ab-algorithm-b.md) |
-| EX | 实验组 | [W1](docs/team/tasks/w1/ex-experiment.md) | [W2](docs/team/tasks/w2/ex-experiment.md) | [W3](docs/team/tasks/w3/ex-experiment.md) | [W4](docs/team/tasks/w4/ex-experiment.md) | [W5](docs/team/tasks/w5/ex-experiment.md) | [W6](docs/team/tasks/w6/ex-experiment.md) |
-| DA | 交付 A | [W1](docs/team/tasks/w1/da-delivery-a.md) | [W2](docs/team/tasks/w2/da-delivery-a.md) | [W3](docs/team/tasks/w3/da-delivery-a.md) | [W4](docs/team/tasks/w4/da-delivery-a.md) | [W5](docs/team/tasks/w5/da-delivery-a.md) | [W6](docs/team/tasks/w6/da-delivery-a.md) |
-| DB | 交付 B | [W1](docs/team/tasks/w1/db-delivery-b.md) | [W2](docs/team/tasks/w2/db-delivery-b.md) | [W3](docs/team/tasks/w3/db-delivery-b.md) | [W4](docs/team/tasks/w4/db-delivery-b.md) | [W5](docs/team/tasks/w5/db-delivery-b.md) | [W6](docs/team/tasks/w6/db-delivery-b.md) |
+| TL | Tech Lead | [W1](docs/tasks/w1/TL_tech_lead.md) | [W2](docs/tasks/w2/TL_tech_lead.md) | [W3](docs/tasks/w3/TL_tech_lead.md) | [W4](docs/tasks/w4/TL_tech_lead.md) | [W5](docs/tasks/w5/TL_tech_lead.md) | [W6](docs/tasks/w6/TL_tech_lead.md) |
+| IA | 仿真基础设施 A | [W1](docs/tasks/w1/IA_infra_a.md) | [W2](docs/tasks/w2/IA_infra_a.md) | [W3](docs/tasks/w3/IA_infra_a.md) | [W4](docs/tasks/w4/IA_infra_a.md) | [W5](docs/tasks/w5/IA_infra_a.md) | [W6](docs/tasks/w6/IA_infra_a.md) |
+| IB | 仿真基础设施 B | [W1](docs/tasks/w1/IB_infra_b.md) | [W2](docs/tasks/w2/IB_infra_b.md) | [W3](docs/tasks/w3/IB_infra_b.md) | [W4](docs/tasks/w4/IB_infra_b.md) | [W5](docs/tasks/w5/IB_infra_b.md) | [W6](docs/tasks/w6/IB_infra_b.md) |
+| AA | 算法 A | [W1](docs/tasks/w1/AA_algo_a.md) | [W2](docs/tasks/w2/AA_algo_a.md) | [W3](docs/tasks/w3/AA_algo_a.md) | [W4](docs/tasks/w4/AA_algo_a.md) | [W5](docs/tasks/w5/AA_algo_a.md) | [W6](docs/tasks/w6/AA_algo_a.md) |
+| AB | 算法 B | [W1](docs/tasks/w1/AB_algo_b.md) | [W2](docs/tasks/w2/AB_algo_b.md) | [W3](docs/tasks/w3/AB_algo_b.md) | [W4](docs/tasks/w4/AB_algo_b.md) | [W5](docs/tasks/w5/AB_algo_b.md) | [W6](docs/tasks/w6/AB_algo_b.md) |
+| EX | 实验组 | [W1](docs/tasks/w1/EX_experiment.md) | [W2](docs/tasks/w2/EX_experiment.md) | [W3](docs/tasks/w3/EX_experiment.md) | [W4](docs/tasks/w4/EX_experiment.md) | [W5](docs/tasks/w5/EX_experiment.md) | [W6](docs/tasks/w6/EX_experiment.md) |
+| DA | 交付 A | [W1](docs/tasks/w1/DA_delivery_a.md) | [W2](docs/tasks/w2/DA_delivery_a.md) | [W3](docs/tasks/w3/DA_delivery_a.md) | [W4](docs/tasks/w4/DA_delivery_a.md) | [W5](docs/tasks/w5/DA_delivery_a.md) | [W6](docs/tasks/w6/DA_delivery_a.md) |
+| DB | 交付 B | [W1](docs/tasks/w1/DB_delivery_b.md) | [W2](docs/tasks/w2/DB_delivery_b.md) | [W3](docs/tasks/w3/DB_delivery_b.md) | [W4](docs/tasks/w4/DB_delivery_b.md) | [W5](docs/tasks/w5/DB_delivery_b.md) | [W6](docs/tasks/w6/DB_delivery_b.md) |
 
-总路线图：[`docs/team/project-roadmap.md`](docs/team/project-roadmap.md)
+总路线图：[`docs/总路线.md`](docs/总路线.md)
 
 ---
 
@@ -559,7 +559,7 @@ CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warn
 
 ## 开发计划
 
-![时间线](docs/architecture/images/timeline.png)
+![时间线](docs/superpowers/specs/images/timeline.png)
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|
@@ -582,7 +582,7 @@ CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warn
 |---|------|------|--------|------|
 | 1 | PPT 汇报 | .pptx | DA | 待完成 |
 | 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 基础设施与目录整理已完成，算法/实验/交付继续集成 |
-| 3 | 部署运行说明文档 | Markdown | IB | 已完成，路径为 `docs/operations/deployment.md` |
+| 3 | 部署运行说明文档 | Markdown | IB | 已完成，路径为 `docs/deployment.md` |
 | 4 | 实验评估报告 | Word | DA + EX | 待完成 |
 | 5 | 演示视频（5-8 分钟） | .mp4 | DB | 待完成 |
 | 6 | 实际场景演示方案 | Word/Markdown | DA | 待完成 |

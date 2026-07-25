@@ -30,8 +30,8 @@ generated state and must not be treated as archival evidence.
 
 Archive contents are retained for inspection and are not runtime input. Do not
 overwrite an existing archive item; create a distinct evidence directory for a
-new retained run. The validation commands `python scripts/validation/validate_all.py`
-and `python scripts/validation/batch_validate.py` currently create fresh
+new retained run. The validation commands `python scripts/validate_all.py`
+and `python scripts/batch_validate.py` currently create fresh
 working output at their configured legacy paths; archive a completed run only
 after it is no longer needed as working state.
 

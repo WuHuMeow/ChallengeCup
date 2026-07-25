@@ -57,4 +57,4 @@ python examples/run_ca_max_pressure.py 16 3600
 A: 确认修改的是 `config/default.yaml`，不是 `config/` 下其他文件。也可通过环境变量 `CC_DATA_ROOT` 覆盖数据路径，但算法参数只从此文件读取。
 
 **Q: 参数含义不确定？**
-A: 参见 `docs/architecture/interface.md` 中 CloudPolicy.dispatch_params 小节的分档表。
+A: 参见 `docs/interface.md` 中 CloudPolicy.dispatch_params 小节的分档表。

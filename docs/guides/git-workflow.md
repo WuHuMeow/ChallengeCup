@@ -126,7 +126,7 @@ git push origin main
 如果不希望一次性提交所有修改，可以指定文件：
 
 ```bash
-git add README.md docs/team/tasks/w1/ia-infrastructure-a.md
+git add README.md docs/tasks/w1/IA_infra_a.md
 git commit -m "docs: 更新 README 和成员1任务书"
 git push origin main
 ```

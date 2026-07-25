@@ -15,7 +15,7 @@
 ### 单次实验（CLI）
 
 ```bash
-python -m ca_mp.experiments.runner \
+python -m experiments.runner \
   --intersection 16 \
   --algorithm ca_maxpressure \
   --flow-multiplier 1.5 \
@@ -38,7 +38,7 @@ python -m ca_mp.experiments.runner \
 ### 批量实验（Python API）
 
 ```python
-from ca_mp.experiments.runner import run_batch
+from experiments.runner import run_batch
 
 results = run_batch(
     intersection_ids=["1", "16"],       # None=全部20个
@@ -52,16 +52,16 @@ print(f"完成 {len(results)} 次实验")
 ### 使用任务拆分脚本（双机并行）
 
 ```bash
-python scripts/simulation/split_jobs.py           # 查看任务分配
-python scripts/simulation/split_jobs.py --machine a  # A 机任务清单
-python scripts/simulation/split_jobs.py --machine b  # B 机任务清单
+python scripts/split_jobs.py           # 查看任务分配
+python scripts/split_jobs.py --machine a  # A 机任务清单
+python scripts/split_jobs.py --machine b  # B 机任务清单
 ```
 
 ## 示例
 
 只跑路口 16 的 3 种算法对比（快速验证）：
 ```python
-from ca_mp.experiments.runner import run_batch
+from experiments.runner import run_batch
 results = run_batch(intersection_ids=["16"], steps=3600)
 ```
 
@@ -74,4 +74,4 @@ A: 已完成的 CSV 不受影响。重新运行时跳过已有输出文件即可
 A: `{路口}_x{倍率}_{算法}_s{种子}.csv`，如 `16_x1.5_ca_maxpressure_s42.csv`。
 
 **Q: 内存不够？**
-A: 用 `python scripts/validation/stress_memory.py 16 36000` 测试峰值。Python 侧峰值应 < 1GB。
+A: 用 `python scripts/stress_memory.py 16 36000` 测试峰值。Python 侧峰值应 < 1GB。

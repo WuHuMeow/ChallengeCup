@@ -38,7 +38,7 @@ history = runner.run(steps=10)
 ## 依赖
 
 - 真实桥接依赖 SUMO/TraCI、路口工程和边映射元数据。
-- 运行器依赖 `ca_mp.algorithms`、`ca_mp.core` 和 `ca_mp.experiments.metrics`。
+- 运行器依赖 `algorithms`、`core` 和 `experiments.metrics`。
 - Mock 模式不启动 SUMO，但仍需要有效 `Scene` 元数据。
 
 ## 已知限制

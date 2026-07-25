@@ -12,10 +12,10 @@
 ## 操作步骤
 
 ```bash
-python scripts/simulation/generate_configs.py
+python scripts/generate_configs.py
 ```
 
-输出：`ca_mp/engine/configs/demo_{1..20}.sumocfg`（覆盖已有文件）
+输出：`engine/configs/demo_{1..20}.sumocfg`（覆盖已有文件）
 
 ## 生成规则
 
@@ -35,7 +35,7 @@ python scripts/simulation/generate_configs.py
 
 生成后验证配置有效性：
 ```bash
-python scripts/validation/batch_validate.py 1 16
+python scripts/batch_validate.py 1 16
 ```
 
 ## 常见问题

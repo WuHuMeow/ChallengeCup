@@ -6,7 +6,7 @@
 
 ## 前置条件
 
-- 了解 CA-MP 算法的云端协同机制（参见 `docs/architecture/interface.md`）
+- 了解 CA-MP 算法的云端协同机制（参见 `docs/interface.md`）
 - 已安装项目依赖：`pip install -e .`
 
 ## 操作步骤
@@ -25,7 +25,7 @@
    - `prediction_horizon`：预测未来多少秒的流量
    - `cloud_update_interval`：多少步下发一次参数（600步 = 60仿真秒）
 
-3. 云端分档逻辑（代码位于 `ca_mp/cloud/cloud_policy.py`）：
+3. 云端分档逻辑（代码位于 `cloud/cloud_policy.py`）：
 
 | 全局平均压力 | min_green | max_green | base_green |
 |-------------|-----------|-----------|------------|
@@ -33,7 +33,7 @@
 | > 0.4（中档） | 15 | 90 | 35 |
 | <= 0.4（常规） | 10 | 90 | 30 |
 
-如需修改分档阈值，编辑 `ca_mp/cloud/cloud_policy.py` 中的 `PRESSURE_TIERS`。
+如需修改分档阈值，编辑 `cloud/cloud_policy.py` 中的 `PRESSURE_TIERS`。
 
 ## 示例
 

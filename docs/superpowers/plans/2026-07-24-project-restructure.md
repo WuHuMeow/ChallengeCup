@@ -1,5 +1,7 @@
 # Project Restructure Implementation Plan
 
+> Historical plan: this document records the 2026-07-24 namespace-package proposal. The repository now follows the Gitee-compatible flat layout; use `docs/superpowers/plans/2026-07-25-gitee-flat-merge.md` for the current structure and commands.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Consolidate 9 top-level code modules into a `ca_mp/` package, clean up import hacks, simplify Docker, add `pyproject.toml`, and write 11 operational guides for the team.

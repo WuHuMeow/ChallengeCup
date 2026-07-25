@@ -14,7 +14,7 @@
 ## 命令与接口
 
 ```powershell
-python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure `
+python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
   --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
 ```
 

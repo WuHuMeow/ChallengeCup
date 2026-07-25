@@ -22,5 +22,5 @@ loads the full scene registry and parses scenario XML fixtures. Run it directly
 when iterating on scene changes:
 
 ```powershell
-python -m pytest tests/integration/test_scenes.py
+python -m pytest tests/test_scenes.py
 ```

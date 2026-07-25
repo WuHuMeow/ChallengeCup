@@ -1,6 +1,6 @@
 # 批量 3600 步验证报告（IA W2）
 
-> 由 `scripts/validation/batch_validate.py` 生成；输出目录 `output/validate/`。
+> 由 `scripts/batch_validate.py` 生成；输出目录 `output/validate/`。
 
 ```text
 路口  1 PASS     0.7s finished= 1664 

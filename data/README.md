@@ -9,7 +9,7 @@
 | 路径 | 作用 |
 | --- | --- |
 | `intersection_data/{1..20}/` | 每个路口的 SUMO 工程、流量与配时文件、地图 PNG |
-| `intersection_data/metadata/intersections.yaml` | 由 `scripts/data/extract_metadata.py` 生成的路口元数据 |
+| `intersection_data/metadata/intersections.yaml` | 由 `scripts/extract_metadata.py` 生成的路口元数据 |
 | `intersection_data/metadata/edge_mapping.json` | 由边映射脚本生成的结构化边方向数据 |
 | `intersection_data.zip` | 路口数据的离线传输压缩包 |
 
@@ -34,8 +34,8 @@ intersection_data/{id}/
 从仓库根目录更新元数据或边方向映射：
 
 ```powershell
-python scripts/data/extract_metadata.py
-python scripts/data/generate_edge_mapping.py
+python scripts/extract_metadata.py
+python scripts/generate_edge_mapping.py
 ```
 
 场景代码通过 `SceneRegistry` 读取本目录；可用 `CC_DATA_ROOT` 指向仓库外的同构数据根目录：
@@ -47,7 +47,7 @@ $env:CC_DATA_ROOT = "D:\data\intersection_data"
 ## 输入与输出
 
 - 输入：路口 ID 目录中的 `.sumocfg`、`.net.xml`、`.rou.xml`、`.flow.xml`、`.turn.xml`、配时 `.xlsx` 和地图 `.png`。
-- 元数据脚本输出 `metadata/intersections.yaml`；边映射脚本输出 `metadata/edge_mapping.json` 和 `docs/reference/edge-mapping.md`。
+- 元数据脚本输出 `metadata/intersections.yaml`；边映射脚本输出 `metadata/edge_mapping.json` 和 `docs/edge_mapping.md`。
 - `scenes.VariantGenerator` 根据基准 `.flow.xml` 在 `output/variants/` 生成倍率变体，不覆盖原始文件。
 
 ## 依赖

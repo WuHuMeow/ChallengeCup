@@ -36,7 +36,7 @@ XGBoost 是一种常用的梯度提升算法[^1]。
 图片应放在项目内部，避免使用外部图床链接，防止失效。
 
 ```markdown
-![系统架构](../architecture/images/architecture.png)
+![系统架构](../superpowers/specs/images/architecture.png)
 ```
 
 ### 图片规范
@@ -118,7 +118,7 @@ https://sumo.dlr.de/docs/TraCI.html
 在实验报告中引用项目数据时，写明路径和生成方式：
 
 ```markdown
-实验数据保存在 `output/full_comparison.csv`，由 `ca_mp/experiments/runner.py` 运行 180 次仿真生成。
+实验数据保存在 `output/full_comparison.csv`，由 `experiments/runner.py` 运行 180 次仿真生成。
 ```
 
 ---
@@ -128,7 +128,7 @@ https://sumo.dlr.de/docs/TraCI.html
 | 错误 | 正确 |
 |------|------|
 | `详见[这里](http://...)` | `详见 [SUMO 官方文档](http://...)` |
-| `![图片]` | `![系统架构图](../architecture/images/architecture.svg)` |
+| `![图片]` | `![系统架构图](../superpowers/specs/images/architecture.svg)` |
 | 使用绝对路径 `C:\Users\...\file.md` | 使用相对路径 `./docs/...` |
 | 引用不存在的文件 | 提交前验证链接可访问 |
 

@@ -13,7 +13,7 @@
 ## 命令与接口
 
 ```powershell
-uvicorn ca_mp.api.server:app --reload
+uvicorn api.server:app --reload
 ```
 
 | 路由 | 当前行为 |
@@ -34,8 +34,8 @@ uvicorn ca_mp.api.server:app --reload
 ## 依赖
 
 - 依赖 FastAPI、Pydantic 和 Uvicorn。
-- `/scenes` 依赖 `ca_mp.scenes.SceneRegistry` 与本地路口数据。
-- 请求/响应数据契约与核心类型定义见 `docs/architecture/interface.md`。
+- `/scenes` 依赖 `scenes.SceneRegistry` 与本地路口数据。
+- 请求/响应数据契约与核心类型定义见 `docs/interface.md`。
 
 ## 已知限制
 

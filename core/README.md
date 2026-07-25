@@ -27,7 +27,7 @@ output_root = config.path("paths.output_root")
 
 - `Config` 输入 `config/default.yaml` 或首次实例化时提供的 YAML 路径。
 - `Config.get()` 输出配置值，`Config.path()` 输出规范化绝对路径。
-- 数据类只承载状态，不执行 I/O；字段定义见 `docs/architecture/interface.md`。
+- 数据类只承载状态，不执行 I/O；字段定义见 `docs/interface.md`。
 
 ## 依赖
 

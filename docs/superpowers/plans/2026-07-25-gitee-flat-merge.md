@@ -393,7 +393,7 @@ git commit -m "chore: align runtime data and deployment paths"
 **Files:**
 - Modify: `README.md`、`docs/总路线.md`、`docs/tasks/`、`docs/guides/`、`docs/superpowers/`
 - Merge: `docs/*.md`、`examples/README.md`、`scripts/README.md`、`tests/README.md`、`output/*/README.md`
-- Delete after migration: 已合并的 `docs/team/`、`docs/operations/`、`docs/reports/` 和重复架构文档目录
+- Preserve as compatibility copies: 已合并的 `docs/team/`、`docs/operations/`、`docs/reports/` 和重复架构文档目录；当前入口统一指向平铺文档
 
 **Interfaces:**
 - Consumes: Gitee 文档布局、本地最新进度和最终平铺代码路径。
@@ -423,7 +423,7 @@ docs/operations/sumo-environment-setup.md -> docs/sumo_env_setup.md
 docs/reports/sumo-migration-log.md -> docs/migration_log.md
 docs/reports/batch-validation-report.md -> docs/batch_validate_report.md
 docs/reference/edge-mapping.md -> docs/edge_mapping.md
-docs/notes/docker-sumo-research.md -> docs/notes/docker_sumo_research.md
+docs/notes/docker-sumo-research.md -> docs/notes/docker-sumo-research.md
 ```
 
 Gitee 同名文档与本地文档逐段合并，保留本地接口说明、部署约束和验证结果。

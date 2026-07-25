@@ -1,75 +1,54 @@
 # 项目文档索引
 
-`docs/` 是仓库文档的规范入口。当前运行命令应以本页、根目录 `README.md` 和各模块 README 为准。
+`docs/` 是仓库文档入口，当前运行命令以根目录 `README.md`、本页和各模块 README 为准。
 
-## 文档分类
-
-| 目录 | 职责 | 主要输入 | 主要输出 |
-| --- | --- | --- | --- |
-| `architecture/` | 数据契约、模块接口和调用关系 | 当前源码接口 | 接口说明 |
-| `operations/` | 环境安装、部署与运行 | SUMO/Python/Docker 环境 | 可执行运维步骤 |
-| `reference/` | 赛题原文和生成的技术映射 | 官方资料、路网 XML | PDF、边方向映射 |
-| `reports/` | 验证、迁移和审计结果 | 脚本输出、测试记录 | 可复核报告 |
-| `notes/` | 调研与技术选型背景 | 外部资料、实验记录 | 非规范性笔记 |
-| `guides/` | 操作指南（11 篇）与协作规范 | 团队协作约定、仿真操作流程 | 操作指南 |
-| `team/` | 项目路线图和每周任务书 | 项目计划 | 任务与验收口径 |
+原 `docs/architecture/`、`docs/operations/`、`docs/reference/`、`docs/reports/` 和 `docs/team/` 目录暂作为历史兼容副本保留；新文档入口统一使用本页列出的平铺路径。
 
 ## 规范入口
 
 | 文档 | 内容 |
 | --- | --- |
-| [architecture/README.md](architecture/README.md) | 当前架构文档与图示索引 |
-| [architecture/interface.md](architecture/interface.md) | 核心数据类、算法接口、引擎接口、API 和实验 CLI |
-| [operations/sumo-environment-setup.md](operations/sumo-environment-setup.md) | SUMO 安装、环境变量和版本检查 |
-| [operations/deployment.md](operations/deployment.md) | 本地、Docker 和完整实验运行方式 |
-| [reference/edge-mapping.md](reference/edge-mapping.md) | 20 个路口边 ID、方向和进出口属性 |
-| [reports/sumo-migration-log.md](reports/sumo-migration-log.md) | SUMO 兼容性迁移记录 |
-| [reports/batch-validation-report.md](reports/batch-validation-report.md) | 增强配置批量验证结果 |
-| [team/project-roadmap.md](team/project-roadmap.md) | 六周项目路线图 |
-| [guides/README.md](guides/README.md) | 协作指南索引 |
+| [总路线.md](总路线.md) | 项目目标、六周里程碑、实验设计和交付物 |
+| [interface.md](interface.md) | 数据契约、算法接口、引擎接口、API 和实验 CLI |
+| [deployment.md](deployment.md) | 本地、Docker 和完整实验运行方式 |
+| [sumo_env_setup.md](sumo_env_setup.md) | SUMO 安装、环境变量和版本检查 |
+| [edge_mapping.md](edge_mapping.md) | 20 个路口边 ID、方向和进出口属性 |
+| [migration_log.md](migration_log.md) | SUMO 版本迁移记录 |
+| [batch_validate_report.md](batch_validate_report.md) | 增强配置批量验证结果 |
+| [guides/](guides/) | Git、Markdown、数据导入、实验和测试指南 |
+| [tasks/](tasks/) | Gitee 风格的路线图和每周任务书 |
+| [superpowers/specs/](superpowers/specs/) | 架构、接口和算法设计文档及图示 |
 
-## 团队任务
+## 文档目录
 
-任务书描述计划、交付物和验证口径，不应作为源码当前状态清单使用。
-
-任务书的历史/计划性质和当前命令入口见 [team/tasks/README.md](team/tasks/README.md)。
-
-| 周次 | 目录 |
-| --- | --- |
-| W1 | [team/tasks/w1/](team/tasks/w1/) |
-| W2 | [team/tasks/w2/](team/tasks/w2/) |
-| W3 | [team/tasks/w3/](team/tasks/w3/) |
-| W4 | [team/tasks/w4/](team/tasks/w4/) |
-| W5 | [team/tasks/w5/](team/tasks/w5/) |
-| W6 | [team/tasks/w6/](team/tasks/w6/) |
-
-## 参考资料与图示
-
-- [reference/competition/](reference/competition/) 保存赛题原始 PDF。
-- [notes/docker-sumo-research.md](notes/docker-sumo-research.md) 记录 Docker 基础镜像和 SUMO 版本选型背景。
-- [architecture/images/architecture.svg](architecture/images/architecture.svg) 是系统架构图。
-- [architecture/images/simulation-loop.svg](architecture/images/simulation-loop.svg) 是仿真循环图。
-- [architecture/images/dependencies.svg](architecture/images/dependencies.svg) 是模块依赖图。
+- `pdf/`：赛题原始 PDF。
+- `tasks/`：路线图与 W1-W6 任务书。
+- `guides/`：协作和运行指南。
+- `superpowers/`：设计规格、实施计划和架构图。
+- `notes/`：调研与技术选型记录。
+- `report/`：报告交付目录，位于仓库根目录。
 
 ## 文档命令
 
 以下命令从仓库根目录执行：
 
 ```powershell
-python scripts/validation/validate_all.py
-python scripts/validation/batch_validate.py
-python scripts/data/generate_edge_mapping.py
+python scripts/validate_all.py
+python scripts/batch_validate.py
+python scripts/generate_edge_mapping.py
 ```
 
-`batch_validate.py` 会更新 `reports/batch-validation-report.md`，`generate_edge_mapping.py` 会更新 `reference/edge-mapping.md`。生成文件的来源和覆盖行为见 [scripts/README.md](../scripts/README.md)。
+`batch_validate.py` 更新 `docs/batch_validate_report.md`，`generate_edge_mapping.py` 更新 `docs/edge_mapping.md`。
 
-## 依赖
+## 图示
 
-- Markdown 文档可直接阅读；运行示例命令需要项目 Python 环境。
-- SUMO 相关验证需要 `sumo` 位于 `PATH`。
-- PDF 和 SVG 只作为参考资料，不参与 Python 运行时。
+- [系统架构图](superpowers/specs/images/architecture.svg)
+- [仿真循环图](superpowers/specs/images/simulation-loop.svg)
+- [模块依赖图](superpowers/specs/images/dependencies.svg)
+- [开发时间线](superpowers/specs/images/timeline.svg)
 
-## 已知限制
+## 约束
 
-- 团队任务书可能包含尚未实现的目标，不等同于功能承诺。
+- 任务书描述计划和验收口径，不替代源码当前行为。
 - 报告中的日期、性能和验证结论只适用于报告注明的环境与提交状态。
+- SUMO 相关验证需要 `sumo` 位于 `PATH`。

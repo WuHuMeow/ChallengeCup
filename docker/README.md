@@ -11,7 +11,7 @@
 | `docker/Dockerfile` | 基于 Ubuntu 22.04 和 `ppa:sumo/stable` 构建运行镜像 |
 | `../docker-compose.yml` | 构建 `simulation` 服务并挂载输出目录 |
 | `../.dockerignore` | 排除 Git、缓存和本地输出等构建上下文 |
-| `docs/operations/deployment.md` | 本地与容器部署说明 |
+| `docs/deployment.md` | 本地与容器部署说明 |
 
 ## 命令接口
 
@@ -26,7 +26,7 @@ docker compose run --rm simulation 1
 
 ```bash
 docker run --rm --entrypoint sumo ca-mp:latest --version
-docker run --rm --entrypoint python3 ca-mp:latest scripts/validation/validate_all.py
+docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
 ```
 
 ## 输入与输出

@@ -34,7 +34,7 @@ metrics = evaluate([value], actuals)
 
 ## 依赖
 
-- 仅依赖 Python 标准库和 `ca_mp.core.types.JointState`。
+- 仅依赖 Python 标准库和 `core.types.JointState`。
 - `CloudPolicy` 有独立 EWMA 实现，当前不调用本目录的训练/预测函数。
 
 ## 已知限制

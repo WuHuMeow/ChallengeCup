@@ -1,7 +1,7 @@
 # 仿真基础设施 A（IA） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：将 20 个路口全部迁移到统一 SUMO 版本，确保可运行
-> **完成状态（2026-07-24）**：（已完成） 20/20 路口在 SUMO 1.27.1 下验证通过（100 步 + 3600 步全量），`docs/reports/sumo-migration-log.md` / `data/intersection_data/metadata/intersections.yaml` / `docs/reference/edge-mapping.md` 已交付；不兼容路口 0 个；迁移结果已提交、IB 联调已完成。
+> **完成状态（2026-07-24）**：（已完成） 20/20 路口在 SUMO 1.27.1 下验证通过（100 步 + 3600 步全量），`docs/migration_log.md` / `data/intersection_data/metadata/intersections.yaml` / `docs/edge_mapping.md` 已交付；不兼容路口 0 个；迁移结果已提交、IB 联调已完成。
 
 ## 本周背景
 
@@ -17,10 +17,10 @@
 - [x] 设置环境变量 `SUMO_HOME=C:\Program Files\Eclipse\Sumo`（或实际安装路径），并将 `%SUMO_HOME%\bin` 加入 PATH
 - [x] 验证 Python 接口可用（`traci` / `libsumo`）
 - [ ] 用 SUMO-GUI 打开路口 1，能正常运行则记为"兼容"，否则记录错误信息
-- [ ] 在 `docs/reports/` 下创建 `sumo-migration-log.md` 迁移记录表
+- [ ] 在 `docs/` 下创建 `sumo-migration-log.md` 迁移记录表
 
 ```markdown
-<!-- docs/reports/sumo-migration-log.md -->
+<!-- docs/migration_log.md -->
 | 路口 | 原始版本 | 步长 | 迁移状态 | 问题记录 |
 |------|----------|------|----------|----------|
 | 1    | 1.18.0   | 1s   | 待验证   |          |
@@ -32,13 +32,13 @@
 
 ### Day 2（7/21 周一）— 批量验证脚本（不修改文件）
 
-- [x] 编写 `scripts/validation/validate_all.py`，遍历 `data/intersection_data/{1-20}/sumo工程/demo_N.sumocfg`
+- [x] 编写 `scripts/validate_all.py`，遍历 `data/intersection_data/{1-20}/sumo工程/demo_N.sumocfg`
 - [x] 对每个路口执行 `sumo -c demo_N.sumocfg --no-step-log -e 100`，记录成功/失败、错误信息、运行时间
-- [x] 输出汇总表（控制台 + 写入 `docs/reports/sumo-migration-log.md`）
+- [x] 输出汇总表（控制台 + 写入 `docs/migration_log.md`）
 - [x] 根据运行结果回填每个路口的"原始版本"列（从 `.net.xml` 头部 `<net version="...">` 提取）
 
 ```python
-# scripts/validation/validate_all.py
+# scripts/validate_all.py
 import subprocess, time, re
 from pathlib import Path
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
               f"ver={res['version']:<8} {res['elapsed']:.2f}s {res['err']}")
 ```
 
-**验证：** `python scripts/validation/validate_all.py` 输出 20 行 `[PASS|FAIL] 路口 N ver=... Xs`，预期大部分 PASS；将结果同步到 `docs/reports/sumo-migration-log.md`。
+**验证：** `python scripts/validate_all.py` 输出 20 行 `[PASS|FAIL] 路口 N ver=... Xs`，预期大部分 PASS；将结果同步到 `docs/migration_log.md`。
 
 ### Day 3（7/22 周二）— 处理不兼容路口
 
@@ -115,13 +115,13 @@ intersections:
 
 ### Day 5（7/24 周四）— 边命名标准化文档
 
-- [x] 编写 `docs/reference/edge-mapping.md`，记录每个路口的边 ID → 方向（东/西/南/北）映射
+- [x] 编写 `docs/edge_mapping.md`，记录每个路口的边 ID → 方向（东/西/南/北）映射
 - [x] 覆盖典型差异：路口 1（`E0/-E1/-E2/-E3`）、路口 11（`W_car/E_car/S_car/N_car`）、路口 16（含 `-E5`，5 进口道）
 - [x] 字段：边 ID、方向、类型（进口/出口）、车道数、长度（从 `.net.xml` 提取）
 - [x] 该映射表后续算法组（AA/AB）计算压力时直接使用
 
 ```markdown
-<!-- docs/reference/edge-mapping.md -->
+<!-- docs/edge_mapping.md -->
 ## 路口 1
 | 边 ID | 方向   | 类型 | 车道数 | 长度(m) |
 |-------|--------|------|--------|---------|
@@ -130,11 +130,11 @@ intersections:
 | -E2   | 南进口 | 进口 | 3      | 101.28  |
 ```
 
-**验证：** `docs/reference/edge-mapping.md` 包含 20 个 `## 路口 N` 小节；`grep -c "^## 路口" docs/reference/edge-mapping.md` 输出 `20`。
+**验证：** `docs/edge_mapping.md` 包含 20 个 `## 路口 N` 小节；`grep -c "^## 路口" docs/edge_mapping.md` 输出 `20`。
 
 ### Day 6（7/25 周五）— 全量验证 + 提交
 
-- [x] 再次运行 `scripts/validation/validate_all.py`，目标 20/20 PASS
+- [x] 再次运行 `scripts/validate_all.py`，目标 20/20 PASS
 - [x] 用 `SceneRegistry` 端到端校验：能列出 20 个 scene
 - [ ] 将迁移结果（migration_log + edge_mapping + intersections.yaml）提交给 TL
 - [x] 仍失败的路口记录原因并告知 TL（备选方案：跳过该路口或用原始版本单独跑）
@@ -148,7 +148,7 @@ assert len(scenes) == 20, f"期望 20 个路口，实际 {len(scenes)}"
 print([s.intersection_id for s in scenes])
 ```
 
-**验证：** `python scripts/validation/validate_all.py | grep -c PASS` 输出 `20`；上述 `SceneRegistry` 脚本无 AssertionError。
+**验证：** `python scripts/validate_all.py | grep -c PASS` 输出 `20`；上述 `SceneRegistry` 脚本无 AssertionError。
 
 ### Day 7（7/26 周六）— Buffer / 协助
 
@@ -163,17 +163,17 @@ print([s.intersection_id for s in scenes])
 | 文件 | 截止日 | 验收标准 |
 |------|--------|----------|
 | SUMO 环境 | 7/20 | `sumo --version` 输出 1.27.1，`SUMO_HOME` 已设置 |
-| `docs/reports/sumo-migration-log.md` | 7/21 | 20 路口原始版本/步长/迁移状态完整 |
-| `scripts/validation/validate_all.py` | 7/21 | 能批量验证 20 路口，输出 PASS/FAIL 汇总 |
+| `docs/migration_log.md` | 7/21 | 20 路口原始版本/步长/迁移状态完整 |
+| `scripts/validate_all.py` | 7/21 | 能批量验证 20 路口，输出 PASS/FAIL 汇总 |
 | `data/intersection_data/metadata/intersections.yaml` | 7/23 | 20 路口信息完整（5 个字段齐全） |
-| `docs/reference/edge-mapping.md` | 7/24 | 20 路口边-方向映射表 |
+| `docs/edge_mapping.md` | 7/24 | 20 路口边-方向映射表 |
 | 20 路口可运行 | 7/25 | `validate_all.py` 输出 20/20 PASS |
 
 ## 协作对接
 
-- 与 **TL** 确认不兼容路口的修复策略（原目录覆盖 vs `engine/configs/` 另建）；每日同步 `docs/reports/sumo-migration-log.md`。
+- 与 **TL** 确认不兼容路口的修复策略（原目录覆盖 vs `engine/configs/` 另建）；每日同步 `docs/migration_log.md`。
 - 与 **IB** 对接 TraCIBridge 调试，提供已验证可跑的路口清单。
-- 向 **AA/AB** 交付 `docs/reference/edge-mapping.md`，作为压力计算的方向映射依据。
+- 向 **AA/AB** 交付 `docs/edge_mapping.md`，作为压力计算的方向映射依据。
 
 ## 注意事项
 

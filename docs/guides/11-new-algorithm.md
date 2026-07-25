@@ -6,20 +6,20 @@
 
 ## 前置条件
 
-- 了解算法标准接口（参见 `docs/architecture/interface.md`）
+- 了解算法标准接口（参见 `docs/interface.md`）
 - 已安装项目依赖：`pip install -e .`
 
 ## 操作步骤
 
 ### 1. 创建算法文件
 
-在 `ca_mp/algorithms/` 下新建文件，如 `my_algorithm.py`：
+在 `algorithms/` 下新建文件，如 `my_algorithm.py`：
 
 ```python
 from typing import List
 
-from ca_mp.algorithms.base import BaseControlAlgorithm
-from ca_mp.core.types import ControlAction, JointState, Scene
+from algorithms.base import BaseControlAlgorithm
+from core.types import ControlAction, JointState, Scene
 
 
 class MyAlgorithm(BaseControlAlgorithm):
@@ -47,10 +47,10 @@ class MyAlgorithm(BaseControlAlgorithm):
 
 ### 2. 注册到实验框架
 
-编辑 `ca_mp/experiments/runner.py`，在 `ALGORITHM_MAP` 中添加：
+编辑 `experiments/runner.py`，在 `ALGORITHM_MAP` 中添加：
 
 ```python
-from ca_mp.algorithms.my_algorithm import MyAlgorithm
+from algorithms.my_algorithm import MyAlgorithm
 
 ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
     "fixed_time": FixedTimeAlgorithm,
@@ -70,16 +70,16 @@ python examples/run_demo.py 1 my_algorithm
 python examples/run_demo.py 16 my_algorithm --sumo
 
 # CLI 实验入口
-python -m ca_mp.experiments.runner --intersection 16 --algorithm my_algorithm --steps 3600
+python -m experiments.runner --intersection 16 --algorithm my_algorithm --steps 3600
 ```
 
 ### 4. 写单元测试
 
-在 `tests/unit/` 下新建或扩展测试文件：
+在 `tests/` 下新建或扩展测试文件：
 
 ```python
-from ca_mp.algorithms.my_algorithm import MyAlgorithm
-from ca_mp.core.types import JointState, Scene
+from algorithms.my_algorithm import MyAlgorithm
+from core.types import JointState, Scene
 
 def test_my_algorithm_returns_action():
     algo = MyAlgorithm()
@@ -89,7 +89,7 @@ def test_my_algorithm_returns_action():
 
 运行：
 ```bash
-python -m pytest tests/unit/ -v -k "my_algorithm"
+python -m pytest tests/ -v -k "my_algorithm"
 ```
 
 ## 接口约束
@@ -102,7 +102,7 @@ python -m pytest tests/unit/ -v -k "my_algorithm"
 ## 常见问题
 
 **Q: 需要云端预测数据怎么办？**
-A: 通过构造函数注入 CloudPolicy 对象，在 `step()` 中调用 `self.cloud_policy.predict(state)`。参见 `ca_mp/algorithms/ca_max_pressure.py` 的实现。
+A: 通过构造函数注入 CloudPolicy 对象，在 `step()` 中调用 `self.cloud_policy.predict(state)`。参见 `algorithms/ca_max_pressure.py` 的实现。
 
 **Q: 需要读取路口拓扑（车道数、长度）？**
 A: 在 `init(scene)` 中通过 `scene.meta.sumo_net` 获取路网文件路径，用 `sumolib` 解析。
