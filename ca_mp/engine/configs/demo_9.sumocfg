@@ -2,22 +2,23 @@
 <!-- 增强版配置：由 scripts/simulation/generate_configs.py 生成，引用原始数据（只读） -->
 <configuration>
     <input>
-        <net-file value="../../data/intersection_data/9/sumo工程/demo_9.net.xml"/>
-        <route-files value="../../data/intersection_data/9/sumo工程/demo_9.rou.xml"/>
+        <net-file value="../../../data/intersection_data/9/sumo工程/demo_9.net.xml"/>
+        <route-files value="../../../data/intersection_data/9/sumo工程/demo_9.rou.xml"/>
     </input>
     <time>
         <begin value="0"/>
         <end value="3600"/>
+        <step-length value="0.1"/>
     </time>
     <output>
         <tripinfo-output value="tripinfo.xml"/>
         <fcd-output value="traj.xml"/>
         <summary-output value="stats.xml"/>
     </output>
-    <!-- sumo-gui 打开后自动开始播放，步间隔 50ms。
+    <!-- sumo-gui 打开后自动开始播放，步间隔 80ms。
          命令行 sumo 会忽略本节，不影响批量跑批。 -->
     <gui_only>
         <start value="true"/>
-        <delay value="50"/>
+        <delay value="80"/>
     </gui_only>
 </configuration>
