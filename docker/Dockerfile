@@ -33,6 +33,7 @@ COPY config/ ./config/
 COPY examples/ ./examples/
 COPY scripts/ ./scripts/
 COPY data/intersection_data/ ./data/intersection_data/
+RUN python3 -m compileall -q .
 
 # 默认运行路口 1 固定配时基线；可用 `docker run ca-mp:latest 16` 切换路口。
 ENTRYPOINT ["python3", "examples/run_fixed_time.py"]

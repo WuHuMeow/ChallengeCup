@@ -7,6 +7,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: ca-mp:latest
+    init: true
     volumes:
       - ./output:/app/output
     command: ["16"]
