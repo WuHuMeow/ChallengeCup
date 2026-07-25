@@ -1,6 +1,7 @@
 # 仿真基础设施 B（IB） W4 任务书
 
 > 周期：8/10（周日）- 8/16（周六） | 核心目标：保障 1.5 倍流量压力测试稳定运行，完善 CloudPolicy 在高压力下的行为
+> **完成状态（2026-07-24）**：（已完成） JointState 车辆采样 500 上限（MAX_VEHICLES）；CloudPolicy 极端压力档（>0.8, base_green=45）；arrival_history 300 步滚动窗口；Docker/本地一致性确认。
 
 ## 本周背景
 

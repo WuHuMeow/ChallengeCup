@@ -1,6 +1,7 @@
 # 仿真基础设施 B（IB） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：完善云-边-端消息流，为 experiments/runner.py 添加实验参数并确保输出完整
+> **完成状态（2026-07-24）**：（已完成） experiments/runner.py 支持 --seed/--flow-multiplier/--output-dir；CloudPolicy 动态压力分档下发；EdgeChannel V2X 延迟+方向过滤；simulation_log.csv 逐步输出；deployment.md 初稿；check_seed_repro.py 种子可复现验证。
 
 ## 本周背景
 

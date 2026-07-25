@@ -1,6 +1,7 @@
 # 仿真基础设施 B（IB） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：实现 TraCIBridge 与 SimulationRunner，封装 TraCI 接口并产出稳定的 JointState 流
+> **完成状态（2026-07-24）**：（已完成） TraCIBridge（get_state/apply_actions/step/close/get_lane_capacity）、SimulationRunner、CloudPolicy 骨架、examples/run_fixed_time.py 均已交付；路口 1 固定配时 3600 步跑通退出码 0。
 
 ## 本周背景
 

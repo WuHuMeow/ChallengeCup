@@ -1,6 +1,7 @@
 # 仿真基础设施 B（IB） W3 任务书
 
 > 周期：8/3（周日）- 8/9（周六） | 核心目标：保障 experiments/runner.py 在全量实验中稳定运行，完善日志输出并协助实验组
+> **完成状态（2026-07-24）**：（已完成） FatalTraCIError 优雅断线处理；events.csv 溢流门控日志；traci_bridge 性能优化；deployment.md 定稿（Windows/Linux + 输出文件说明）；w3-log-audit.md 12 组审计通过。
 
 ## 每日任务
 
