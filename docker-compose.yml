@@ -9,5 +9,4 @@ services:
     image: ca-mp:latest
     volumes:
       - ./output:/app/output
-      - ./experiments/results:/app/experiments/results
     command: ["16"]
