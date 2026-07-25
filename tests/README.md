@@ -6,12 +6,12 @@ Run the complete suite from the repository root:
 python -m pytest tests/
 ```
 
-The suite is expected to collect 66 tests.
+The suite currently collects 114 tests (the exact count is reported by pytest and may
+increase when a new contract test is added).
 
-`unit/` contains isolated tests for algorithms, cloud policy, data types, and
-bridge helpers. `integration/` contains tests that cross application boundaries,
-including the API, scene registry, experiment interface, event flow, and
-simulation bridge behavior.
+The suite includes isolated tests for algorithms, cloud policy, data types, bridge
+helpers, artifact contracts, validation scripts, and Docker static consistency, plus
+integration tests that cross application boundaries.
 
 Integration tests that exercise a real simulation environment require SUMO 1.18
 or newer, with `SUMO_HOME` configured and the SUMO binaries available on `PATH`.

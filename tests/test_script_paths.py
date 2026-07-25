@@ -18,3 +18,11 @@ def test_config_resolves_repository_root_from_flat_core():
     config = Config()
 
     assert config.path("paths.data_root") == REPOSITORY_ROOT / "data" / "intersection_data"
+
+
+def test_active_docs_reference_current_verification_commands():
+    deployment = (REPOSITORY_ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")
+    scripts = (REPOSITORY_ROOT / "scripts" / "README.md").read_text(encoding="utf-8")
+    assert "scripts/verify_ia_ib.py" in deployment
+    assert "output/verification" in deployment
+    assert "scripts/verify_ia_ib.py" in scripts

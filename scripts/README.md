@@ -20,14 +20,12 @@
 | `scripts/generate_configs.py` | `python scripts/generate_configs.py` | 20 个原始 `demo_N.sumocfg` | `engine/configs/demo_N.sumocfg` |
 | `scripts/split_jobs.py` | `python scripts/split_jobs.py` | 脚本内置实验矩阵 | 控制台 A/B 机器任务汇总 |
 | `scripts/split_jobs.py` | `python scripts/split_jobs.py --machine a` | 脚本内置实验矩阵 | A 机逐行任务清单；将 `a` 改为 `b` 可输出 B 机清单 |
-| `scripts/validate_all.py` | `python scripts/validate_all.py` | 20 个原始 SUMO 配置及 `sumo` 命令 | 控制台 PASS/FAIL；临时文件写入 `output/validate_quick/` |
-| `scripts/validate_all.py` | `python scripts/validate_all.py 1 11 16` | 指定路口 ID | 指定路口的验证结果 |
-| `scripts/batch_validate.py` | `python scripts/batch_validate.py` | `engine/configs/` 及 `sumo` 命令 | `output/validate/`、`docs/batch_validate_report.md` |
-| `scripts/batch_validate.py` | `python scripts/batch_validate.py 1 11 16` | 指定路口 ID | 指定路口的批量验证结果和报告 |
-| `scripts/check_outputs.py` | `python scripts/check_outputs.py` | `experiments/results/` | 控制台缺失或空 XML 文件清单 |
-| `scripts/check_outputs.py` | `python scripts/check_outputs.py --root experiments/results/stress_1.5x` | 指定结果目录 | 控制台缺失或空 XML 文件清单 |
-| `scripts/check_seed_repro.py` | `python scripts/check_seed_repro.py` | 路口 1、固定时制算法、seed 42 和 7 | `output/seed_check/*.csv` 及复现性断言结果 |
-| `scripts/stress_memory.py` | `python scripts/stress_memory.py 1 100` | 路口 ID、步数、1.5 倍流量 | `output/stress/`、CSV 路径和 Python 内存峰值 |
+| `scripts/validate_all.py` | `python scripts/validate_all.py --steps 100 --output-root output/verification/original` | 20 个原始 SUMO 配置及 `sumo` 命令 | 控制台 PASS/FAIL；产物写入指定根目录 |
+| `scripts/batch_validate.py` | `python scripts/batch_validate.py --steps 100 --output-root output/verification/enhanced --no-report` | `engine/configs/` 及 `sumo` 命令 | 指定根目录下的增强配置验证结果 |
+| `scripts/check_outputs.py` | `python scripts/check_outputs.py --root output/verification/final` | 含 `run_metadata.json` 的运行根目录 | 递归检查每个运行的 7 类必需输出 |
+| `scripts/check_seed_repro.py` | `python scripts/check_seed_repro.py --steps 300 --output-root output/verification/seed` | 路口 1、固定时制算法、seed 42 和 7 | 三个隔离运行目录及复现性断言 |
+| `scripts/stress_memory.py` | `python scripts/stress_memory.py --algorithm actuated --intersections 1 11 16 --steps 3600 --output-root output/verification/stress` | 路口 ID、步数、1.5 倍流量 | `stress_results.json`、输出大小和 Python 峰值 |
+| `scripts/verify_ia_ib.py` | `python scripts/verify_ia_ib.py --quick --output-root output/verification/quick` | IA/IB 全套验收命令 | `verification.json` 与最终 Markdown 报告 |
 | `quality/lint_check.sh` | `bash scripts/quality/lint_check.sh` | `engine/`、`cloud/`、`experiments/` 中跟踪和未跟踪的源码 | 成功时仅打印 `clean` |
 
 ## 依赖
@@ -42,7 +40,7 @@
 - 数据生成脚本固定处理路口 1 到 20，并假设原始工程目录名为 `sumo工程`；生成文件会被覆盖。
 - 配置生成器固定写入 `engine/configs/`，并按该目录深度生成到原始数据的相对路径。
 - 任务拆分矩阵和两台机器的路口分配写在脚本中，不能通过命令行调整。
-- 输出检查器只检查 `intersection/algo/seed` 三层目录中的 `tripinfo.xml`、`stats.xml` 和 `traj.xml`。
-- 快速验证和批量验证会写入 `output/`；批量验证会重写验证报告。
+- 输出检查器递归发现 `run_metadata.json`，并检查同一运行目录中的 `metrics.csv`、`simulation_log.csv`、`events.csv`、`tripinfo.xml`、`stats.xml` 和 `traj.xml`。
+- 快速验证和批量验证必须显式传入 `--output-root`；验收器会把所有中间文件隔离到该目录。
 - 内存压力检查只统计 Python 进程的 `tracemalloc` 峰值，不包含外部 SUMO 进程。
 - lint 仅覆盖 `engine/`、`cloud/` 和 `experiments/`，不会检查仓库中的所有 Python 文件。

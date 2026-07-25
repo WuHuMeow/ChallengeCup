@@ -4,6 +4,26 @@
 > 全员开发必须基于本文档中的契约，不得自行修改 `core/types.py`。
 > 如有疑问找 TL，不要猜。
 
+## IA/IB 运行边界（2026-07-25）
+
+`SimulationRunner` 每一步先从 `TraCIBridge` 取得原始 `JointState`。若传入
+`EdgeChannel`，状态会先经过 `send()`/`receive()`，延迟期间算法收到 `None`，该步记录
+`channel_wait` 且不下发动作；指标和逐步日志始终记录原始状态。算法返回的每个
+`ControlAction` 由 bridge 校验，非法动作只写入 `events.csv` 的 `invalid_action` 事件，不会
+让可恢复的仿真直接崩溃。
+
+一次运行使用 `RunArtifacts` 创建确定性的目录：
+
+```text
+<root>/i{id}/{algorithm}/x{multiplier}/s{seed}/
+```
+
+bridge 的 SUMO XML 输出、`MetricsCollector`、`StepLogger`、`EventLogger` 与终态元数据都写在
+该目录内。`run_metadata.json` 的 `status` 取值为 `completed`、`disconnected`、`interrupted`
+或 `failed`，并包含 `reason`、`started_at`、`ended_at`、`sumo_version` 和
+`generated_files`。这套边界只负责仿真基础设施；CA-MP 的相位决策正确性和实验指标校准不在
+IA/IB 的验收范围内。
+
 ---
 
 ## 目录

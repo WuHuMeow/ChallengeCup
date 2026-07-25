@@ -112,3 +112,50 @@ ca_maxpressure）。批量矩阵（20 路口 × 3 算法 × 2 流量 × 3 种子
 |------|------|------|
 | 镜像大小 | < 2GB | 待 W4 在有 Docker 的机器上构建后回填 |
 | 构建时间 | - | 同上 |
+
+## 当前 IA/IB 验收入口（2026-07-25）
+
+开发依赖使用仓库内的隔离环境：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
+所有验证产物必须写入独立目录，不写入 `data/` 或 `engine/configs/`：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
+  --quick --output-root output/verification/quick
+.\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
+  --output-root output/verification/final
+```
+
+`--quick` 跳过增强配置的 3600 步验收；完整命令包含原始配置 20×100 步、增强配置
+20×100 与 20×3600 步、Actuated 基线、1.5 倍流量压力测试以及 Docker 静态契约。
+Docker 可执行文件存在时，验收器还会执行镜像构建和路口 1 容器运行；不可用时报告会明确写
+`not run: Docker unavailable`，不会把它伪装成通过。
+
+单次实验的输出目录固定为：
+
+```text
+<output-root>/i{intersection}/{algorithm}/x{flow_multiplier}/s{seed}/
+  metrics.csv simulation_log.csv events.csv
+  tripinfo.xml stats.xml traj.xml [queues.xml]
+  run_metadata.json
+```
+
+`run_metadata.json` 记录 `completed`、`disconnected`、`interrupted` 或 `failed` 终态、
+失败原因、UTC 时间、SUMO 版本和实际生成文件。可以用递归检查器验证目录完整性：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check_outputs.py --root output/verification/final
+.\.venv\Scripts\python.exe scripts/check_seed_repro.py `
+  --steps 300 --output-root output/verification/seed
+```
+
+验收完成后只删除本次生成且位于 `output/verification/` 下的中间目录；保留
+`verification.json` 和 `docs/reports/ia-ib-final-verification.md`，不要删除来源不明的历史产物。
+
+IA/IB 的验收不代表 CA-MP 算法正确性、正式 360 组实验、交付报告或提交材料已经完成；这些仍由
+AB、EX、DA、DB、TL 分工负责。
