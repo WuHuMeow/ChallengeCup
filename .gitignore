@@ -32,6 +32,7 @@ output/*
 !output/deliverables/
 output/deliverables/*
 !output/deliverables/README.md
+experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv
 

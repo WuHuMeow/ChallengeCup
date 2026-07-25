@@ -20,7 +20,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY ca_mp/ ./ca_mp/
+COPY algorithms/ ./algorithms/
+COPY api/ ./api/
+COPY cloud/ ./cloud/
+COPY core/ ./core/
+COPY engine/ ./engine/
+COPY experiments/ ./experiments/
+COPY ml/ ./ml/
+COPY scenes/ ./scenes/
+COPY visualization/ ./visualization/
 COPY config/ ./config/
 COPY examples/ ./examples/
 COPY scripts/ ./scripts/
