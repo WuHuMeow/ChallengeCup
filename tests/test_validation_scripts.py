@@ -43,6 +43,31 @@ def test_validation_rejects_error_text_even_with_zero_exit(tmp_path):
     assert result.errors == ["Error: inaccessible network"]
 
 
+def test_validation_redirects_queue_output_into_run_directory(tmp_path):
+    completed = type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    config = tmp_path / "demo_11.sumocfg"
+    config.write_text(
+        "<configuration><output><queue-output value=\"queues.xml\"/>"
+        "</output></configuration>",
+        encoding="utf-8",
+    )
+    with patch(
+        "scripts.validation_common.subprocess.run", return_value=completed
+    ) as run:
+        run_sumo_validation(config, 100, tmp_path)
+
+    command = run.call_args.args[0]
+    for option, filename in (
+        ("--tripinfo-output", "tripinfo.xml"),
+        ("--summary-output", "stats.xml"),
+        ("--fcd-output", "traj.xml"),
+    ):
+        index = command.index(option)
+        assert command[index + 1] == (tmp_path / filename).resolve().as_posix()
+    queue_index = command.index("--queue-output")
+    assert command[queue_index + 1] == (tmp_path / "queues.xml").resolve().as_posix()
+
+
 def test_validate_all_parses_ids_steps_and_output_root():
     from scripts import validate_all
 

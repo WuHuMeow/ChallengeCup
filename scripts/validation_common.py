@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from defusedxml import ElementTree as ET
+
 
 @dataclass(frozen=True)
 class ValidationResult:
@@ -17,6 +19,14 @@ class ValidationResult:
     warnings: list[str]
     errors: list[str]
     output_dir: Path
+
+
+def _has_queue_output(config: Path) -> bool:
+    try:
+        root = ET.parse(config).getroot()
+    except (OSError, ET.ParseError):
+        return False
+    return any(node.tag == "queue-output" for node in root.iter())
 
 
 def run_sumo_validation(
@@ -40,6 +50,10 @@ def run_sumo_validation(
         "--fcd-output",
         (output_dir / "traj.xml").resolve().as_posix(),
     ]
+    if _has_queue_output(config):
+        command.extend(
+            ["--queue-output", (output_dir / "queues.xml").resolve().as_posix()]
+        )
     completed = subprocess.run(command, capture_output=True, text=True)
     lines = completed.stderr.splitlines()
     warnings = [line for line in lines if line.startswith("Warning:")]
