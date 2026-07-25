@@ -15,9 +15,9 @@
 ## 对外接口
 
 ```python
-from ca_mp.core.types import TrafficLevel
-from ca_mp.scenes.registry import SceneRegistry
-from ca_mp.scenes.variant import VariantGenerator
+from core.types import TrafficLevel
+from scenes.registry import SceneRegistry
+from scenes.variant import VariantGenerator
 
 registry = SceneRegistry()
 scene = registry.get_scene("1")

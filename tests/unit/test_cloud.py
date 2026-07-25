@@ -1,6 +1,6 @@
 """云端策略接口测试。"""
-from ca_mp.core.types import JointState, QueueState, PredictionResult
-from ca_mp.cloud.cloud_policy import CloudPolicy
+from core.types import JointState, QueueState, PredictionResult
+from cloud.cloud_policy import CloudPolicy
 
 
 def _make_state() -> JointState:

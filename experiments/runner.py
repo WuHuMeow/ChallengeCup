@@ -12,15 +12,15 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 
-from ca_mp.algorithms.base import BaseControlAlgorithm
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from ca_mp.algorithms.rule_adaptive import RuleAdaptiveAlgorithm
-from ca_mp.core.config import get_config
-from ca_mp.core.types import TrafficLevel
-from ca_mp.engine.runner import SimulationRunner
-from ca_mp.scenes.registry import SceneRegistry
-from ca_mp.scenes.variant import VariantGenerator
+from algorithms.base import BaseControlAlgorithm
+from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from core.config import get_config
+from core.types import TrafficLevel
+from engine.runner import SimulationRunner
+from scenes.registry import SceneRegistry
+from scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,17 @@ requires-python = ">=3.10"
 dependencies = []
 
 [tool.setuptools.packages.find]
-include = ["ca_mp*"]
+include = [
+  "algorithms*",
+  "api*",
+  "cloud*",
+  "core*",
+  "engine*",
+  "experiments*",
+  "ml*",
+  "scenes*",
+  "visualization*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

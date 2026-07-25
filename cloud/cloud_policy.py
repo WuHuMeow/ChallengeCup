@@ -12,8 +12,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ca_mp.core.config import get_config
-from ca_mp.core.types import JointState, PredictionResult
+from core.config import get_config
+from core.types import JointState, PredictionResult
 
 logger = logging.getLogger(__name__)
 

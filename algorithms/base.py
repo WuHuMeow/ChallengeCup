@@ -7,7 +7,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from ca_mp.core.types import ControlAction, JointState, Scene
+from core.types import ControlAction, JointState, Scene
 
 
 class BaseControlAlgorithm(ABC):

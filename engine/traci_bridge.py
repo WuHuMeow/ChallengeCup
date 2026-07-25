@@ -15,7 +15,7 @@ from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
-from ca_mp.core.types import ControlAction, JointState, QueueState, VehicleState
+from core.types import ControlAction, JointState, QueueState, VehicleState
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class TraCIBridge:
         if not match:
             logger.warning("无法从 %s 解析路口编号，回退 getControlledLanes", self.sumo_cfg)
             return
-        from ca_mp.core.config import get_config
+        from core.config import get_config
         path = Path(get_config().path("paths.data_root")) / "metadata" / "edge_mapping.json"
         try:
             data = json.loads(path.read_text(encoding="utf-8"))

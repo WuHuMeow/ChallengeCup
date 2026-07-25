@@ -15,11 +15,11 @@ from __future__ import annotations
 import logging
 import sys
 
-from ca_mp.core.config import get_config
-from ca_mp.scenes.registry import SceneRegistry
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.algorithms.rule_adaptive import RuleAdaptiveAlgorithm
-from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from core.config import get_config
+from scenes.registry import SceneRegistry
+from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,8 +36,8 @@ ALGORITHM_MAP = {
 
 def demo_offline(intersection_id: str, algo_name: str) -> None:
     """离线演示：使用 MockBridge 走通完整调用链，无需 SUMO。"""
-    from ca_mp.engine.mock_bridge import MockBridge
-    from ca_mp.engine.runner import SimulationRunner
+    from engine.mock_bridge import MockBridge
+    from engine.runner import SimulationRunner
 
     print("=" * 60)
     print("  XH-202613 车路云协同管控算法平台 - 全链路演示 (Mock)")
@@ -94,7 +94,7 @@ def demo_offline(intersection_id: str, algo_name: str) -> None:
 
 def demo_with_sumo(intersection_id: str, algo_name: str) -> None:
     """在线演示：启动 SUMO 运行完整仿真。"""
-    from ca_mp.engine.runner import SimulationRunner
+    from engine.runner import SimulationRunner
 
     registry = SceneRegistry()
     scene = registry.get_scene(intersection_id)

@@ -19,7 +19,7 @@ python -m ca_mp.experiments.runner --intersection 1 --algorithm ca_maxpressure `
 ```
 
 ```python
-from ca_mp.experiments.runner import run_batch
+from experiments.runner import run_batch
 
 results = run_batch(
     intersection_ids=["1", "2"],

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-from ca_mp.experiments.runner import parse_args, run_single
+from experiments.runner import parse_args, run_single
 
 
 def main() -> None:

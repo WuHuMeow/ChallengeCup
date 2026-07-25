@@ -1,10 +1,10 @@
 """events.csv 事件日志测试（IB W3 Day 2）。"""
 import csv
 
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.core.types import ControlAction, Scene, SceneMeta
-from ca_mp.engine.mock_bridge import MockBridge
-from ca_mp.engine.runner import SimulationRunner
+from algorithms.fixed_time import FixedTimeAlgorithm
+from core.types import ControlAction, Scene, SceneMeta
+from engine.mock_bridge import MockBridge
+from engine.runner import SimulationRunner
 
 
 def _scene() -> Scene:

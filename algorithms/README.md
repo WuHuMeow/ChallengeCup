@@ -18,7 +18,7 @@
 所有控制器实现 `init(scene)`、`step(state)`、`reset()` 和 `name`：
 
 ```python
-from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 
 algorithm = CAMaxPressureAlgorithm()
 algorithm.init(scene)

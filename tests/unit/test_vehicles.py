@@ -1,5 +1,5 @@
 """车辆采样/上限与到达历史测试（IB W4）。"""
-from ca_mp.engine.mock_bridge import MockBridge
+from engine.mock_bridge import MockBridge
 
 
 def test_mock_vehicles_deterministic():
@@ -33,7 +33,7 @@ def test_mock_arrival_history_rolls():
 def test_traci_collect_vehicles_cap_prefers_inbound():
     from pathlib import Path
     from unittest.mock import patch
-    from ca_mp.engine.traci_bridge import TraCIBridge, traci
+    from engine.traci_bridge import TraCIBridge, traci
 
     bridge = TraCIBridge(sumo_cfg=Path("demo_1.sumocfg"))
     bridge._controlled_lanes = ["-E2_0"]

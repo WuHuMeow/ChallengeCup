@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import List
 
-from ca_mp.algorithms.base import BaseControlAlgorithm
-from ca_mp.core.config import get_config
-from ca_mp.core.types import ControlAction, JointState, Scene
+from algorithms.base import BaseControlAlgorithm
+from core.config import get_config
+from core.types import ControlAction, JointState, Scene
 
 
 class RuleAdaptiveAlgorithm(BaseControlAlgorithm):

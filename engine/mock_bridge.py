@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
-from ca_mp.core.types import ControlAction, JointState, QueueState, VehicleState
+from core.types import ControlAction, JointState, QueueState, VehicleState
 
 logger = logging.getLogger(__name__)
 

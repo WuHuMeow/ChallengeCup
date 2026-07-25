@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from ca_mp.core.types import JointState, SimulationMetrics
+from core.types import JointState, SimulationMetrics
 
 
 def compute_metrics(step: int, state: JointState, arrived: int = 0) -> SimulationMetrics:

@@ -1,10 +1,10 @@
 """算法接口契约测试：验证所有算法遵循 BaseControlAlgorithm 接口。"""
 
-from ca_mp.algorithms.base import BaseControlAlgorithm
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.algorithms.rule_adaptive import RuleAdaptiveAlgorithm
-from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from ca_mp.core.types import ControlAction, JointState, QueueState, Scene, SceneMeta
+from algorithms.base import BaseControlAlgorithm
+from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from core.types import ControlAction, JointState, QueueState, Scene, SceneMeta
 from pathlib import Path
 from typing import List
 
@@ -90,7 +90,7 @@ def test_algorithm_names_unique():
 
 def test_ca_maxpressure_mvi_selects_max_queue_phase():
     """MVI: 应选择排队最长方向对应的动作。"""
-    from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+    from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
     algo = CAMaxPressureAlgorithm()
     algo.init(_make_scene())
     state = _make_state()
@@ -103,8 +103,8 @@ def test_ca_maxpressure_mvi_selects_max_queue_phase():
 
 def test_ca_maxpressure_empty_queues_returns_empty():
     """空排队时不应产生动作。"""
-    from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-    from ca_mp.core.types import JointState
+    from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+    from core.types import JointState
     algo = CAMaxPressureAlgorithm()
     algo.init(_make_scene())
     state = JointState(

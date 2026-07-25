@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 import sys
 
-from ca_mp.algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from ca_mp.engine.runner import SimulationRunner
-from ca_mp.scenes.registry import SceneRegistry
+from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from engine.runner import SimulationRunner
+from scenes.registry import SceneRegistry
 
 logging.basicConfig(level=logging.INFO)
 

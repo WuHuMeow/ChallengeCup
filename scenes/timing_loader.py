@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from ca_mp.core.types import PhaseInfo, TimingPlan
+from core.types import PhaseInfo, TimingPlan
 
 logger = logging.getLogger(__name__)
 

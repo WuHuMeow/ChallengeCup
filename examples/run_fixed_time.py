@@ -11,10 +11,10 @@ from __future__ import annotations
 import logging
 import sys
 
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.core.config import get_config
-from ca_mp.engine.runner import SimulationRunner
-from ca_mp.scenes.registry import SceneRegistry
+from algorithms.fixed_time import FixedTimeAlgorithm
+from core.config import get_config
+from engine.runner import SimulationRunner
+from scenes.registry import SceneRegistry
 
 logging.basicConfig(level=logging.INFO)
 

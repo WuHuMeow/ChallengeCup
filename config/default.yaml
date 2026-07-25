@@ -8,7 +8,7 @@ paths:
   # 如需使用本地其他路径，可通过环境变量 CC_DATA_ROOT 覆盖。
   data_root: "./data/intersection_data"
   output_root: "./output"
-  model_path: "./ca_mp/ml/model.pkl"
+  model_path: "./ml/model.pkl"
 
 sumo:
   # 批量跑批推荐用命令行版 sumo；需要可视化观察时改为 sumo-gui。

@@ -2,7 +2,7 @@
 import logging
 from pathlib import Path
 
-from ca_mp.engine.traci_bridge import TraCIBridge
+from engine.traci_bridge import TraCIBridge
 
 
 def test_edge_mapping_json_exists_and_structured():

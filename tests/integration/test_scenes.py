@@ -1,7 +1,7 @@
 """场景注册与配置加载测试。"""
 
-from ca_mp.core.config import Config, get_config
-from ca_mp.scenes.registry import SceneRegistry
+from core.config import Config, get_config
+from scenes.registry import SceneRegistry
 from pathlib import Path
 
 
@@ -39,8 +39,8 @@ def test_scene_registry_handles_naming_variant():
 
 def test_variant_generate_all_no_keyerror():
     """generate_all 不应因 TrafficLevel.LOW 不在默认 levels 中而报错。"""
-    from ca_mp.core.types import TrafficLevel
-    from ca_mp.scenes.variant import VariantGenerator
+    from core.types import TrafficLevel
+    from scenes.variant import VariantGenerator
 
     gen = VariantGenerator()
     assert TrafficLevel.LOW not in gen.levels
@@ -50,9 +50,9 @@ def test_variant_generate_all_no_keyerror():
 
 def test_generate_adds_id_suffix(tmp_path):
     import xml.etree.ElementTree as ET
-    from ca_mp.core.types import TrafficLevel
-    from ca_mp.scenes.variant import VariantGenerator
-    from ca_mp.scenes.registry import SceneRegistry
+    from core.types import TrafficLevel
+    from scenes.variant import VariantGenerator
+    from scenes.registry import SceneRegistry
 
     meta = SceneRegistry().get_scene("1").meta
     gen = VariantGenerator()
@@ -73,8 +73,8 @@ def test_generate_adds_id_suffix(tmp_path):
 
 def test_generate_scaled_arbitrary_factor(tmp_path):
     import xml.etree.ElementTree as ET
-    from ca_mp.scenes.variant import VariantGenerator
-    from ca_mp.scenes.registry import SceneRegistry
+    from scenes.variant import VariantGenerator
+    from scenes.registry import SceneRegistry
 
     meta = SceneRegistry().get_scene("1").meta
     out = VariantGenerator().generate_scaled(meta, 1.5, tmp_path)
@@ -88,8 +88,8 @@ def test_generate_scaled_arbitrary_factor(tmp_path):
 
 def test_generate_scaled_rejects_nonpositive(tmp_path):
     import pytest
-    from ca_mp.scenes.variant import VariantGenerator
-    from ca_mp.scenes.registry import SceneRegistry
+    from scenes.variant import VariantGenerator
+    from scenes.registry import SceneRegistry
 
     meta = SceneRegistry().get_scene("1").meta
     with pytest.raises(ValueError):

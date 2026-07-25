@@ -1,10 +1,10 @@
 """simulation_log.csv 每步日志测试（IB W2 Day 5）。"""
 import csv
 
-from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-from ca_mp.core.types import Scene, SceneMeta
-from ca_mp.engine.mock_bridge import MockBridge
-from ca_mp.engine.runner import SimulationRunner
+from algorithms.fixed_time import FixedTimeAlgorithm
+from core.types import Scene, SceneMeta
+from engine.mock_bridge import MockBridge
+from engine.runner import SimulationRunner
 
 
 def _scene() -> Scene:

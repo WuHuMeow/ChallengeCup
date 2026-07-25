@@ -13,7 +13,7 @@
 ## 对外接口
 
 ```python
-from ca_mp.cloud.cloud_policy import CloudPolicy
+from cloud.cloud_policy import CloudPolicy
 
 policy = CloudPolicy()
 prediction = policy.predict(state)

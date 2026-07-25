@@ -1,7 +1,7 @@
 """MockBridge 单元测试：验证离线桥接器接口行为。"""
 
-from ca_mp.core.types import ControlAction, JointState
-from ca_mp.engine.mock_bridge import MockBridge
+from core.types import ControlAction, JointState
+from engine.mock_bridge import MockBridge
 
 
 def test_mock_bridge_start_close():

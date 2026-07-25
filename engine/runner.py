@@ -9,13 +9,13 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from ca_mp.algorithms.base import BaseControlAlgorithm
-from ca_mp.core.config import get_config
-from ca_mp.core.types import ControlAction, Scene
-from ca_mp.engine.collector import MetricsCollector, StepLogger
-from ca_mp.engine.events import EventLogger
-from ca_mp.engine.traci_bridge import TraCIBridge, traci
-from ca_mp.experiments.metrics import compute_metrics
+from algorithms.base import BaseControlAlgorithm
+from core.config import get_config
+from core.types import ControlAction, Scene
+from engine.collector import MetricsCollector, StepLogger
+from engine.events import EventLogger
+from engine.traci_bridge import TraCIBridge, traci
+from experiments.metrics import compute_metrics
 
 logger = logging.getLogger(__name__)
 

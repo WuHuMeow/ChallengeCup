@@ -1,7 +1,7 @@
 """seed 透传测试（IB W2）：--seed 必须进入 traci.start 命令。"""
 from pathlib import Path
 
-from ca_mp.engine.traci_bridge import TraCIBridge
+from engine.traci_bridge import TraCIBridge
 
 
 def test_build_cmd_without_seed():
@@ -19,9 +19,9 @@ def test_build_cmd_with_seed():
 
 def test_runner_passes_seed_to_bridge():
     from unittest.mock import patch
-    from ca_mp.algorithms.fixed_time import FixedTimeAlgorithm
-    from ca_mp.core.types import Scene, SceneMeta
-    from ca_mp.engine.runner import SimulationRunner
+    from algorithms.fixed_time import FixedTimeAlgorithm
+    from core.types import Scene, SceneMeta
+    from engine.runner import SimulationRunner
 
     meta = SceneMeta(
         intersection_id="1", name="t",

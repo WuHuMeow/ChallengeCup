@@ -12,8 +12,8 @@ from typing import Any, Dict, List
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from ca_mp.core.types import ControlAction, JointState, PredictionResult, SceneMeta
-from ca_mp.scenes.registry import SceneRegistry
+from core.types import ControlAction, JointState, PredictionResult, SceneMeta
+from scenes.registry import SceneRegistry
 
 app = FastAPI(title="雄安新区车路云协同管控算法平台", version="0.1.0")
 

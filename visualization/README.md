@@ -13,7 +13,7 @@
 ## 对外接口
 
 ```python
-from ca_mp.visualization.plots import plot_algorithm_comparison, plot_heatmap
+from visualization.plots import plot_algorithm_comparison, plot_heatmap
 
 plot_algorithm_comparison(
     csv_files,

@@ -15,9 +15,9 @@
 ## 对外接口
 
 ```python
-from ca_mp.ml.evaluate import evaluate
-from ca_mp.ml.features import extract_features
-from ca_mp.ml.train import predict, train
+from ml.evaluate import evaluate
+from ml.features import extract_features
+from ml.train import predict, train
 
 features = extract_features(state, window=5)
 model = train(features, labels, alpha=0.3)
