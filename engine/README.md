@@ -14,7 +14,7 @@
 | `collector.py` | 指标快照 CSV 和逐步日志 CSV |
 | `events.py` | 运行生命周期与控制动作事件 CSV |
 | `edge_channel.py` | 方向过滤和固定步数延迟的内存消息通道 |
-| `configs/` | 由 `scripts/simulation/generate_configs.py` 生成的 20 个增强 SUMO 配置 |
+| `configs/` | 由 `scripts/generate_configs.py` 生成的 20 个增强 SUMO 配置 |
 
 ## 对外接口
 
