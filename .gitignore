@@ -32,9 +32,11 @@ output/*
 !output/deliverables/
 output/deliverables/*
 !output/deliverables/README.md
-experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv
+
+# Editable install metadata
+*.egg-info/
 
 # Local agent/tool scratch files
 .superpowers/
