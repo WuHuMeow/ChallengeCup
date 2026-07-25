@@ -29,6 +29,6 @@ def test_runner_passes_seed_to_bridge():
         sumo_flow=Path("x.flow.xml"), sumo_turn=Path("x.turn.xml"),
         sumo_cfg=Path("x.sumocfg"), timing_xlsx=Path("x.xlsx"),
     )
-    with patch("ca_mp.engine.runner.TraCIBridge") as mock_cls:
+    with patch("engine.runner.TraCIBridge") as mock_cls:
         SimulationRunner(Scene(meta=meta), FixedTimeAlgorithm(), seed=42)
         assert mock_cls.call_args.kwargs.get("seed") == 42

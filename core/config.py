@@ -29,7 +29,7 @@ class Config:
 
     def _load(self, path: Path | None = None) -> None:
         if path is None:
-            repo_root = Path(__file__).resolve().parent.parent.parent
+            repo_root = Path(__file__).resolve().parent.parent
             path = repo_root / "config" / "default.yaml"
 
         if yaml is None:
@@ -60,7 +60,7 @@ class Config:
 
     def path(self, key: str) -> Path:
         """获取路径并解析为相对于仓库根目录的绝对路径。"""
-        repo_root = Path(__file__).resolve().parent.parent.parent
+        repo_root = Path(__file__).resolve().parent.parent
         raw = self.get(key)
         if raw is None:
             raise KeyError(f"Config key '{key}' not found")

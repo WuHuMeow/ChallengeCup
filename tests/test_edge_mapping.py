@@ -8,7 +8,7 @@ from engine.traci_bridge import TraCIBridge
 def test_edge_mapping_json_exists_and_structured():
     import json
     path = Path("data/intersection_data/metadata/edge_mapping.json")
-    assert path.exists(), "先运行 python scripts/data/generate_edge_mapping.py"
+    assert path.exists(), "先运行 python scripts/generate_edge_mapping.py"
     data = json.loads(path.read_text(encoding="utf-8"))
     assert "1" in data and "edges" in data["1"]
     entry = {e: i for e, i in data["1"]["edges"].items() if i["kind"] == "entry"}
