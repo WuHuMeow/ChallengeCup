@@ -1,0 +1,33 @@
+import json
+
+from engine.artifacts import RunArtifacts
+
+
+def test_run_artifacts_create_stable_layout(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "16", "actuated", 1.5, 42)
+
+    assert artifacts.run_dir == tmp_path / "i16" / "actuated" / "x1.5" / "s42"
+    assert artifacts.metrics.name == "metrics.csv"
+    assert artifacts.events.name == "events.csv"
+    assert artifacts.tripinfo.name == "tripinfo.xml"
+
+
+def test_write_metadata_is_atomic_and_structured(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    artifacts.metrics.write_text("step\n0\n", encoding="utf-8")
+
+    artifacts.write_metadata(
+        "completed",
+        "",
+        [artifacts.metrics],
+        started_at="2026-07-25T10:00:00+08:00",
+        ended_at="2026-07-25T10:01:00+08:00",
+        sumo_version="1.27.1",
+    )
+
+    payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    assert payload["status"] == "completed"
+    assert payload["intersection_id"] == "1"
+    assert payload["generated_files"] == ["metrics.csv"]
+    assert payload["sumo_version"] == "1.27.1"
+    assert payload["started_at"] < payload["ended_at"]
