@@ -100,16 +100,49 @@ class MockBridge:
         ]
         return vehicles[:: self.vehicle_sample_rate]
 
-    def apply_actions(self, actions: List[ControlAction]) -> None:
-        """记录控制动作（无实际操作）。"""
+    def apply_actions(self, actions: List[ControlAction]) -> list[str]:
+        """Validate and record control actions without contacting SUMO."""
+        rejected: list[str] = []
         for action in actions:
+            if action.tls_id != self.tls_id:
+                rejected.append(f"unknown tls_id: {action.tls_id!r}")
+                continue
+            if action.action_type == "set_phase":
+                if not isinstance(action.value, int):
+                    rejected.append(
+                        f"set_phase value must be an integer: {action.value!r}"
+                    )
+                    continue
+            elif action.action_type == "set_phase_duration":
+                try:
+                    duration = float(action.value)
+                except (TypeError, ValueError):
+                    rejected.append(
+                        "set_phase_duration value must be numeric: "
+                        f"{action.value!r}"
+                    )
+                    continue
+                if duration <= 0:
+                    rejected.append(
+                        "set_phase_duration value must be positive: "
+                        f"{duration!r}"
+                    )
+                    continue
+            elif action.action_type == "set_program":
+                if not str(action.value).strip():
+                    rejected.append("set_program value must be non-empty")
+                    continue
+            else:
+                rejected.append(f"unknown action_type: {action.action_type!r}")
+                continue
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",
                 action.tls_id,
                 action.action_type,
                 action.value,
             )
-        self._applied_actions.extend(actions)
+            self._applied_actions.append(action)
+        return rejected
 
     def get_lane_capacity(self, lane_id: str) -> float:
         """确定性容量：20 辆（对应 150m 车道 / 7.5m）。"""

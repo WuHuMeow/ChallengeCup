@@ -15,7 +15,10 @@ from collections import deque
 from pathlib import Path
 from typing import List, Optional
 
+from defusedxml import ElementTree as ET
+
 from core.types import ControlAction, JointState, QueueState, VehicleState
+from engine.artifacts import RunArtifacts
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,7 @@ class TraCIBridge:
         sumo_cfg: Path,
         binary: str = "sumo",
         additional_files: Optional[List[Path]] = None,
+        artifacts: Optional[RunArtifacts] = None,
         seed: Optional[int] = None,
         max_restarts: int = 0,
         vehicle_sample_rate: int = 1,
@@ -61,6 +65,7 @@ class TraCIBridge:
         self.sumo_cfg = Path(sumo_cfg)
         self.binary = binary
         self.additional_files = list(additional_files or [])
+        self.artifacts = artifacts
         self.seed = seed
         self.max_restarts = max(0, int(max_restarts))
         self._restarts = 0
@@ -78,7 +83,28 @@ class TraCIBridge:
             cmd += ["--seed", str(self.seed)]
         if self.additional_files:
             cmd += ["-a", ",".join(str(f) for f in self.additional_files)]
+        if self.artifacts is not None:
+            cmd.extend([
+                "--tripinfo-output",
+                self.artifacts.tripinfo.resolve().as_posix(),
+                "--summary-output",
+                self.artifacts.stats.resolve().as_posix(),
+                "--fcd-output",
+                self.artifacts.trajectory.resolve().as_posix(),
+            ])
+            if self._config_has_queue_output():
+                cmd.extend([
+                    "--queue-output",
+                    self.artifacts.queues.resolve().as_posix(),
+                ])
         return cmd
+
+    def _config_has_queue_output(self) -> bool:
+        try:
+            root = ET.parse(self.sumo_cfg).getroot()
+        except (OSError, ET.ParseError):
+            return False
+        return any(node.tag == "queue-output" for node in root.iter())
 
     def start(self) -> None:
         """启动 SUMO 仿真进程。
@@ -87,6 +113,13 @@ class TraCIBridge:
             FileNotFoundError: sumo_cfg 配置文件不存在。
             RuntimeError: 场景中没有信号灯，无法运行交通控制算法。
         """
+        # Clear discovery state before every start so reconnects cannot retain
+        # identifiers or lane mappings from the previous SUMO process.
+        self.tls_id = None
+        self._controlled_lanes = []
+        self._inbound_lanes = None
+        self.lane_directions = {}
+
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
 
@@ -242,7 +275,7 @@ class TraCIBridge:
             for v in ids
         ]
 
-    def apply_actions(self, actions: List[ControlAction]) -> None:
+    def apply_actions(self, actions: List[ControlAction]) -> list[str]:
         """将算法输出的控制动作写入 SUMO。
 
         set_phase 的 value 必须是相位索引 int；无法转换时打 warning 并跳过
@@ -252,22 +285,43 @@ class TraCIBridge:
             actions: 控制动作列表，支持 set_phase / set_phase_duration /
                 set_program；未知类型打 warning 并跳过。
         """
+        rejected: list[str] = []
         for action in actions:
+            if action.tls_id != self.tls_id:
+                rejected.append(f"unknown tls_id: {action.tls_id!r}")
+                continue
             if action.action_type == "set_phase":
-                try:
-                    phase_index = int(action.value)
-                except (TypeError, ValueError):
-                    logger.warning(
-                        "set_phase 值非法，跳过: value=%r reason=%s", action.value, action.reason
+                if not isinstance(action.value, int):
+                    rejected.append(
+                        f"set_phase value must be an integer: {action.value!r}"
                     )
                     continue
-                traci.trafficlight.setPhase(action.tls_id, phase_index)
+                traci.trafficlight.setPhase(action.tls_id, action.value)
             elif action.action_type == "set_phase_duration":
-                traci.trafficlight.setPhaseDuration(action.tls_id, float(action.value))
+                try:
+                    duration = float(action.value)
+                except (TypeError, ValueError):
+                    rejected.append(
+                        "set_phase_duration value must be numeric: "
+                        f"{action.value!r}"
+                    )
+                    continue
+                if duration <= 0:
+                    rejected.append(
+                        "set_phase_duration value must be positive: "
+                        f"{duration!r}"
+                    )
+                    continue
+                traci.trafficlight.setPhaseDuration(action.tls_id, duration)
             elif action.action_type == "set_program":
-                traci.trafficlight.setProgram(action.tls_id, str(action.value))
+                program = str(action.value).strip()
+                if not program:
+                    rejected.append("set_program value must be non-empty")
+                    continue
+                traci.trafficlight.setProgram(action.tls_id, program)
             else:
-                logger.warning("未知控制动作类型: %s", action.action_type)
+                rejected.append(f"unknown action_type: {action.action_type!r}")
+        return rejected
 
     def get_lane_capacity(self, lane_id: str) -> float:
         """车道容量（辆）= 车道长度 / 7.5m（5m 车长 + 2.5m 间距）。

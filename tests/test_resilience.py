@@ -42,6 +42,42 @@ def test_step_restarts_when_allowed():
         assert mock_start.call_count == 1  # 触发了一次重连
 
 
+def test_start_clears_discovery_state_before_repopulating(tmp_path):
+    bridge = _bridge()
+    bridge.sumo_cfg = tmp_path / "demo_1.sumocfg"
+    bridge.sumo_cfg.touch()
+    bridge.tls_id = "stale_tls"
+    bridge._controlled_lanes = ["stale_lane"]
+    bridge._inbound_lanes = ["stale_inbound"]
+
+    def load_mapping(current_bridge):
+        assert current_bridge.tls_id == "new_tls"
+        assert current_bridge._controlled_lanes == ["new_lane"]
+        assert current_bridge._inbound_lanes is None
+        current_bridge._inbound_lanes = ["new_inbound"]
+
+    with (
+        patch.object(traci, "start"),
+        patch.object(
+            traci.trafficlight, "getIDList", return_value=["new_tls"]
+        ),
+        patch.object(
+            traci.trafficlight, "getControlledLanes", return_value=["new_lane"]
+        ),
+        patch.object(
+            TraCIBridge,
+            "_load_edge_mapping",
+            autospec=True,
+            side_effect=load_mapping,
+        ),
+    ):
+        bridge.start()
+
+    assert bridge.tls_id == "new_tls"
+    assert bridge._controlled_lanes == ["new_lane"]
+    assert bridge._inbound_lanes == ["new_inbound"]
+
+
 def test_close_idempotent():
     bridge = _bridge()
     with patch.object(traci, "isLoaded", side_effect=[True, False]), \
