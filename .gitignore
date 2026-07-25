@@ -43,3 +43,4 @@ experiments/results/
 .superpowers/
 .agents/
 .pytest_cache/
+.worktrees/
