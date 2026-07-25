@@ -1,5 +1,6 @@
 """实验框架接口测试。"""
 import inspect
+import pytest
 from experiments.runner import run_batch, ALGORITHM_MAP
 
 
@@ -33,3 +34,136 @@ def test_parse_args_custom():
     ])
     assert (args.seed, args.flow_multiplier, args.intersection) == (7, 1.5, "16")
     assert args.algorithm == "ca_maxpressure"
+
+
+def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
+    from experiments.runner import build_artifacts, parse_args
+
+    args = parse_args([
+        "--intersection", "16", "--algorithm", "actuated",
+        "--flow-multiplier", "1.5", "--seed", "123",
+        "--output-dir", str(tmp_path),
+    ])
+    artifacts = build_artifacts(args)
+    assert artifacts.run_dir == tmp_path / "i16" / "actuated" / "x1.5" / "s123"
+
+
+@pytest.mark.parametrize("option,value", [
+    ("--intersection", "0"),
+    ("--intersection", "21"),
+    ("--steps", "0"),
+    ("--seed", "-1"),
+    ("--flow-multiplier", "0"),
+])
+def test_parse_args_rejects_invalid_dimensions(option, value):
+    from experiments.runner import parse_args
+
+    with pytest.raises(SystemExit):
+        parse_args([option, value])
+
+
+def test_run_single_passes_run_artifacts_to_runner(tmp_path):
+    from unittest.mock import Mock, patch
+    from experiments.runner import parse_args, run_single
+
+    args = parse_args([
+        "--intersection", "1", "--steps", "1",
+        "--output-dir", str(tmp_path),
+    ])
+    scene = Mock()
+    scene.meta.intersection_id = "1"
+    fake_runner = Mock()
+    fake_runner.output_csv = tmp_path / "metrics.csv"
+    with (
+        patch("experiments.runner.SceneRegistry.get_scene", return_value=scene),
+        patch("experiments.runner.SimulationRunner", return_value=fake_runner) as ctor,
+    ):
+        run_single(args)
+
+    artifacts = ctor.call_args.kwargs["artifacts"]
+    assert artifacts.run_dir == tmp_path / "i1" / "fixed_time" / "x1" / "s42"
+
+
+def test_stress_defaults_to_supported_baseline():
+    from scripts.stress_memory import parse_stress_args
+
+    args = parse_stress_args([])
+    assert args.algorithm == "actuated"
+    assert args.flow_multiplier == 1.5
+    assert args.intersections == ["1", "11", "16"]
+    assert args.steps == 3600
+    assert args.max_python_mib == 1024
+
+
+def test_stress_output_sizes_are_limited_to_one_run(tmp_path):
+    from scripts.stress_memory import _output_sizes
+
+    run_dir = tmp_path / "i1" / "actuated" / "x1.5" / "s42"
+    run_dir.mkdir(parents=True)
+    csv_path = run_dir / "metrics.csv"
+    csv_path.write_text("metrics", encoding="utf-8")
+    (tmp_path / "i11" / "other.csv").parent.mkdir(parents=True)
+    (tmp_path / "i11" / "other.csv").write_text("other", encoding="utf-8")
+
+    sizes = _output_sizes(run_dir, csv_path)
+
+    assert str(csv_path) in sizes
+    assert not any("other.csv" in path for path in sizes)
+
+
+def test_stress_uses_configured_step_length():
+    from scripts.stress_memory import _simulated_time_seconds
+
+    assert _simulated_time_seconds("11", 100) == pytest.approx(10.0)
+
+
+def test_stress_reports_actual_logged_simulation_time(tmp_path):
+    from scripts.stress_memory import _actual_simulated_time_seconds
+
+    run_dir = tmp_path / "i11" / "actuated" / "x1.5" / "s42"
+    run_dir.mkdir(parents=True)
+    metrics = run_dir / "metrics.csv"
+    (run_dir / "simulation_log.csv").write_text(
+        "step,timestamp\n0,0.0\n4,0.4\n", encoding="utf-8"
+    )
+
+    assert _actual_simulated_time_seconds(metrics, "11", 100) == pytest.approx(0.5)
+
+
+def test_verify_docker_static_runs_static_contract_test(tmp_path, monkeypatch):
+    from scripts import verify_ia_ib
+
+    (tmp_path / "docker").mkdir()
+    (tmp_path / "docker" / "Dockerfile").write_text("FROM ubuntu sumo", encoding="utf-8")
+    (tmp_path / "docker-compose.yml").write_text("services: {}", encoding="utf-8")
+    test_file = tmp_path / "tests" / "test_docker_static.py"
+    test_file.parent.mkdir()
+    test_file.write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(verify_ia_ib, "ROOT", tmp_path)
+    monkeypatch.setattr(verify_ia_ib.shutil, "which", lambda _: None)
+    monkeypatch.setattr(
+        verify_ia_ib.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append(command)
+        or type("Result", (), {"returncode": 0, "stderr": ""})(),
+    )
+
+    result = verify_ia_ib.verify_docker_static(tmp_path / "verification")
+
+    assert result.status == "pass"
+    assert any("test_docker_static.py" in str(part) for part in calls[0])
+
+
+def test_docker_live_status_distinguishes_not_run_fail_and_pass():
+    from scripts.verify_ia_ib import CheckResult, docker_live_status
+
+    unavailable = CheckResult(
+        "docker_static", "pass", 0.1, "docker", ["Docker unavailable; not run"], []
+    )
+    failed = CheckResult("docker_static", "fail", 0.1, "docker", [], ["build failed"])
+    passed = CheckResult("docker_static", "pass", 0.1, "docker", [], [])
+
+    assert docker_live_status([unavailable]) == "not run: Docker unavailable"
+    assert docker_live_status([failed]) == "fail"
+    assert docker_live_status([passed]) == "pass"
