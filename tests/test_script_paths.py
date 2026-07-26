@@ -26,3 +26,43 @@ def test_active_docs_reference_current_verification_commands():
     assert "scripts/verify_ia_ib.py" in deployment
     assert "output/verification" in deployment
     assert "scripts/verify_ia_ib.py" in scripts
+
+
+def _active_docs_text():
+    paths = [
+        "README.md",
+        "docs/interface.md",
+        "docs/architecture/interface.md",
+        "docs/deployment.md",
+        "docs/operations/deployment.md",
+        "scripts/README.md",
+        "tests/README.md",
+        "algorithms/README.md",
+    ]
+    return "\n".join(
+        (REPOSITORY_ROOT / path).read_text(encoding="utf-8")
+        for path in paths
+    )
+
+
+def test_active_docs_use_run_id_artifact_layout():
+    text = _active_docs_text()
+
+    assert "s{seed}/{run_id}" in text
+    assert "output_root/csv" not in text
+
+
+def test_active_docs_have_pdf_api_matrix_and_offline_commands():
+    text = _active_docs_text()
+
+    assert "docs/api/postman_collection.json" in text
+    assert "scripts/run_pdf_matrix.py" in text
+    assert "scripts/package_offline.py" in text
+    assert "--output-root" in text
+
+
+def test_active_docs_do_not_call_ca_mp_mvi():
+    text = _active_docs_text()
+
+    assert "CA-MP MVI" not in text
+    assert "MVI: 最大排队方向" not in text

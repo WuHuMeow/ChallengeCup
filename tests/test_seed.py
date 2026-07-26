@@ -10,6 +10,18 @@ def test_build_cmd_without_seed():
     assert "--seed" not in cmd
 
 
+def test_bridge_reads_configured_end_time(tmp_path):
+    config = tmp_path / "demo_1.sumocfg"
+    config.write_text(
+        "<configuration><time><end value='3600'/></time></configuration>",
+        encoding="utf-8",
+    )
+
+    bridge = TraCIBridge(sumo_cfg=config)
+
+    assert bridge.configured_end_time == 3600.0
+
+
 def test_build_cmd_with_seed():
     b = TraCIBridge(sumo_cfg=Path("demo_1.sumocfg"), seed=42)
     cmd = b._build_cmd()

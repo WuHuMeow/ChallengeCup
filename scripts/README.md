@@ -25,6 +25,9 @@
 | `scripts/check_outputs.py` | `python scripts/check_outputs.py --root output/verification/final` | 含 `run_metadata.json` 的运行根目录 | 递归检查每个运行的 7 类必需输出 |
 | `scripts/check_seed_repro.py` | `python scripts/check_seed_repro.py --steps 300 --output-root output/verification/seed` | 路口 1、固定时制算法、seed 42 和 7 | 三个隔离运行目录及复现性断言 |
 | `scripts/stress_memory.py` | `python scripts/stress_memory.py --algorithm actuated --intersections 1 11 16 --steps 3600 --output-root output/verification/stress` | 路口 ID、步数、1.5 倍流量 | `stress_results.json`、输出大小和 Python 峰值 |
+| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --quick --output-root output/verification/matrix-quick` | 路口、3 算法、2 流量、3 种子 | 可恢复矩阵、`matrix.csv`、`matrix_state.json` 和隔离运行产物 |
+| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --steps 36000 --output-root output/verification/matrix-full` | PDF 完整 360 组实验 | 360 个 `run_id` 目录与矩阵索引 |
+| `scripts/package_offline.py` | `python scripts/package_offline.py --output-dir output/offline` | 仓库源码、依赖、可选 Docker 镜像和第二机器证据 | 源码 ZIP、SHA-256、`offline_manifest.json` |
 | `scripts/verify_ia_ib.py` | `python scripts/verify_ia_ib.py --quick --output-root output/verification/quick` | IA/IB 全套验收命令 | `verification.json` 与最终 Markdown 报告 |
 | `quality/lint_check.sh` | `bash scripts/quality/lint_check.sh` | `engine/`、`cloud/`、`experiments/` 中跟踪和未跟踪的源码 | 成功时仅打印 `clean` |
 
@@ -32,6 +35,8 @@
 
 - 使用项目 Python 环境安装的依赖；专用包包括 PyYAML、`sumolib`、`defusedxml` 和 `flake8`。
 - `validate_all.py` 与 `batch_validate.py` 要求 `sumo` 可执行文件位于 `PATH`。
+- `run_pdf_matrix.py` 默认每次 `36000` 步；`--quick` 固定选择路口 1、11、16 并运行 100 步。
+- `package_offline.py` 不要求 Docker；Docker 不可用或第二机器证据未提供时分别记录 `not_run`。
 - `lint_check.sh` 要求 Bash、Git 和可通过 `python -m flake8` 调用的 flake8。
 - 复现性和压力脚本依赖 `项目包`下的 `algorithms`、`engine`、`experiments` 与 `scenes` 模块及其运行时配置。
 
@@ -40,7 +45,9 @@
 - 数据生成脚本固定处理路口 1 到 20，并假设原始工程目录名为 `sumo工程`；生成文件会被覆盖。
 - 配置生成器固定写入 `engine/configs/`，并按该目录深度生成到原始数据的相对路径。
 - 任务拆分矩阵和两台机器的路口分配写在脚本中，不能通过命令行调整。
+- 每次运行目录固定为 `<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`。
 - 输出检查器递归发现 `run_metadata.json`，并检查同一运行目录中的 `metrics.csv`、`simulation_log.csv`、`events.csv`、`tripinfo.xml`、`stats.xml` 和 `traj.xml`。
+- 矩阵恢复只复用 `completed` 且七类必需产物均非空的 `run_id`，不会覆盖旧运行。
 - 快速验证和批量验证必须显式传入 `--output-root`；验收器会把所有中间文件隔离到该目录。
 - 内存压力检查只统计 Python 进程的 `tracemalloc` 峰值，不包含外部 SUMO 进程。
 - lint 仅覆盖 `engine/`、`cloud/` 和 `experiments/`，不会检查仓库中的所有 Python 文件。

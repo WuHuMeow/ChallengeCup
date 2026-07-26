@@ -134,6 +134,9 @@ class SimulationRunner:
                     status = RunStatus.DISCONNECTED
                     reason = self._terminal_reason
                     break
+                if tick_outcome == "configured_end":
+                    status = RunStatus.COMPLETED
+                    break
                 if tick_outcome == "exhausted":
                     if step + 1 < steps:
                         status = RunStatus.ENDED_EARLY
@@ -290,6 +293,9 @@ class SimulationRunner:
                 }
             )
         if self.bridge.is_exhausted():
+            configured_end = getattr(self.bridge, "configured_end_time", None)
+            if configured_end is not None and sim_time >= configured_end:
+                return "configured_end"
             return "exhausted"
         return "continue"
 

@@ -2,44 +2,71 @@
 
 ## 模块职责
 
-`algorithms/` 定义统一交通控制器契约，并实现固定配时、规则感应控制和 CA-MP 三种策略，供 `SimulationRunner` 与实验框架统一调度。
+`algorithms/` 实现统一交通控制器契约：
 
-## 文件索引
-
-| 文件 | 作用 |
-| --- | --- |
+| 文件 | 策略 |
+|---|---|
 | `base.py` | `BaseControlAlgorithm` 抽象接口 |
-| `fixed_time.py` | SUMO 默认配时或可选 Excel 配时写入 |
-| `rule_adaptive.py` | 基于排队阈值和绿灯时长的规则控制 |
-| `ca_max_pressure.py` | 调用云端预测并输出 CA-MP MVI 控制动作 |
+| `fixed_time.py` | SUMO/Excel 固定配时基线 |
+| `rule_adaptive.py` | 基于排队和绿灯约束的感应控制 |
+| `ca_max_pressure.py` | 相位感知的 Capacity-Aware MaxPressure |
 
-## 对外接口
-
-所有控制器实现 `init(scene)`、`step(state)`、`reset()` 和 `name`：
+所有算法实现：
 
 ```python
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-
-algorithm = CAMaxPressureAlgorithm()
-algorithm.init(scene)
-actions = algorithm.step(state)  # list[ControlAction]
+init(scene)
+step(state) -> list[ControlAction]
+reset()
+name
 ```
 
-## 输入与输出
+算法只输出决策，不直接调用 TraCI。`TraCIBridge.apply_actions()` 执行动作并返回
+`list[ActionResult]`。
 
-- 输入：`core.types.Scene` 和每步 `core.types.JointState`。
-- 输出：`list[ControlAction]`；空列表表示本步不修改 SUMO 信号程序。
-- 配置：感应控制和 CA-MP 参数来自 `config/default.yaml` 的 `algorithms.*`。
+## CA-MP
 
-## 依赖
+当前 CA-MP 从 `JointState.phase_states` 读取真实 SUMO 相位拓扑，输出合法整数相位：
 
-- 依赖 `core.types` 和 `core.config`。
-- `FixedTimeAlgorithm(use_excel_timing=True)` 依赖 pandas、Excel 配时文件和已启动的 TraCI 连接。
-- `CAMaxPressureAlgorithm` 依赖 `cloud.CloudPolicy`。
+1. 上游与下游排队按各自容量归一化；
+2. 预测到达量按 `prediction_weight` 加入压力；
+3. 下游占用率达到 `overflow_occupancy_threshold` 时阻断该相位；
+4. 满足最小绿灯，并在最大绿灯到期时寻找替代相位；
+5. 切换时经过真实黄灯/全红相位；
+6. 绿灯时长按压力动态缩放到 `min_green..max_green`；
+7. `reset()` 清理待切换目标和云策略状态。
 
-## 已知限制
+参数来自 `config/default.yaml::algorithms.ca_maxpressure`，运行级覆盖只允许：
 
-- CA-MP 当前按最长队列选择相位；容量归一化压力、溢出门控和预测值融合尚未进入控制决策。
-- 规则感应控制用队列数量近似相位数量，未读取真实相位拓扑。
-- Excel 配时写入假设 SUMO 原程序按绿/黄交替排列，未写入 Excel 的全红时长。
-- `reset()` 当前不会清理额外算法状态；重复实验由调用方重新创建实例更稳妥。
+- `overflow_occupancy_threshold`
+- `prediction_weight`
+- `base_green`
+
+## 校准与留出
+
+`experiments/tuning.py` 对路口 1、11、16 的种子 42 做参数搜索，冻结赢家后仅用种子
+123、456 做留出评估。结果写入 `selected_params.json`、`tuning_results.csv` 和
+`holdout_summary.json`。
+
+```powershell
+python scripts/run_pdf_matrix.py --quick --tune `
+  --output-root output/verification/tuning-quick
+python scripts/run_pdf_matrix.py --steps 36000 `
+  --output-root output/verification/matrix-full
+```
+
+每个算法运行产物位于：
+
+```text
+<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
+```
+
+## 依赖与边界
+
+- 共享类型：`core.types`、`core.run_models`
+- 配置：`core.config`
+- 云端预测/参数：`cloud.CloudPolicy`
+- 相位交通状态：由 `engine.traci_bridge` 从真实 tlLogic 和车道拓扑构建
+- 原始 `data/intersection_data/` 只读
+
+主办方原始 J2 信号方案可能触发 SUMO unsafe/unused-state warning；算法运行证据应同时记录
+终态和源数据 warning。

@@ -1,128 +1,89 @@
-# 部署运行说明（IA W4 Day 4 / W5 Day 3 最终版）
+# 部署与复现
 
-> 赛题 PDF 硬性要求的"详细的部署运行说明文档"。
-> 环境前提详见 `docs/sumo_env_setup.md`；Docker 方案选型见 `docs/notes/docker-sumo-research.md`。
+本文是 IA/IB 的规范部署入口。原始 `data/intersection_data/` 只读，所有运行和验收产物写入
+`output/` 下的独立目录。
 
-## 快速开始（3 步跑通）
+## 1. 本地环境
 
-```bash
-docker build -t ca-mp:latest -f docker/Dockerfile .
-docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 1
-ls output/csv/        # 仿真指标 CSV
-```
-
-## 1. 本地部署（Windows / Mac / Linux）
-
-```bash
-git clone https://github.com/WuHuMeow/ChallengeCup.git
-cd ChallengeCup
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
-pip install -r requirements.txt
-
-# 安装 SUMO 1.27.1 并设置 SUMO_HOME（步骤见 docs/sumo_env_setup.md）
-python scripts/validate_all.py        # 环境自检：期望 20/20 PASS
-python examples/run_fixed_time.py 1   # 跑路口 1 固定配时基线
-```
-
-平台差异：
-
-- **Windows**：路径用 `\` 或 `/` 均可；环境变量在"系统属性 → 环境变量"设置，或用 PowerShell（见 `docs/sumo_env_setup.md` 第 2 节）。
-- **Linux**：SUMO 通过 `ppa:sumo/stable` 安装（`apt install sumo sumo-tools`），`SUMO_HOME=/usr/share/sumo`。
-- **macOS**：`brew install sumo`，`SUMO_HOME=$(brew --prefix)/share/sumo`。
-
-## 2. Docker 部署
-
-```bash
-# 构建（在项目根目录执行）
-docker build -t ca-mp:latest -f docker/Dockerfile .
-
-# 运行指定路口（ENTRYPOINT 为 examples/run_fixed_time.py，参数即路口 ID）
-docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 16
-
-# 或用 compose（默认路口 16，output 挂载到宿主机）
-docker compose up --build
-docker compose run --rm simulation 1    # 临时切换路口
-```
-
-容器内自检：
-
-```bash
-docker run --rm --entrypoint sumo ca-mp:latest --version     # 期望 1.27.x
-docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
-```
-
-## 3. 常见问题
-
-| 问题 | 现象 | 解决 |
-|------|------|------|
-| `SUMO_HOME` 未设置 | `无法导入 traci…` | 见 `docs/sumo_env_setup.md` 第 2 节；Docker 镜像内已预设 |
-| 镜像内 SUMO 版本过旧 | `network file format version '1.20' is not supported` | 必须用 `ppa:sumo/stable`（Dockerfile 已内置）；不要直接用 Ubuntu 默认源（1.12.0） |
-| Windows 卷挂载报错 | `docker run -v ${PWD}/output:…` 路径非法 | 用绝对路径，PowerShell 为 `${PWD}`、CMD 为 `%cd%`、Git Bash 为 `$(pwd -W)` |
-| 镜像拉取/构建慢 | apt/pip 超时 | 配置 apt 与 pip 国内镜像源后重建 |
-| 端口冲突 | API 服务 8000 被占 | `uvicorn api.server:app --port 8001` 换端口 |
-| 输出目录权限 | 容器内写 `/app/output` 失败 | 挂载目录预先 `mkdir -p output`，Linux 下注意属主 |
-
-## 4. 输出文件说明
-
-| 位置 | 内容 | 消费者 |
-|------|------|--------|
-| `output/csv/{路口}_{算法}.csv` | 每 60 步指标快照（排队、延误、吞吐量） | EX 分析、DB 图表 |
-| `output/validate/{N}/` | 批量验证产物（tripinfo / traj / stats / queues） | IA 环境验收 |
-| `output/…` | 实验矩阵输出（EX 管理） | EX 统计分析 |
-| `tripinfo.xml` | 每车行程时间、等待、停车次数、油耗 | EX 指标计算 |
-| `traj.xml`（fcd） | 每步车辆位置速度 | DB 时空轨迹图 |
-| `stats.xml`（summary） | 每步全网统计 | 运行健康检查 |
-
-## 完整实验复现（360 组）
-
-```bash
-# 1. 环境自检
-python scripts/validate_all.py              # 20/20 PASS
-
-# 2. 单次实验（路口 1，CA-MP，1.5 倍流量，seed=42）
-python -m experiments.runner --intersection 1 --algorithm ca_maxpressure \
-    --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
-
-# 3. 输出完整性检查
-python scripts/check_outputs.py              # 期望 缺失/空文件: 0
-```
-
-单次 CLI 参数：`--seed`（默认 42）/ `--flow-multiplier`（默认 1.0）/ `--output-dir` /
-`--intersection`（1-20）/ `--steps`（默认 3600）/ `--algorithm`（fixed_time / actuated /
-ca_maxpressure）。批量矩阵（20 路口 × 3 算法 × 2 流量 × 3 种子）由 EX 侧调用
-`experiments.runner.run_batch()` 驱动，详见 `docs/interface.md` 的 experiments CLI 小节。
-
-输出结构（`<output-dir>` = `--output-dir`）：
-
-| 位置 | 内容 |
-|------|------|
-| `<output-dir>/csv/*.csv` | 指标快照 CSV（每 60 步一行：排队、延误、吞吐量等） |
-| `<output-dir>/logs/*_simulation_log.csv` | 每步日志（相位 + 各进口道 queue/pressure） |
-| `<output-dir>/logs/*_events.csv` | 事件日志（run_start/run_end/控制动作） |
-| `<output-dir>/variants/` | 流量变体文件（`--flow-multiplier != 1.0` 时生成） |
-
-实测基准（2026-07-23，单机 Windows + SUMO 1.27.1）：20 路口 3600 步全量验证合计约 60s，
-估算 360 次实验 ≈ 0.3h（详见 `docs/batch_validate_report.md`）。
-
-## 镜像指标
-
-| 指标 | 目标 | 实测 |
-|------|------|------|
-| 镜像大小 | < 2GB | 待 W4 在有 Docker 的机器上构建后回填 |
-| 构建时间 | - | 同上 |
-
-## 当前 IA/IB 验收入口（2026-07-25）
-
-开发依赖使用仓库内的隔离环境：
+### Windows PowerShell
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+sumo --version
+.\.venv\Scripts\python.exe scripts/validate_all.py `
+  --steps 100 --output-root output/verification/original
 ```
 
-所有验证产物必须写入独立目录，不写入 `data/` 或 `engine/configs/`：
+### Linux / macOS
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+sumo --version
+python scripts/validate_all.py \
+  --steps 100 --output-root output/verification/original
+```
+
+项目以 SUMO 1.27.1 验证；安装细节见 `docs/sumo_env_setup.md`。
+
+## 2. 单次运行
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.runner `
+  --intersection 1 `
+  --algorithm ca_maxpressure `
+  --flow-multiplier 1.5 `
+  --seed 42 `
+  --steps 36000 `
+  --output-dir output/runs
+```
+
+默认步数是 `36000`。每次运行生成独立 `run_id`：
+
+```text
+<output-dir>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
+```
+
+常用产物包括 `metrics.csv`、`simulation_log.csv`、`events.csv`、`tripinfo.xml`、
+`stats.xml`、`traj.xml`、`summary.json`、`run_metadata.json` 和 `variants/`。
+
+## 3. REST API
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api.server:app `
+  --host 127.0.0.1 --port 8000
+```
+
+规范路由统一为 `/api/*`。静态接口交付：
+
+- `docs/api/openapi.json`
+- `docs/api/postman_collection.json`
+
+API 和 CLI 都调用单 worker 的 `RunService`，不会绕过统一运行目录和终态记录。
+
+## 4. PDF 实验矩阵
+
+快速 smoke 矩阵只跑路口 1、11、16 和 100 步：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
+  --quick --output-root output/verification/matrix-quick
+```
+
+完整 PDF 矩阵为 20 路口、3 算法、2 流量、3 种子，共 360 次，每次 36000 步：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
+  --steps 36000 --output-root output/verification/matrix-full
+```
+
+首次需要同时校准 CA-MP 时可加 `--tune`。恢复运行会读取 `matrix_state.json`，只跳过终态
+`completed` 且七类必需产物均非空的运行。若单独完成校准，应把 `selected_params.json` 放在
+矩阵输出根目录，避免使用未校准参数恢复旧矩阵。
+
+## 5. IA/IB 验收
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
@@ -131,31 +92,86 @@ python -m venv .venv
   --output-root output/verification/final
 ```
 
-`--quick` 跳过增强配置的 3600 步验收；完整命令包含原始配置 20×100 步、增强配置
-20×100 与 20×3600 步、Actuated 基线、1.5 倍流量压力测试以及 Docker 静态契约。
-Docker 可执行文件存在时，验收器还会执行镜像构建和路口 1 容器运行；不可用时报告会明确写
-`not run: Docker unavailable`，不会把它伪装成通过。
+`--quick` 会跳过增强配置的 3600 步检查，并把该项写为 `not_run`。完整验收包括：
 
-单次实验的输出目录固定为：
+- 20 路口原始配置 100 步；
+- 20 路口增强配置 100 步和 3600 步；
+- 场景变体、运行时、API、CA-MP、精确指标和图表契约；
+- 360 次、每次 36000 步 PDF 矩阵；
+- 1.5 倍流量压力运行；
+- Docker 静态检查，以及环境可用时的 live build/run。
 
-```text
-<output-root>/i{intersection}/{algorithm}/x{flow_multiplier}/s{seed}/
-  metrics.csv simulation_log.csv events.csv
-  tripinfo.xml stats.xml traj.xml [queues.xml]
-  run_metadata.json
-```
+验收输出 `verification.json` 和 `docs/reports/ia-ib-final-verification.md`，检查状态严格为
+`pass`、`fail`、`not_run`。
 
-`run_metadata.json` 记录 `completed`、`disconnected`、`interrupted` 或 `failed` 终态、
-失败原因、UTC 时间、SUMO 版本和实际生成文件。可以用递归检查器验证目录完整性：
+## 6. Docker
+
+统一入口是 `python3 -m experiments.runner`：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/check_outputs.py --root output/verification/final
+docker build -t ca-mp:ia-ib -f docker/Dockerfile .
+docker run --rm `
+  -v "${PWD}/output:/app/output" `
+  ca-mp:ia-ib `
+  --intersection 1 `
+  --algorithm fixed_time `
+  --steps 100 `
+  --output-dir /app/output/runs
+```
+
+Compose：
+
+```powershell
+docker compose up --build
+docker compose run --rm simulation `
+  --intersection 16 --algorithm ca_maxpressure `
+  --steps 36000 --output-dir /app/output/runs
+```
+
+本机没有 Docker、镜像未构建或 live 命令未执行时，Docker 证据状态为 `not_run`，静态
+Dockerfile 测试通过不能替代真实容器运行。
+
+## 7. 离线包与第二机器
+
+```powershell
+.\.venv\Scripts\python.exe scripts/package_offline.py `
+  --output-dir output/offline `
+  --image ca-mp:ia-ib
+```
+
+输出包含：
+
+- `challenge-cup-source.zip`
+- `requirements.txt`
+- `offline_manifest.json`
+- Docker 已存在且导出成功时的 `ca-mp-ia-ib.tar`
+
+manifest 记录每个文件的 SHA-256 和字节数。第二机器证据必须由另一台机器真实运行后提供：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/package_offline.py `
+  --output-dir output/offline `
+  --second-machine-evidence path/to/second-machine.json
+```
+
+未提供第二机器证据时状态保持 `not_run`。
+
+## 8. 输出检查
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check_outputs.py `
+  --root output/verification/final
 .\.venv\Scripts\python.exe scripts/check_seed_repro.py `
   --steps 300 --output-root output/verification/seed
 ```
 
-验收完成后只删除本次生成且位于 `output/verification/` 下的中间目录；保留
-`verification.json` 和 `docs/reports/ia-ib-final-verification.md`，不要删除来源不明的历史产物。
+## 9. 已知源数据 warning
 
-IA/IB 的验收不代表 CA-MP 算法正确性、正式 360 组实验、交付报告或提交材料已经完成；这些仍由
-AB、EX、DA、DB、TL 分工负责。
+主办方原始路口 J2 信号方案可能输出 unsafe/unused-state warning，部分路口还会提示缺少黄灯。
+原始数据保持只读；验收报告同时保留运行完成状态和 warning，不隐藏、也不把 warning
+误报为运行失败。
+
+## 10. 交付边界
+
+IA/IB 验收覆盖仓库实现、自动测试、本地 SUMO、Docker live 和第二机器复现五条证据轴。
+PPT、Word 实验报告和演示视频仍是独立提交材料。

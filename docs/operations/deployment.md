@@ -1,114 +1,83 @@
-# 部署运行说明（IA W4 Day 4 / W5 Day 3 最终版）
+# 运维部署速查
 
-> 赛题 PDF 硬性要求的"详细的部署运行说明文档"。
-> 环境前提详见 `docs/sumo_env_setup.md`；Docker 方案选型见 `docs/notes/docker-sumo-research.md`。
+详细说明见 [`docs/deployment.md`](../deployment.md)。本页保留运行人员需要的最短命令。
 
-## 快速开始（3 步跑通）
+## 本地单次运行
 
-```bash
-docker build -t ca-mp:latest -f docker/Dockerfile .
-docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 1
-ls output/csv/        # 仿真指标 CSV
+```powershell
+.\.venv\Scripts\python.exe -m experiments.runner `
+  --intersection 1 --algorithm ca_maxpressure `
+  --flow-multiplier 1.5 --seed 42 --steps 36000 `
+  --output-dir output/runs
 ```
 
-## 1. 本地部署（Windows / Mac / Linux）
+产物目录：
 
-```bash
-git clone https://github.com/WuHuMeow/ChallengeCup.git
-cd ChallengeCup
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
-pip install -r requirements.txt
-
-# 安装 SUMO 1.27.1 并设置 SUMO_HOME（步骤见 docs/sumo_env_setup.md）
-python scripts/validate_all.py        # 环境自检：期望 20/20 PASS
-python examples/run_fixed_time.py 1   # 跑路口 1 固定配时基线
+```text
+<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
 ```
 
-平台差异：
+## API
 
-- **Windows**：路径用 `\` 或 `/` 均可；环境变量在"系统属性 → 环境变量"设置，或用 PowerShell（见 `docs/sumo_env_setup.md` 第 2 节）。
-- **Linux**：SUMO 通过 `ppa:sumo/stable` 安装（`apt install sumo sumo-tools`），`SUMO_HOME=/usr/share/sumo`。
-- **macOS**：`brew install sumo`，`SUMO_HOME=$(brew --prefix)/share/sumo`。
-
-## 2. Docker 部署
-
-```bash
-# 构建（在项目根目录执行）
-docker build -t ca-mp:latest -f docker/Dockerfile .
-
-# 运行指定路口（ENTRYPOINT 为 examples/run_fixed_time.py，参数即路口 ID）
-docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 16
-
-# 或用 compose（默认路口 16，output 挂载到宿主机）
-docker compose up --build
-docker compose run --rm simulation 1    # 临时切换路口
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api.server:app --port 8000
 ```
 
-容器内自检：
+规范端点是 `/api/*`；静态契约为：
 
-```bash
-docker run --rm --entrypoint sumo ca-mp:latest --version     # 期望 1.27.x
-docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
+- `docs/api/openapi.json`
+- `docs/api/postman_collection.json`
+
+## PDF 矩阵
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
+  --quick --output-root output/verification/matrix-quick
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
+  --steps 36000 --output-root output/verification/matrix-full
 ```
 
-## 3. 常见问题
+完整矩阵为 360 次运行。恢复机制通过 `matrix_state.json` 和每个 `run_id` 目录的完整性决定
+是否跳过。
 
-| 问题 | 现象 | 解决 |
-|------|------|------|
-| `SUMO_HOME` 未设置 | `无法导入 traci…` | 见 `docs/sumo_env_setup.md` 第 2 节；Docker 镜像内已预设 |
-| 镜像内 SUMO 版本过旧 | `network file format version '1.20' is not supported` | 必须用 `ppa:sumo/stable`（Dockerfile 已内置）；不要直接用 Ubuntu 默认源（1.12.0） |
-| Windows 卷挂载报错 | `docker run -v ${PWD}/output:…` 路径非法 | 用绝对路径，PowerShell 为 `${PWD}`、CMD 为 `%cd%`、Git Bash 为 `$(pwd -W)` |
-| 镜像拉取/构建慢 | apt/pip 超时 | 配置 apt 与 pip 国内镜像源后重建 |
-| 端口冲突 | API 服务 8000 被占 | `uvicorn api.server:app --port 8001` 换端口 |
-| 输出目录权限 | 容器内写 `/app/output` 失败 | 挂载目录预先 `mkdir -p output`，Linux 下注意属主 |
+## IA/IB 验收
 
-## 4. 输出文件说明
-
-| 位置 | 内容 | 消费者 |
-|------|------|--------|
-| `output/csv/{路口}_{算法}.csv` | 每 60 步指标快照（排队、延误、吞吐量） | EX 分析、DB 图表 |
-| `output/validate/{N}/` | 批量验证产物（tripinfo / traj / stats / queues） | IA 环境验收 |
-| `output/…` | 实验矩阵输出（EX 管理） | EX 统计分析 |
-| `tripinfo.xml` | 每车行程时间、等待、停车次数、油耗 | EX 指标计算 |
-| `traj.xml`（fcd） | 每步车辆位置速度 | DB 时空轨迹图 |
-| `stats.xml`（summary） | 每步全网统计 | 运行健康检查 |
-
-## 完整实验复现（360 组）
-
-```bash
-# 1. 环境自检
-python scripts/validate_all.py              # 20/20 PASS
-
-# 2. 单次实验（路口 1，CA-MP，1.5 倍流量，seed=42）
-python -m experiments.runner --intersection 1 --algorithm ca_maxpressure \
-    --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
-
-# 3. 输出完整性检查
-python scripts/check_outputs.py              # 期望 缺失/空文件: 0
+```powershell
+.\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
+  --quick --output-root output/verification/quick
+.\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
+  --output-root output/verification/final
 ```
 
-单次 CLI 参数：`--seed`（默认 42）/ `--flow-multiplier`（默认 1.0）/ `--output-dir` /
-`--intersection`（1-20）/ `--steps`（默认 3600）/ `--algorithm`（fixed_time / actuated /
-ca_maxpressure）。批量矩阵（20 路口 × 3 算法 × 2 流量 × 3 种子）由 EX 侧调用
-`experiments.runner.run_batch()` 驱动，详见 `docs/interface.md` 的 experiments CLI 小节。
+状态只使用 `pass`、`fail`、`not_run`。Docker 没有真实执行时必须为 `not_run`。
 
-输出结构（`<output-dir>` = `--output-dir`）：
+## Docker
 
-| 位置 | 内容 |
-|------|------|
-| `<output-dir>/csv/*.csv` | 指标快照 CSV（每 60 步一行：排队、延误、吞吐量等） |
-| `<output-dir>/logs/*_simulation_log.csv` | 每步日志（相位 + 各进口道 queue/pressure） |
-| `<output-dir>/logs/*_events.csv` | 事件日志（run_start/run_end/控制动作） |
-| `<output-dir>/variants/` | 流量变体文件（`--flow-multiplier != 1.0` 时生成） |
+```powershell
+docker build -t ca-mp:ia-ib -f docker/Dockerfile .
+docker run --rm -v "${PWD}/output:/app/output" ca-mp:ia-ib `
+  --intersection 1 --algorithm fixed_time --steps 100 `
+  --output-dir /app/output/runs
+```
 
-实测基准（2026-07-23，单机 Windows + SUMO 1.27.1）：20 路口 3600 步全量验证合计约 60s，
-估算 360 次实验 ≈ 0.3h（详见 `docs/batch_validate_report.md`）。
+统一容器入口为 `python3 -m experiments.runner`。
 
-## 镜像指标
+## 离线包
 
-| 指标 | 目标 | 实测 |
-|------|------|------|
-| 镜像大小 | < 2GB | 待 W4 在有 Docker 的机器上构建后回填 |
-| 构建时间 | - | 同上 |
+```powershell
+.\.venv\Scripts\python.exe scripts/package_offline.py `
+  --output-dir output/offline --image ca-mp:ia-ib
+```
+
+`offline_manifest.json` 分开记录 Docker live 和第二机器复现。未执行的轴保持 `not_run`。
+
+## 故障判断
+
+| 现象 | 判断与处理 |
+|---|---|
+| `SUMO_HOME` / `traci` 不可用 | 按 `docs/sumo_env_setup.md` 安装并配置 SUMO |
+| 运行目录已存在 | 不要覆盖；让系统生成新的 `run_id` |
+| `run_metadata.json` 非 `completed` | 读取 `reason` 和 `events.csv`，不要只看 CSV 是否存在 |
+| 精确指标为 `null` | 表示 SUMO 未提供完整字段，不应改成 0 |
+| J2 unsafe/unused-state warning | 记录为只读源数据 warning；同时检查运行终态 |
+| Docker 不可用 | 记录 `not_run`，不能用静态测试替代 live 通过 |

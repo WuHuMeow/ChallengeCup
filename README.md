@@ -75,17 +75,21 @@
 
 ### 当前状态
 
-基础框架已完成，源码模块具备可运行骨架，队友可直接在对应文件中继续填充业务逻辑：
+功能一、功能二与功能三赛道 B 的代码链路已落地：
 
-- 核心数据契约（`core/types.py`）已定义 JointState、ControlAction、SceneMeta 等共享类型。
-- 场景注册（`scenes/registry.py`）已可自动发现 20 个路口，并兼容地图目录命名差异。
-- 仿真引擎（`engine/`）已可启动 SUMO、读取状态、写入控制、输出 CSV。
-- 算法库（`algorithms/`）已完成标准接口与三种策略骨架，固定配时基线支持 Excel 配时读取。
-- 云端策略（`cloud/cloud_policy.py`）、REST API（`api/server.py`）、实验框架（`experiments/`）、可视化（`visualization/`）均已搭好骨架。
+- `RunRequest -> RunService（单 worker） -> VariantBundle -> SimulationRunner` 统一单次、批量和 REST API 运行。
+- 每次运行获得独立 `run_id`，产物写入
+  `<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`，原始 `data/intersection_data/` 保持只读。
+- REST API、OpenAPI 与 Postman 契约位于 `api/`、`docs/api/openapi.json` 和
+  `docs/api/postman_collection.json`。
+- CA-MP 已使用合法整数相位、容量归一化上下游压力、下游溢出门控、安全黄灯/全红过渡、
+  动态绿灯与严格校准/留出种子分割。
+- `summary.json` 从 SUMO `tripinfo.xml` 与队列快照计算精确指标；缺失的精确量使用 JSON
+  `null`，不伪造为 `0`。
 
-**IA（仿真基础设施 A）状态（2026-07-25）**：20 个路口的原始/增强配置、SUMO 1.27.1 验证、隔离运行产物、压力验收和 Docker 静态契约均已自动化；本机无 Docker，真实镜像构建/运行仍待具备 Docker 的环境验证。
-
-**IB（仿真基础设施 B）状态（2026-07-25）**：TraCI 桥接、seed 透传、车辆采样与 500 上限、断线韧性、EdgeChannel、逐步日志、事件日志、确定性实验 CLI 和终态元数据已完成；当前回归基线为 114 tests，CA-MP 正确性仍归 AB，不在本分工验收结论内。
+**IA/IB 仓库实现状态（2026-07-26）**：W1-W6 代码、自动化契约、真实本地 SUMO 验证、
+实验矩阵、图表来源追踪、离线包和验收三态均已实现。Docker 实机构建/运行和第二机器复现
+是独立证据轴；当前机器未执行时必须记录为 `not_run`，不能写成通过。
 
 ---
 
@@ -195,9 +199,9 @@ python -c "import pandas, numpy; print('all dependencies OK')"
 
 ```powershell
 python examples/run_fixed_time.py 1
-python examples/run_ca_max_pressure.py 1 3600
+python examples/run_ca_max_pressure.py 1 36000
 python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
-  --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/exp1
+  --flow-multiplier 1.5 --seed 42 --steps 36000 --output-dir output/exp1
 ```
 
 启动 FastAPI 服务（可选）：
@@ -206,7 +210,8 @@ python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
 uvicorn api.server:app --reload
 ```
 
-服务启动后访问 http://127.0.0.1:8000/docs 查看自动生成的 API 文档。多数 `/api/*` 协作路由仍为占位实现。
+规范接口统一使用 `/api/*`；静态契约见 `docs/api/openapi.json` 与
+`docs/api/postman_collection.json`。FastAPI 的 `/docs` 仅作为本地调试入口。
 
 <a id="使用本地其他路径的数据"></a>
 
@@ -229,7 +234,20 @@ export CC_DATA_ROOT=/path/to/路口数据
 ```powershell
 python -m pytest tests/ -q
 python scripts/validate_all.py
+python scripts/run_pdf_matrix.py --quick --output-root output/verification/matrix-quick
+python scripts/run_pdf_matrix.py --steps 36000 --output-root output/verification/matrix-full
+python scripts/package_offline.py --output-dir output/offline
 ```
+
+完整 IA/IB 验收：
+
+```powershell
+python scripts/verify_ia_ib.py --quick --output-root output/verification/quick
+python scripts/verify_ia_ib.py --output-root output/verification/final
+```
+
+`verification.json` 对每个检查使用 `pass`、`fail`、`not_run` 三态。Docker 或第二机器没有
+真实证据时保持 `not_run`。
 
 ```bash
 bash scripts/quality/lint_check.sh
@@ -517,7 +535,10 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ### 已知限制
 
-CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warning 并跳过；真实算法效果仍由 AB 完成。部分实验指标仍是实时状态近似值，精确行程时间和燃油消耗需要 `tripinfo` 校准。ML 训练/预测和多数 `/api/*` 协同端点仍是占位实现。Docker 尚未完成跨机器真实镜像构建验证。
+- 主办方原始路口 J2 信号方案会触发 SUMO 的 unsafe/unused-state warning；原始数据只读，
+  运行终态和警告必须同时保留。
+- Docker live 验证与第二机器复现需要对应环境的真实执行证据；没有执行时状态为 `not_run`。
+- PPT、Word 实验报告与演示视频是独立提交物，不因 IA/IB 代码验收通过而自动视为完成。
 
 ---
 
@@ -530,11 +551,11 @@ CA-MP 当前 MVI 档会产生非法 `set_phase` 值，TraCIBridge 会记录 warn
 | 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-24） |
 |------|------|------|----------|----------|--------------------|
 | TL | Tech Lead | 1 | 架构设计、接口定义、代码合入、集成协调 | `core/types.py` + `algorithms/base.py` + 集成 | 部分完成：核心契约、接口、文档 taxonomy 与集成验证已落地；最终集成和交付审查待完成 |
-| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 已完成：20 路口迁移、增强配置、边映射和批量验证完成；Docker 实机构建待回填 |
-| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 已完成：TraCI、seed、采样、断线、EdgeChannel、step/events 日志和 CLI 已通过 66 项回归 |
+| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 仓库实现与本地 SUMO 验证完成；Docker live、第二机器按独立证据轴记录 |
+| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成 |
 | AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基础实现完成：FixedTime 与 Actuated 控制器、测试和固定配时实跑已完成；全矩阵复核待完成 |
-| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | 进行中：CA-MP 管道可运行；MVI 相位值与真实算法效果待完成 |
-| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 部分完成：runner、seed/倍率、日志与 12 次审计已完成；360 次实验和精确指标待完成 |
+| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、溢出门控、动态绿灯和校准链路已完成 |
+| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式全量证据按验收报告记录 |
 | DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 待完成：技术 Markdown 已有；Word 报告、PPT 和提交排版待完成 |
 | DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；PyQt 看板与演示视频待完成 |
 

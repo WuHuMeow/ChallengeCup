@@ -71,6 +71,7 @@ class TraCIBridge:
         event_callback: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
+        self.configured_end_time = self._read_configured_end_time()
         self.binary = binary
         self.additional_files = list(additional_files or [])
         self.artifacts = artifacts
@@ -84,6 +85,15 @@ class TraCIBridge:
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
+
+    def _read_configured_end_time(self) -> float | None:
+        """Read the SUMO simulation horizon in seconds when one is configured."""
+        try:
+            end = ET.parse(self.sumo_cfg).getroot().find("./time/end")
+            raw = end.get("value") if end is not None else None
+            return float(raw) if raw is not None else None
+        except (OSError, ET.ParseError, TypeError, ValueError):
+            return None
 
     def _emit(self, event_type: str, detail: str) -> None:
         self.event_callback(event_type, detail)
@@ -396,8 +406,8 @@ class TraCIBridge:
     def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
         """将算法输出的控制动作写入 SUMO。
 
-        set_phase 的 value 必须是相位索引 int；无法转换时打 warning 并跳过
-        （已知：CA-MP MVI 桩把方向字符串当相位值，正式实现归 AB）。
+        set_phase 的 value 必须是合法相位索引 int；每个动作均返回可审计的
+        ActionResult，拒绝原因由调用方写入事件日志。
 
         Args:
             actions: 控制动作列表，支持 set_phase / set_phase_duration /
