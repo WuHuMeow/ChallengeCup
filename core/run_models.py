@@ -33,6 +33,14 @@ class VariantSpec:
 
 
 @dataclass(frozen=True)
+class VariantBundle:
+    """Generated SUMO additional files and their reproducibility manifest."""
+
+    additional_files: tuple[Path, ...]
+    manifest: dict[str, object]
+
+
+@dataclass(frozen=True)
 class RunRequest:
     """Complete input contract for one isolated simulation run."""
 

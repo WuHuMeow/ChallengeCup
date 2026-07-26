@@ -2,7 +2,7 @@ import json
 import threading
 from datetime import datetime, timezone
 
-from core.run_models import RunRequest, RunStatus
+from core.run_models import RunRequest, RunStatus, VariantSpec
 from engine.run_service import RunService
 
 
@@ -40,6 +40,31 @@ def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
         "status"
     ] == "completed"
     assert len(RecordingRunner.calls) == 1
+
+
+def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
+    RecordingRunner.calls = []
+    service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
+
+    result = service.run_sync(
+        RunRequest(
+            "1",
+            "fixed_time",
+            steps=2,
+            flow_multiplier=1.5,
+            variant=VariantSpec(
+                signal_duration_scale=1.1,
+                closed_lanes=("edge_0_0",),
+                closure_begin=10,
+                closure_end=20,
+            ),
+        )
+    )
+
+    additional_files = RecordingRunner.calls[0]["additional_files"]
+    assert result.status is RunStatus.COMPLETED
+    assert len(additional_files) == 3
+    assert (result.run_dir / "variants" / "variant_manifest.json").is_file()
 
 
 class BlockingRunner(RecordingRunner):

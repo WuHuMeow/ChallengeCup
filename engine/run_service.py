@@ -111,15 +111,12 @@ class RunService:
         )
         try:
             scene = self.registry.get_scene(request.intersection_id)
-            additional_files = []
-            if request.flow_multiplier != 1.0:
-                additional_files.append(
-                    VariantGenerator().generate_scaled(
-                        scene.meta,
-                        request.flow_multiplier,
-                        artifacts.run_dir / "variants",
-                    )
-                )
+            bundle = VariantGenerator().generate_bundle(
+                scene.meta,
+                request.flow_multiplier,
+                request.variant,
+                artifacts.run_dir / "variants",
+            )
             state_channel = None
             if request.edge_delay_steps or request.edge_directions:
                 state_channel = EdgeChannel(
@@ -129,7 +126,7 @@ class RunService:
             runner = self.runner_factory(
                 scene=scene,
                 algorithm=ALGORITHM_FACTORIES[request.algorithm](),
-                additional_files=additional_files,
+                additional_files=list(bundle.additional_files),
                 seed=request.seed,
                 artifacts=artifacts,
                 state_channel=state_channel,

@@ -141,10 +141,24 @@ class TraCIBridge:
         tls_ids = traci.trafficlight.getIDList()
         if not tls_ids:
             raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+        self._activate_additional_signal_programs(set(tls_ids))
         self.tls_id = tls_ids[0]
         self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
         logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
         self._load_edge_mapping()
+
+    def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
+        """Activate deterministic variant programs loaded from additional files."""
+        for path in self.additional_files:
+            try:
+                root = ET.parse(path).getroot()
+            except (OSError, ET.ParseError):
+                continue
+            for logic in root.findall("tlLogic"):
+                tls_id = logic.get("id", "")
+                program_id = logic.get("programID", "")
+                if tls_id in tls_ids and program_id.startswith("variant_"):
+                    traci.trafficlight.setProgram(tls_id, program_id)
 
     def _load_edge_mapping(self) -> None:
         """加载 data/intersection_data/metadata/edge_mapping.json 并筛选进口道。

@@ -89,6 +89,32 @@ def test_start_clears_discovery_state_before_repopulating(tmp_path):
     assert bridge._inbound_lanes == ["new_inbound"]
 
 
+def test_start_activates_variant_signal_program(tmp_path):
+    config = tmp_path / "demo_1.sumocfg"
+    config.touch()
+    signal = tmp_path / "signal_program.add.xml"
+    signal.write_text(
+        "<additional><tlLogic id='new_tls' programID='variant_x1.1' "
+        "type='static' offset='0'><phase duration='10' state='G'/></tlLogic>"
+        "</additional>",
+        encoding="utf-8",
+    )
+    bridge = TraCIBridge(config, additional_files=[signal])
+
+    with (
+        patch.object(traci, "start"),
+        patch.object(traci.trafficlight, "getIDList", return_value=["new_tls"]),
+        patch.object(
+            traci.trafficlight, "getControlledLanes", return_value=["new_lane"]
+        ),
+        patch.object(traci.trafficlight, "setProgram") as set_program,
+        patch.object(TraCIBridge, "_load_edge_mapping"),
+    ):
+        bridge.start()
+
+    set_program.assert_called_once_with("new_tls", "variant_x1.1")
+
+
 def test_close_idempotent():
     bridge = _bridge()
     with patch.object(traci, "isLoaded", side_effect=[True, False]), \
