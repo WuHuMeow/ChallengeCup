@@ -35,7 +35,9 @@ def test_events_csv_lifecycle_and_actions(tmp_path):
     runner.run(5)
     rows = list(csv.DictReader(open(events, encoding="utf-8")))
     types = [r["type"] for r in rows]
-    assert types[0] == "run_start" and types[-1] == "run_end"
-    assert "set_phase" in types
-    detail = next(r["detail"] for r in rows if r["type"] == "set_phase")
+    assert types[0] == "run_start" and types[-1] == "terminal"
+    assert types.count("terminal") == 1
+    assert "action_applied" in types
+    detail = next(r["detail"] for r in rows if r["type"] == "action_applied")
+    assert rows[-1]["detail"] == "completed"
     assert "测试动作" in detail

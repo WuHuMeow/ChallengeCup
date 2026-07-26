@@ -1,5 +1,6 @@
 import csv
 import json
+import threading
 
 import pytest
 from unittest.mock import patch
@@ -69,9 +70,80 @@ def test_invalid_action_is_logged_and_does_not_stop_run(tmp_path):
         make_scene(), InvalidActionAlgorithm(), bridge=MockBridge(), artifacts=artifacts,
     ).run(2)
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
-    assert any(row["type"] == "invalid_action" for row in events)
+    assert [row["type"] for row in events].count("action_rejected") == 2
+    assert not any(row["type"] == "action_applied" for row in events)
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert payload["status"] == "completed"
+
+
+def test_stop_event_writes_stopped_terminal_state(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    stop_event = threading.Event()
+    stop_event.set()
+
+    SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        artifacts=artifacts,
+    ).run(10, stop_event=stop_event)
+
+    payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert payload["status"] == "stopped"
+    assert [row["detail"] for row in events if row["type"] == "terminal"] == [
+        "stopped"
+    ]
+
+
+class _EarlyEndBridge(MockBridge):
+    def is_exhausted(self):
+        return self._current_step >= 1
+
+
+def test_ordinary_early_end_is_distinct_from_disconnect(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_EarlyEndBridge(),
+        artifacts=artifacts,
+    ).run(10)
+
+    payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    assert payload["status"] == "ended_early"
+    assert "exhausted" in payload["reason"]
+
+
+class _ReconnectBridge(MockBridge):
+    def __init__(self):
+        super().__init__()
+        self.event_callback = lambda event_type, detail: None
+        self._emitted = False
+
+    def step(self):
+        if not self._emitted:
+            self.event_callback("reconnect_started", "attempt=1/1")
+            self.event_callback("reconnect_succeeded", "attempt=1")
+            self._emitted = True
+        return super().step()
+
+
+def test_reconnect_events_are_written_to_events_csv(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_ReconnectBridge(),
+        artifacts=artifacts,
+    ).run(2)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    event_types = [row["type"] for row in events]
+    assert event_types.count("reconnect_started") == 1
+    assert event_types.count("reconnect_succeeded") == 1
 
 
 class _CloseFailBridge(MockBridge):

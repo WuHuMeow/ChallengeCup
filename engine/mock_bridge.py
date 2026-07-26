@@ -8,9 +8,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
-from core.types import ControlAction, JointState, QueueState, VehicleState
+from core.types import (
+    ActionResult,
+    ControlAction,
+    JointState,
+    QueueState,
+    VehicleState,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +32,13 @@ class MockBridge:
         directions: Optional[List[str]] = None,
         step_length: float = 0.1,
         vehicle_sample_rate: int = 1,
+        event_callback: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self.tls_id = tls_id
         self.directions = directions or list(DEFAULT_DIRECTIONS)
         self.step_length = step_length
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
+        self.event_callback = event_callback or (lambda event_type, detail: None)
         self._current_step: int = 0
         self._started: bool = False
         self._applied_actions: List[ControlAction] = []
@@ -54,6 +62,10 @@ class MockBridge:
         self._arrivals = self._arrivals[-300:]  # 保持最近 300 条
         current_time = self._current_step * self.step_length
         return current_time
+
+    def is_exhausted(self) -> bool:
+        """Mock simulations continue until the requested runner step count."""
+        return False
 
     def get_state(self) -> JointState:
         """返回确定性的模拟联合状态。"""
@@ -100,40 +112,66 @@ class MockBridge:
         ]
         return vehicles[:: self.vehicle_sample_rate]
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[str]:
+    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
         """Validate and record control actions without contacting SUMO."""
-        rejected: list[str] = []
+        results: list[ActionResult] = []
         for action in actions:
             if action.tls_id != self.tls_id:
-                rejected.append(f"unknown tls_id: {action.tls_id!r}")
+                results.append(
+                    ActionResult(action, False, f"unknown tls_id: {action.tls_id!r}")
+                )
                 continue
             if action.action_type == "set_phase":
                 if not isinstance(action.value, int):
-                    rejected.append(
-                        f"set_phase value must be an integer: {action.value!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            f"set_phase value must be an integer: {action.value!r}",
+                        )
                     )
                     continue
             elif action.action_type == "set_phase_duration":
                 try:
                     duration = float(action.value)
                 except (TypeError, ValueError):
-                    rejected.append(
-                        "set_phase_duration value must be numeric: "
-                        f"{action.value!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_phase_duration value must be numeric: "
+                            f"{action.value!r}",
+                        )
                     )
                     continue
                 if duration <= 0:
-                    rejected.append(
-                        "set_phase_duration value must be positive: "
-                        f"{duration!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_phase_duration value must be positive: "
+                            f"{duration!r}",
+                        )
                     )
                     continue
             elif action.action_type == "set_program":
                 if not str(action.value).strip():
-                    rejected.append("set_program value must be non-empty")
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_program value must be non-empty",
+                        )
+                    )
                     continue
             else:
-                rejected.append(f"unknown action_type: {action.action_type!r}")
+                results.append(
+                    ActionResult(
+                        action,
+                        False,
+                        f"unknown action_type: {action.action_type!r}",
+                    )
+                )
                 continue
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",
@@ -142,7 +180,8 @@ class MockBridge:
                 action.value,
             )
             self._applied_actions.append(action)
-        return rejected
+            results.append(ActionResult(action, True, "applied"))
+        return results
 
     def get_lane_capacity(self, lane_id: str) -> float:
         """确定性容量：20 辆（对应 150m 车道 / 7.5m）。"""

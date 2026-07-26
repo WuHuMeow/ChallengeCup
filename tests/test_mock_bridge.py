@@ -31,15 +31,36 @@ def test_mock_bridge_step_advances_time():
     assert t2 > t1
 
 
-def test_mock_bridge_apply_actions_no_error():
+def test_mock_bridge_apply_actions_returns_one_result_per_action():
     bridge = MockBridge()
     bridge.start()
     actions = [
         ControlAction(tls_id="tls_0", action_type="set_phase", value=1, reason="test"),
         ControlAction(tls_id="tls_0", action_type="set_phase_duration", value=30.0),
     ]
-    bridge.apply_actions(actions)
+    results = bridge.apply_actions(actions)
+    assert [result.accepted for result in results] == [True, True]
+    assert [result.action for result in results] == actions
     assert len(bridge._applied_actions) == 2
+
+
+def test_mock_bridge_rejected_action_has_structured_result():
+    bridge = MockBridge()
+    bridge.start()
+    action = ControlAction(
+        tls_id="tls_0",
+        action_type="set_phase",
+        value="north",
+        reason="invalid phase",
+    )
+
+    results = bridge.apply_actions([action])
+
+    assert len(results) == 1
+    assert results[0].action == action
+    assert results[0].accepted is False
+    assert "integer" in results[0].detail
+    assert bridge._applied_actions == []
 
 
 def test_mock_bridge_lane_capacity_deterministic():

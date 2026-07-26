@@ -13,11 +13,17 @@ import re
 import sys
 from collections import deque
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from defusedxml import ElementTree as ET
 
-from core.types import ControlAction, JointState, QueueState, VehicleState
+from core.types import (
+    ActionResult,
+    ControlAction,
+    JointState,
+    QueueState,
+    VehicleState,
+)
 from engine.artifacts import RunArtifacts
 
 logger = logging.getLogger(__name__)
@@ -61,6 +67,7 @@ class TraCIBridge:
         seed: Optional[int] = None,
         max_restarts: int = 0,
         vehicle_sample_rate: int = 1,
+        event_callback: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.binary = binary
@@ -74,7 +81,11 @@ class TraCIBridge:
         self._inbound_lanes: Optional[List[str]] = None  # edge_mapping 进口道筛选结果
         self.lane_directions: dict[str, str] = {}  # lane_id -> 方位（供 AB 压力映射）
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
+        self.event_callback = event_callback or (lambda event_type, detail: None)
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
+
+    def _emit(self, event_type: str, detail: str) -> None:
+        self.event_callback(event_type, detail)
 
     def _build_cmd(self) -> List[str]:
         """组装 traci.start 命令（含可选 --seed 与 additional files）。"""
@@ -192,12 +203,27 @@ class TraCIBridge:
             logger.error("TraCI 连接断开: %s; closing gracefully", exc)
             if self._restarts < self.max_restarts:
                 self._restarts += 1
+                self._emit(
+                    "reconnect_started",
+                    f"attempt={self._restarts}/{self.max_restarts}",
+                )
                 logger.info("尝试自动重连 (%d/%d)", self._restarts, self.max_restarts)
                 self.close()
-                self.start()
+                try:
+                    self.start()
+                except Exception as restart_exc:
+                    self._emit("reconnect_failed", str(restart_exc))
+                    self.close()
+                    return None
+                self._emit("reconnect_succeeded", f"attempt={self._restarts}")
                 return traci.simulation.getTime()
+            self._emit("reconnect_failed", f"retry limit exhausted: {exc}")
             self.close()
             return None
+
+    def is_exhausted(self) -> bool:
+        """Return whether SUMO has no active or expected vehicles."""
+        return traci.simulation.getMinExpectedNumber() <= 0
 
     def get_state(self) -> JointState:
         """读取当前联合状态。
@@ -275,7 +301,7 @@ class TraCIBridge:
             for v in ids
         ]
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[str]:
+    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
         """将算法输出的控制动作写入 SUMO。
 
         set_phase 的 value 必须是相位索引 int；无法转换时打 warning 并跳过
@@ -285,15 +311,21 @@ class TraCIBridge:
             actions: 控制动作列表，支持 set_phase / set_phase_duration /
                 set_program；未知类型打 warning 并跳过。
         """
-        rejected: list[str] = []
+        results: list[ActionResult] = []
         for action in actions:
             if action.tls_id != self.tls_id:
-                rejected.append(f"unknown tls_id: {action.tls_id!r}")
+                results.append(
+                    ActionResult(action, False, f"unknown tls_id: {action.tls_id!r}")
+                )
                 continue
             if action.action_type == "set_phase":
                 if not isinstance(action.value, int):
-                    rejected.append(
-                        f"set_phase value must be an integer: {action.value!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            f"set_phase value must be an integer: {action.value!r}",
+                        )
                     )
                     continue
                 traci.trafficlight.setPhase(action.tls_id, action.value)
@@ -301,27 +333,49 @@ class TraCIBridge:
                 try:
                     duration = float(action.value)
                 except (TypeError, ValueError):
-                    rejected.append(
-                        "set_phase_duration value must be numeric: "
-                        f"{action.value!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_phase_duration value must be numeric: "
+                            f"{action.value!r}",
+                        )
                     )
                     continue
                 if duration <= 0:
-                    rejected.append(
-                        "set_phase_duration value must be positive: "
-                        f"{duration!r}"
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_phase_duration value must be positive: "
+                            f"{duration!r}",
+                        )
                     )
                     continue
                 traci.trafficlight.setPhaseDuration(action.tls_id, duration)
             elif action.action_type == "set_program":
                 program = str(action.value).strip()
                 if not program:
-                    rejected.append("set_program value must be non-empty")
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            "set_program value must be non-empty",
+                        )
+                    )
                     continue
                 traci.trafficlight.setProgram(action.tls_id, program)
             else:
-                rejected.append(f"unknown action_type: {action.action_type!r}")
-        return rejected
+                results.append(
+                    ActionResult(
+                        action,
+                        False,
+                        f"unknown action_type: {action.action_type!r}",
+                    )
+                )
+                continue
+            results.append(ActionResult(action, True, "applied"))
+        return results
 
     def get_lane_capacity(self, lane_id: str) -> float:
         """车道容量（辆）= 车道长度 / 7.5m（5m 车长 + 2.5m 间距）。

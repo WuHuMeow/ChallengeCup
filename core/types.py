@@ -113,6 +113,15 @@ class ControlAction:
     reason: str = ""
 
 
+@dataclass(frozen=True)
+class ActionResult:
+    """Outcome for one attempted control action."""
+
+    action: ControlAction
+    accepted: bool
+    detail: str
+
+
 @dataclass
 class PredictionResult:
     """云端流量预测结果。"""

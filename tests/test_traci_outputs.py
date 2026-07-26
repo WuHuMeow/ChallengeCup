@@ -42,10 +42,13 @@ def test_invalid_phase_returns_rejection_without_calling_traci():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"
     with patch.object(traci.trafficlight, "setPhase") as set_phase:
-        rejected = bridge.apply_actions([
+        results = bridge.apply_actions([
             ControlAction("tls", "set_phase", "north", "invalid phase")
         ])
-    assert rejected == ["set_phase value must be an integer: 'north'"]
+    assert [result.accepted for result in results] == [False]
+    assert [result.detail for result in results] == [
+        "set_phase value must be an integer: 'north'"
+    ]
     set_phase.assert_not_called()
 
 
@@ -64,8 +67,9 @@ def test_invalid_actions_return_explicit_rejections_without_side_effects():
         patch.object(traci.trafficlight, "setPhaseDuration") as set_duration,
         patch.object(traci.trafficlight, "setProgram") as set_program,
     ):
-        rejected = bridge.apply_actions(actions)
-    assert rejected == [
+        results = bridge.apply_actions(actions)
+    assert [result.accepted for result in results] == [False] * 5
+    assert [result.detail for result in results] == [
         "unknown tls_id: 'other'",
         "set_phase_duration value must be numeric: 'bad'",
         "set_phase_duration value must be positive: 0.0",
@@ -90,7 +94,9 @@ def test_valid_actions_are_applied_and_not_rejected():
         patch.object(traci.trafficlight, "setPhaseDuration") as set_duration,
         patch.object(traci.trafficlight, "setProgram") as set_program,
     ):
-        assert bridge.apply_actions(actions) == []
+        results = bridge.apply_actions(actions)
+    assert [result.accepted for result in results] == [True, True, True]
+    assert [result.action for result in results] == actions
     set_phase.assert_called_once_with("tls", 2)
     set_duration.assert_called_once_with("tls", 3.5)
     set_program.assert_called_once_with("tls", "program_1")
@@ -98,15 +104,19 @@ def test_valid_actions_are_applied_and_not_rejected():
 
 def test_mock_bridge_uses_the_same_action_rejection_contract():
     bridge = MockBridge(tls_id="tls")
-    rejected = bridge.apply_actions([
+    actions = [
         ControlAction("other", "set_phase", 1),
         ControlAction("tls", "set_phase", "north"),
         ControlAction("tls", "set_phase_duration", 0),
         ControlAction("tls", "set_program", "  "),
         ControlAction("tls", "unknown", 1),
         ControlAction("tls", "set_phase", 3),
-    ])
-    assert rejected == [
+    ]
+    results = bridge.apply_actions(actions)
+    assert [result.accepted for result in results] == [
+        False, False, False, False, False, True
+    ]
+    assert [result.detail for result in results if not result.accepted] == [
         "unknown tls_id: 'other'",
         "set_phase value must be an integer: 'north'",
         "set_phase_duration value must be positive: 0.0",

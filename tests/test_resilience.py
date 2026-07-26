@@ -26,7 +26,14 @@ def test_step_returns_none_on_fatal_error(caplog):
 
 
 def test_step_restarts_when_allowed():
-    bridge = _bridge(max_restarts=1)
+    events = []
+    bridge = TraCIBridge(
+        sumo_cfg=Path("demo_1.sumocfg"),
+        max_restarts=1,
+        event_callback=lambda event_type, detail: events.append(
+            (event_type, detail)
+        ),
+    )
     calls = {"n": 0}
 
     def flaky_step():
@@ -39,6 +46,10 @@ def test_step_restarts_when_allowed():
          patch.object(TraCIBridge, "start", autospec=True) as mock_start, \
          patch.object(traci.simulation, "getTime", return_value=0.0):
         assert bridge.step() == 0.0
+        assert [event_type for event_type, _ in events] == [
+            "reconnect_started",
+            "reconnect_succeeded",
+        ]
         assert mock_start.call_count == 1  # 触发了一次重连
 
 

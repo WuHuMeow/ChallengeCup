@@ -6,10 +6,12 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 from typing import List, Optional
 
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
+from core.run_models import RunStatus
 from core.types import ControlAction, Scene
 from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
@@ -62,9 +64,16 @@ class SimulationRunner:
                 / f"{scene.meta.intersection_id}_{algorithm.name}.csv"
             )
         self.output_csv = output_csv
+        self.collector: Optional[MetricsCollector] = None
+        self.metrics_history: List[dict] = []
+        self.step_logger = StepLogger(step_log_csv) if step_log_csv else None
+        self.event_logger = EventLogger(events_csv) if events_csv else None
+        self._terminal_reason = ""
+        self._sumo_version_value = "unknown"
 
         if bridge is not None:
             self.bridge = bridge
+            self.bridge.event_callback = self._record_bridge_event
         else:
             cfg = scene.meta.sumo_cfg
             enhanced = (
@@ -80,23 +89,27 @@ class SimulationRunner:
                 additional_files=self.additional_files,
                 artifacts=artifacts,
                 seed=self.seed,
+                event_callback=self._record_bridge_event,
             )
-        self.collector: Optional[MetricsCollector] = None
-        self.metrics_history: List[dict] = []
-        self.step_logger = StepLogger(step_log_csv) if step_log_csv else None
-        self.event_logger = EventLogger(events_csv) if events_csv else None
-        self._terminal_reason = ""
-        self._sumo_version_value = "unknown"
 
-    def run(self, steps: Optional[int] = None) -> List[dict]:
-        """Run the simulation and return snapshot metrics."""
+    def _record_bridge_event(self, event_type: str, detail: str) -> None:
+        if self.event_logger:
+            self.event_logger.log(len(self.metrics_history), event_type, detail)
+
+    def run(
+        self,
+        steps: Optional[int] = None,
+        stop_event: Optional[Event] = None,
+    ) -> List[dict]:
+        """Run the simulation and persist one truthful terminal state."""
         steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
         started_at = datetime.now(timezone.utc).isoformat()
-        status = "completed"
+        status = RunStatus.RUNNING
         reason = ""
         body_exception = False
+        last_step = 0
 
         try:
             self.bridge.start()
@@ -110,50 +123,66 @@ class SimulationRunner:
                     f" algorithm={self.algorithm.name}",
                 )
             for step in range(steps):
-                if not self._tick(step):
-                    status = "disconnected"
+                last_step = step
+                if stop_event is not None and stop_event.is_set():
+                    status = RunStatus.STOPPED
+                    reason = "stop requested"
+                    break
+                tick_outcome = self._tick(step)
+                if tick_outcome == "disconnected":
+                    status = RunStatus.DISCONNECTED
                     reason = self._terminal_reason
                     break
+                if tick_outcome == "exhausted":
+                    if step + 1 < steps:
+                        status = RunStatus.ENDED_EARLY
+                        reason = "SUMO exhausted before target steps"
+                    else:
+                        status = RunStatus.COMPLETED
+                    break
+            else:
+                status = RunStatus.COMPLETED
         except KeyboardInterrupt:
-            status = "interrupted"
+            status = RunStatus.INTERRUPTED
             reason = "KeyboardInterrupt"
             body_exception = True
             raise
         except Exception as exc:
-            status = "failed"
+            status = RunStatus.FAILED
             reason = str(exc) or type(exc).__name__
             body_exception = True
             raise
         finally:
             cleanup_errors: list[Exception] = []
-            try:
-                if self.collector:
-                    self.collector.save()
-            except Exception as exc:
-                cleanup_errors.append(exc)
-            try:
-                if self.step_logger:
-                    self.step_logger.save()
-            except Exception as exc:
-                cleanup_errors.append(exc)
-            try:
-                if self.event_logger:
-                    self.event_logger.log(
-                        len(self.metrics_history),
-                        "run_end",
-                        f"snapshots={len(self.metrics_history)}",
-                    )
-                    self.event_logger.save()
-            except Exception as exc:
-                cleanup_errors.append(exc)
+            for save in (
+                self.collector.save if self.collector else None,
+                self.step_logger.save if self.step_logger else None,
+            ):
+                if save is None:
+                    continue
+                try:
+                    save()
+                except Exception as exc:
+                    cleanup_errors.append(exc)
             try:
                 self.bridge.close()
             except Exception as exc:
                 cleanup_errors.append(exc)
 
             if cleanup_errors and not body_exception:
-                status = "failed"
+                status = RunStatus.FAILED
                 reason = str(cleanup_errors[0]) or type(cleanup_errors[0]).__name__
+
+            if self.event_logger:
+                try:
+                    self.event_logger.log(last_step, "terminal", status.value)
+                    self.event_logger.save()
+                except Exception as exc:
+                    cleanup_errors.append(exc)
+                    if not body_exception:
+                        status = RunStatus.FAILED
+                        reason = str(exc) or type(exc).__name__
+
             if self.artifacts is not None:
                 generated_files = [
                     self.artifacts.metrics,
@@ -166,7 +195,7 @@ class SimulationRunner:
                 ]
                 try:
                     self.artifacts.write_metadata(
-                        status,
+                        status.value,
                         reason,
                         generated_files,
                         started_at=started_at,
@@ -176,15 +205,15 @@ class SimulationRunner:
                 except Exception as exc:
                     cleanup_errors.append(exc)
                     if not body_exception:
-                        status = "failed"
+                        status = RunStatus.FAILED
                         reason = str(exc) or type(exc).__name__
             if cleanup_errors and not body_exception:
                 raise cleanup_errors[0]
 
         return self.metrics_history
 
-    def _tick(self, step: int) -> bool:
-        """Advance one simulation step; return False after disconnection."""
+    def _tick(self, step: int) -> str:
+        """Advance one step and return continue, exhausted, or disconnected."""
         try:
             raw_state = self.bridge.get_state()
             control_state = raw_state
@@ -199,23 +228,31 @@ class SimulationRunner:
                     )
             else:
                 actions = self.algorithm.step(control_state)
-            for detail in self.bridge.apply_actions(actions) or []:
-                if self.event_logger:
-                    self.event_logger.log(step, "invalid_action", detail)
+            action_results = self.bridge.apply_actions(actions) or []
             if self.event_logger:
-                for action in actions:
+                for result in action_results:
+                    event_type = (
+                        "action_applied" if result.accepted else "action_rejected"
+                    )
                     self.event_logger.log(
-                        step, action.action_type, action.reason or str(action.value)
+                        step,
+                        event_type,
+                        (
+                            f"type={result.action.action_type} "
+                            f"value={result.action.value!r} "
+                            f"reason={result.action.reason!r} "
+                            f"detail={result.detail}"
+                        ),
                     )
             sim_time = self.bridge.step()
         except traci.exceptions.FatalTraCIError as exc:
             logger.error("TraCI connection closed: %s; closing gracefully", exc)
             self._terminal_reason = "fatal TraCI error"
-            return False
+            return "disconnected"
         if sim_time is None:
             logger.warning("Simulation stopped at step %d", step)
             self._terminal_reason = "bridge returned no simulation time"
-            return False
+            return "disconnected"
 
         if self.step_logger:
             self.step_logger.record(step, raw_state)
@@ -231,7 +268,9 @@ class SimulationRunner:
                     "total_throughput": metrics.total_throughput,
                 }
             )
-        return True
+        if self.bridge.is_exhausted():
+            return "exhausted"
+        return "continue"
 
     def _sumo_version(self) -> str:
         version = getattr(self.bridge, "sumo_version", None)
