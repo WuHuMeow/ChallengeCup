@@ -17,10 +17,10 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from core.config import get_config
+from core.run_models import RunRequest, RunResult
 from core.types import TrafficLevel
-from engine.runner import SimulationRunner
 from engine.artifacts import RunArtifacts
-from scenes.registry import SceneRegistry
+from engine.run_service import RunService
 from scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,8 @@ def run_batch(
     seeds: List[int] | None = None,
     steps: int = 36000,
     output_root: Path | None = None,
-) -> List[Dict[str, str]]:
+    run_service: RunService | None = None,
+) -> List[RunResult]:
     """批量运行仿真实验。
 
     Args:
@@ -54,11 +55,10 @@ def run_batch(
     Returns:
         实验摘要列表。
     """
-    registry = SceneRegistry()
     variant_gen = VariantGenerator()
 
     if intersection_ids is None:
-        intersection_ids = [meta.intersection_id for meta in registry.list_scenes()]
+        intersection_ids = [str(index) for index in range(1, 21)]
     if algorithms is None:
         algorithms = list(ALGORITHM_MAP.keys())
     if levels is None:
@@ -66,44 +66,27 @@ def run_batch(
     if seeds is None:
         seeds = [42, 123, 456]
     if output_root is None:
-        output_root = get_config().path("paths.output_root")
+        output_root = get_config().path("paths.output_root") / "runs"
+    service = run_service or RunService(output_root=output_root)
 
-    results: List[Dict[str, str]] = []
+    results: List[RunResult] = []
     total = len(intersection_ids) * len(algorithms) * len(levels) * len(seeds)
     logger.info("计划跑批 %d 次实验", total)
 
     for intersection_id, algo_name, level, seed in itertools.product(
         intersection_ids, algorithms, levels, seeds
     ):
-        scene = registry.get_scene(intersection_id)
-        variant_dir = output_root / "variants" / intersection_id
-
-        additional_files: List[Path] = []
-        if level != TrafficLevel.NORMAL:
-            flow_file = variant_gen.generate(scene.meta, level, variant_dir)
-            additional_files.append(flow_file)
-
-        algo_cls = ALGORITHM_MAP[algo_name]
-        runner = SimulationRunner(
-            scene=scene,
-            algorithm=algo_cls(),
-            output_csv=(
-                output_root / "csv"
-                / f"{intersection_id}_{level.value}_{algo_name}_s{seed}.csv"
-            ),
-            additional_files=additional_files,
-            seed=seed,
-        )
-        runner.run(steps)
-
         results.append(
-            {
-                "intersection_id": intersection_id,
-                "level": level.value,
-                "algorithm": algo_name,
-                "seed": str(seed),
-                "csv": str(runner.output_csv),
-            }
+            service.run_sync(
+                RunRequest(
+                    intersection_id=intersection_id,
+                    algorithm=algo_name,
+                    steps=steps,
+                    flow_multiplier=variant_gen.levels[level],
+                    seed=seed,
+                    output_root=output_root,
+                )
+            )
         )
 
     return results
@@ -162,7 +145,10 @@ def build_artifacts(args: argparse.Namespace) -> RunArtifacts:
     )
 
 
-def run_single(args: argparse.Namespace) -> Path:
+def run_single(
+    args: argparse.Namespace,
+    run_service: RunService | None = None,
+) -> RunResult:
     """按 CLI 参数跑一次仿真，返回输出 CSV 路径。
 
     Args:
@@ -178,34 +164,30 @@ def run_single(args: argparse.Namespace) -> Path:
     if args.flow_multiplier <= 0:
         raise ValueError("--flow-multiplier must be > 0")
 
-    registry = SceneRegistry()
-    scene = registry.get_scene(args.intersection)
-    artifacts = build_artifacts(args)
-
-    additional_files: List[Path] = []
-    if args.flow_multiplier != 1.0:
-        flow_file = VariantGenerator().generate_scaled(
-            scene.meta, args.flow_multiplier,
-            artifacts.run_dir / "variants",
-        )
-        additional_files.append(flow_file)
-
-    runner = SimulationRunner(
-        scene=scene,
-        algorithm=ALGORITHM_MAP[args.algorithm](),
-        additional_files=additional_files,
-        seed=args.seed,
-        artifacts=artifacts,
+    output_root = (
+        Path(args.output_dir)
+        if args.output_dir
+        else get_config().path("paths.output_root") / "runs"
     )
-    runner.run(args.steps)
-    logger.info("实验完成: %s", runner.output_csv)
-    return runner.output_csv
+    service = run_service or RunService(output_root=output_root)
+    result = service.run_sync(
+        RunRequest(
+            intersection_id=args.intersection,
+            algorithm=args.algorithm,
+            steps=args.steps,
+            flow_multiplier=args.flow_multiplier,
+            seed=args.seed,
+            output_root=output_root,
+        )
+    )
+    logger.info("Run finished: %s status=%s", result.run_dir, result.status.value)
+    return result
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    csv_path = run_single(parse_args())
-    print(f"Done -> {csv_path}")
+    result = run_single(parse_args())
+    print(f"Done -> {result.run_dir} [{result.status.value}]")
 
 
 if __name__ == "__main__":

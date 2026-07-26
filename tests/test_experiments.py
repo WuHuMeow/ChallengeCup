@@ -65,29 +65,62 @@ def test_parse_args_rejects_invalid_dimensions(option, value):
         parse_args([option, value])
 
 
-def test_run_single_passes_run_artifacts_to_runner(tmp_path):
-    from unittest.mock import Mock, patch
+def test_run_single_delegates_to_run_service(tmp_path):
+    from unittest.mock import Mock
     from experiments.runner import parse_args, run_single
 
     args = parse_args([
         "--intersection", "1", "--steps", "1",
         "--output-dir", str(tmp_path),
     ])
-    scene = Mock()
-    scene.meta.intersection_id = "1"
-    fake_runner = Mock()
-    fake_runner.output_csv = tmp_path / "metrics.csv"
-    with (
-        patch("experiments.runner.SceneRegistry.get_scene", return_value=scene),
-        patch("experiments.runner.SimulationRunner", return_value=fake_runner) as ctor,
-    ):
-        run_single(args)
+    expected = Mock()
+    service = Mock()
+    service.run_sync.return_value = expected
 
-    artifacts = ctor.call_args.kwargs["artifacts"]
-    assert artifacts.run_dir.parent == (
-        tmp_path / "i1" / "fixed_time" / "x1" / "s42"
+    result = run_single(args, run_service=service)
+
+    request = service.run_sync.call_args.args[0]
+    assert result is expected
+    assert request.intersection_id == "1"
+    assert request.algorithm == "fixed_time"
+    assert request.output_root == tmp_path
+
+
+def test_run_batch_delegates_every_case_to_run_service(tmp_path):
+    from core.run_models import RunResult, RunStatus
+    from core.types import TrafficLevel
+    from experiments.runner import run_batch
+
+    class FakeService:
+        def __init__(self):
+            self.requests = []
+
+        def run_sync(self, request):
+            self.requests.append(request)
+            return RunResult(
+                run_id=f"run-{len(self.requests)}",
+                status=RunStatus.COMPLETED,
+                reason="",
+                run_dir=tmp_path / f"run-{len(self.requests)}",
+            )
+
+    service = FakeService()
+    results = run_batch(
+        intersection_ids=["1"],
+        algorithms=["fixed_time", "ca_maxpressure"],
+        levels=[TrafficLevel.NORMAL],
+        seeds=[42],
+        steps=10,
+        output_root=tmp_path,
+        run_service=service,
     )
-    assert artifacts.run_dir.name == artifacts.run_id
+
+    assert len(results) == 2
+    assert [request.algorithm for request in service.requests] == [
+        "fixed_time",
+        "ca_maxpressure",
+    ]
+    assert all(request.output_root == tmp_path for request in service.requests)
 
 
 def test_stress_defaults_to_supported_baseline():
@@ -134,6 +167,35 @@ def test_stress_reports_actual_logged_simulation_time(tmp_path):
     )
 
     assert _actual_simulated_time_seconds(metrics, "11", 100) == pytest.approx(0.5)
+
+
+def test_stress_accepts_run_result_from_unified_service(tmp_path, monkeypatch):
+    from core.run_models import RunResult, RunStatus
+    from scripts import stress_memory
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "metrics.csv").write_text("step\n0\n", encoding="utf-8")
+    (run_dir / "simulation_log.csv").write_text(
+        "step,timestamp\n0,0.0\n", encoding="utf-8"
+    )
+    result = RunResult(
+        run_id="run",
+        status=RunStatus.COMPLETED,
+        reason="",
+        run_dir=run_dir,
+    )
+    monkeypatch.setattr(stress_memory, "run_single", lambda args: result)
+    args = stress_memory.parse_stress_args([
+        "--intersections", "1",
+        "--steps", "1",
+        "--output-root", str(tmp_path),
+    ])
+
+    records = stress_memory.run_stress(args)
+
+    assert records[0]["exit_status"] == 0
+    assert str(run_dir / "metrics.csv") in records[0]["output_sizes"]
 
 
 def test_verify_docker_static_runs_static_contract_test(tmp_path, monkeypatch):

@@ -128,7 +128,8 @@ def run_stress(args: argparse.Namespace) -> list[dict[str, Any]]:
                 "--algorithm", args.algorithm,
                 "--seed", str(args.seed),
             ])
-            csv_path = run_single(runner_args)
+            run_result = run_single(runner_args)
+            csv_path = run_result.run_dir / "metrics.csv"
         except Exception as exc:  # retain all run outcomes for the report
             exit_status = 1
             error = f"{type(exc).__name__}: {exc}"
