@@ -151,6 +151,40 @@ class _CloseFailBridge(MockBridge):
         raise RuntimeError("close failed")
 
 
+class _OutputBridge(MockBridge):
+    def __init__(self, artifacts):
+        super().__init__()
+        self.artifacts = artifacts
+
+    def close(self):
+        self.artifacts.tripinfo.write_text(
+            '<tripinfos><tripinfo id="v0" duration="10" timeLoss="2" '
+            'waitingCount="1"><emissions fuel_abs="0.5"/></tripinfo>'
+            "</tripinfos>",
+            encoding="utf-8",
+        )
+        self.artifacts.stats.write_text("<summary/>", encoding="utf-8")
+        self.artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
+        super().close()
+
+
+def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    runner.run(1)
+
+    payload = json.loads(artifacts.summary.read_text(encoding="utf-8"))
+    assert payload["metrics"]["avg_travel_time"] == 10
+    metadata = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    assert "summary.json" in metadata["generated_files"]
+
+
 def test_close_failure_marks_metadata_failed(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     runner = SimulationRunner(

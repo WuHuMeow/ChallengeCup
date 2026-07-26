@@ -99,6 +99,10 @@ class TraCIBridge:
             cmd.extend([
                 "--tripinfo-output",
                 self.artifacts.tripinfo.resolve().as_posix(),
+                "--tripinfo-output.write-unfinished",
+                "true",
+                "--device.emissions.probability",
+                "1",
                 "--summary-output",
                 self.artifacts.stats.resolve().as_posix(),
                 "--fcd-output",

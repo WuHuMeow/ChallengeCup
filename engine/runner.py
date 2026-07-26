@@ -19,6 +19,7 @@ from engine.edge_channel import EdgeChannel
 from engine.events import EventLogger
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.metrics import compute_metrics
+from experiments.summary import write_run_summary
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,25 @@ class SimulationRunner:
             except Exception as exc:
                 cleanup_errors.append(exc)
 
+            if (
+                not cleanup_errors
+                and self.artifacts is not None
+                and status in (RunStatus.COMPLETED, RunStatus.ENDED_EARLY)
+            ):
+                core_outputs = (
+                    self.artifacts.tripinfo,
+                    self.artifacts.stats,
+                    self.artifacts.trajectory,
+                )
+                if all(
+                    path.exists() and path.stat().st_size > 0
+                    for path in core_outputs
+                ):
+                    try:
+                        write_run_summary(self.artifacts)
+                    except Exception as exc:
+                        cleanup_errors.append(exc)
+
             if cleanup_errors and not body_exception:
                 status = RunStatus.FAILED
                 reason = str(cleanup_errors[0]) or type(cleanup_errors[0]).__name__
@@ -192,6 +212,7 @@ class SimulationRunner:
                     self.artifacts.stats,
                     self.artifacts.trajectory,
                     self.artifacts.queues,
+                    self.artifacts.summary,
                 ]
                 try:
                     self.artifacts.write_metadata(

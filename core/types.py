@@ -157,9 +157,9 @@ class SimulationMetrics:
     max_queue_length: float
     avg_delay: float
     total_throughput: int
-    avg_travel_time: float
-    total_stops: int
-    fuel_consumption: float
+    avg_travel_time: Optional[float]
+    total_stops: Optional[int]
+    fuel_consumption: Optional[float]
 
 
 # 用于需要函数式接口的扩展点（如指标回调）。

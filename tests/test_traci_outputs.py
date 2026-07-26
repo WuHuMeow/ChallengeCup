@@ -20,6 +20,8 @@ def test_build_cmd_redirects_all_sumo_outputs(tmp_path):
     assert cmd[cmd.index("--fcd-output") + 1] == (
         artifacts.trajectory.resolve().as_posix()
     )
+    assert cmd[cmd.index("--tripinfo-output.write-unfinished") + 1] == "true"
+    assert cmd[cmd.index("--device.emissions.probability") + 1] == "1"
 
 
 def test_build_cmd_redirects_configured_queue_output(tmp_path):
