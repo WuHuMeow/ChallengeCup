@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -157,3 +158,76 @@ def test_batch_report_keeps_warning_and_error_on_separate_lines(tmp_path):
     assert lines.index("Warning: signal phase") != lines.index(
         "Error: inaccessible network"
     )
+
+
+def test_verifier_has_pdf_aligned_checks():
+    from scripts.verify_ia_ib import checks
+
+    assert [name for name, _ in checks] == [
+        "data_integrity",
+        "original_100",
+        "enhanced_100",
+        "enhanced_3600",
+        "variant_contracts",
+        "runtime_contracts",
+        "api_contracts",
+        "ca_mp_smoke",
+        "exact_metrics",
+        "figure_contracts",
+        "matrix",
+        "stress_runs",
+        "docker",
+    ]
+
+
+def test_docker_unavailable_is_not_run_not_pass(tmp_path, monkeypatch):
+    from scripts import verify_ia_ib
+
+    monkeypatch.setattr(
+        verify_ia_ib,
+        "verify_docker_static",
+        lambda _: verify_ia_ib.CheckResult(
+            "docker_static", "pass", 0.1, "static", [], []
+        ),
+    )
+    monkeypatch.setattr(verify_ia_ib.shutil, "which", lambda _: None)
+
+    result = verify_ia_ib.verify_docker(tmp_path)
+
+    assert result.status == "not_run"
+    assert any("Docker unavailable" in warning for warning in result.warnings)
+
+
+def test_final_report_has_no_hard_coded_ab_blocker():
+    from scripts.verify_ia_ib import CheckResult, render_markdown
+
+    report = render_markdown(
+        [CheckResult("ca_mp_smoke", "pass", 0.1, "run", [], [])],
+        "not run: Docker unavailable",
+    )
+
+    assert "CA-MP remains an AB blocker" not in report
+    assert "AB blocker:" not in report
+
+
+def test_offline_package_marks_second_machine_not_run(tmp_path, monkeypatch):
+    from scripts import package_offline
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    (root / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "output").mkdir()
+    (root / "output" / "generated.txt").write_text("skip", encoding="utf-8")
+    monkeypatch.setattr(package_offline.shutil, "which", lambda _: None)
+
+    manifest_path = package_offline.package_offline(
+        root,
+        tmp_path / "package",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["docker"]["status"] == "not_run"
+    assert manifest["second_machine"]["status"] == "not_run"
+    assert manifest["files"]["source_archive"]["sha256"]
+    assert "docker load" in manifest["commands"]["load"]

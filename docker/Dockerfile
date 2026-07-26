@@ -35,6 +35,6 @@ COPY scripts/ ./scripts/
 COPY data/intersection_data/ ./data/intersection_data/
 RUN python3 -m compileall -q .
 
-# 默认运行路口 1 固定配时基线；可用 `docker run ca-mp:latest 16` 切换路口。
-ENTRYPOINT ["python3", "examples/run_fixed_time.py"]
-CMD ["1"]
+# 统一走 RunService 支持的实验入口，参数可由 docker run 覆盖。
+ENTRYPOINT ["python3", "-m", "experiments.runner"]
+CMD ["--intersection", "1", "--algorithm", "fixed_time", "--steps", "100", "--output-dir", "/app/output/runs"]

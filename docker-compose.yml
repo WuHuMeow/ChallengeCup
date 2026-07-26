@@ -1,6 +1,6 @@
-# 单容器编排。默认运行路口 16 的固定配时示例。
+# 单容器编排。默认运行路口 1 的 100 步固定配时基线。
 # 用法：docker compose up --build
-#       docker compose run --rm simulation 1
+#       docker compose run --rm simulation --intersection 16 --algorithm ca_maxpressure
 services:
   simulation:
     build:
@@ -10,4 +10,12 @@ services:
     init: true
     volumes:
       - ./output:/app/output
-    command: ["16"]
+    command:
+      - "--intersection"
+      - "1"
+      - "--algorithm"
+      - "fixed_time"
+      - "--steps"
+      - "100"
+      - "--output-dir"
+      - "/app/output/runs"

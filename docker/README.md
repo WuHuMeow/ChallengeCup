@@ -17,9 +17,14 @@
 
 ```bash
 docker build -t ca-mp:latest -f docker/Dockerfile .
-docker run --rm -v ${PWD}/output:/app/output ca-mp:latest 16
+docker run --rm -v ${PWD}/output:/app/output ca-mp:latest
+docker run --rm -v ${PWD}/output:/app/output ca-mp:latest \
+  --intersection 16 --algorithm ca_maxpressure --steps 100 \
+  --output-dir /app/output/runs
 docker compose up --build
-docker compose run --rm simulation 1
+docker compose run --rm simulation \
+  --intersection 1 --algorithm actuated --steps 100 \
+  --output-dir /app/output/runs
 ```
 
 容器内环境和路口数据自检：
@@ -32,7 +37,7 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
 ## 输入与输出
 
 - 构建输入：`requirements.txt`、运行时 Python 模块、示例、验证脚本和 `data/intersection_data/`。
-- 默认入口：`python3 examples/run_fixed_time.py`；位置参数是路口 ID。
+- 默认入口：`python3 -m experiments.runner`；使用与本地相同的命名参数。
 - 宿主机输出：Compose 将 `output/` 挂载到容器对应目录。
 
 ## 依赖
@@ -44,6 +49,6 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
 ## 已知限制
 
 - 仓库没有记录当前镜像在所有平台上的构建时长和镜像大小实测值。
-- 默认入口只运行固定配时示例；其他算法需覆盖 entrypoint 或使用项目 Python 命令。
+- 默认参数运行固定配时；可直接覆盖参数选择 actuated 或 ca_maxpressure。
 - 容器自检会启动多个 SUMO 配置，不能作为高频健康检查。
 - 离线答辩环境仍需预先导出镜像或准备可用的软件包缓存。
