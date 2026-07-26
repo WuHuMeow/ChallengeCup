@@ -125,7 +125,9 @@ class RunService:
                 )
             runner = self.runner_factory(
                 scene=scene,
-                algorithm=ALGORITHM_FACTORIES[request.algorithm](),
+                algorithm=ALGORITHM_FACTORIES[request.algorithm](
+                    **request.algorithm_params
+                ),
                 additional_files=list(bundle.additional_files),
                 seed=request.seed,
                 artifacts=artifacts,
@@ -182,3 +184,15 @@ class RunService:
             raise ValueError("seed must be >= 0")
         if request.edge_delay_steps < 0:
             raise ValueError("edge_delay_steps must be >= 0")
+        if request.algorithm_params and request.algorithm != "ca_maxpressure":
+            raise ValueError("algorithm_params are supported only for ca_maxpressure")
+        allowed_params = {
+            "overflow_occupancy_threshold",
+            "prediction_weight",
+            "base_green",
+        }
+        unknown_params = set(request.algorithm_params) - allowed_params
+        if unknown_params:
+            raise ValueError(
+                f"unknown CA-MP parameters: {sorted(unknown_params)}"
+            )

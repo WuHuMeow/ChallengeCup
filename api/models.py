@@ -44,6 +44,7 @@ class RunRequestModel(BaseModel):
     edge_delay_steps: int = Field(default=0, ge=0)
     edge_directions: list[str] = Field(default_factory=list)
     variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
+    algorithm_params: dict[str, float] = Field(default_factory=dict)
 
     def to_domain(self, output_root: Path | None = None) -> RunRequest:
         return RunRequest(
@@ -56,6 +57,7 @@ class RunRequestModel(BaseModel):
             edge_delay_steps=self.edge_delay_steps,
             edge_directions=tuple(self.edge_directions),
             variant=self.variant.to_domain(),
+            algorithm_params=self.algorithm_params,
         )
 
 

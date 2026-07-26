@@ -201,6 +201,22 @@ def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_pending_state():
     assert algorithm.pending_target_phase is None
 
 
+def test_ca_mp_frozen_base_green_survives_cloud_dispatch():
+    phases = [_phase(0, 5, 10, 0, 10, 0.1)]
+    algorithm = CAMaxPressureAlgorithm(base_green=45.0)
+
+    actions = algorithm.step(
+        _phase_state(current=0, elapsed=20, phases=phases)
+    )
+
+    duration = next(
+        action.value
+        for action in actions
+        if action.action_type == "set_phase_duration"
+    )
+    assert duration == 45.0
+
+
 def test_ca_maxpressure_empty_queues_returns_empty():
     """空排队时不应产生动作。"""
     from algorithms.ca_max_pressure import CAMaxPressureAlgorithm

@@ -283,6 +283,13 @@
             "title": "Algorithm",
             "type": "string"
           },
+          "algorithm_params": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Algorithm Params",
+            "type": "object"
+          },
           "edge_delay_steps": {
             "default": 0,
             "minimum": 0.0,

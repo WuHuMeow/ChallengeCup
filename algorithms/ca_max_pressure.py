@@ -14,15 +14,32 @@ from core.types import ControlAction, JointState, PhaseTrafficState, Scene
 class CAMaxPressureAlgorithm(BaseControlAlgorithm):
     """Select safe legal phases using normalized upstream/downstream pressure."""
 
-    def __init__(self, cloud_policy: CloudPolicy | None = None) -> None:
+    def __init__(
+        self,
+        cloud_policy: CloudPolicy | None = None,
+        overflow_occupancy_threshold: float | None = None,
+        prediction_weight: float | None = None,
+        base_green: float | None = None,
+    ) -> None:
         cfg = get_config().get("algorithms.ca_maxpressure", {})
         self.cloud_policy = cloud_policy or CloudPolicy()
         self.scene: Scene | None = None
         self.overflow_threshold = float(
-            cfg.get("overflow_occupancy_threshold", 0.9)
+            overflow_occupancy_threshold
+            if overflow_occupancy_threshold is not None
+            else cfg.get("overflow_occupancy_threshold", 0.9)
         )
-        self.prediction_weight = float(cfg.get("prediction_weight", 0.15))
-        self.base_green = float(cfg.get("base_green", 30))
+        self.prediction_weight = float(
+            prediction_weight
+            if prediction_weight is not None
+            else cfg.get("prediction_weight", 0.15)
+        )
+        self._frozen_base_green = (
+            float(base_green) if base_green is not None else None
+        )
+        self.base_green = float(
+            base_green if base_green is not None else cfg.get("base_green", 30)
+        )
         self.min_green = float(cfg.get("min_green", 10))
         self.max_green = float(cfg.get("max_green", 90))
         self.yellow_duration = float(cfg.get("yellow_duration", 3))
@@ -129,7 +146,11 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
 
         prediction = self.cloud_policy.predict(state)
         params = self.cloud_policy.dispatch_params(state)
-        self.base_green = float(params.get("base_green", self.base_green))
+        self.base_green = (
+            self._frozen_base_green
+            if self._frozen_base_green is not None
+            else float(params.get("base_green", self.base_green))
+        )
         self.min_green = float(params.get("min_green", self.min_green))
         self.max_green = float(params.get("max_green", self.max_green))
 

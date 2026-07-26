@@ -67,6 +67,30 @@ def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
     assert (result.run_dir / "variants" / "variant_manifest.json").is_file()
 
 
+def test_run_service_injects_frozen_ca_mp_parameters(tmp_path):
+    RecordingRunner.calls = []
+    service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
+
+    result = service.run_sync(
+        RunRequest(
+            "1",
+            "ca_maxpressure",
+            steps=2,
+            algorithm_params={
+                "overflow_occupancy_threshold": 0.85,
+                "prediction_weight": 0.0,
+                "base_green": 45.0,
+            },
+        )
+    )
+
+    algorithm = RecordingRunner.calls[0]["algorithm"]
+    assert result.status is RunStatus.COMPLETED
+    assert algorithm.overflow_threshold == 0.85
+    assert algorithm.prediction_weight == 0.0
+    assert algorithm.base_green == 45.0
+
+
 class BlockingRunner(RecordingRunner):
     release = threading.Event()
     started = threading.Event()

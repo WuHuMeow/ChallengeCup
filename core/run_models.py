@@ -53,6 +53,7 @@ class RunRequest:
     edge_delay_steps: int = 0
     edge_directions: tuple[str, ...] = ()
     variant: VariantSpec = field(default_factory=VariantSpec)
+    algorithm_params: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
