@@ -11,6 +11,7 @@ from core.run_models import RunRequest, RunResult, VariantSpec
 from core.types import (
     ControlAction,
     JointState,
+    PhaseTrafficState,
     PredictionResult,
     QueueState,
     VehicleState,
@@ -87,6 +88,33 @@ class QueueStateModel(BaseModel):
         return QueueState(**self.model_dump())
 
 
+class PhaseTrafficStateModel(BaseModel):
+    phase_index: int = Field(ge=0)
+    signal_state: str
+    nominal_duration: float = Field(gt=0)
+    incoming_lanes: list[str] = Field(default_factory=list)
+    outgoing_lanes: list[str] = Field(default_factory=list)
+    incoming_queue: float = Field(ge=0)
+    incoming_capacity: float = Field(ge=0)
+    outgoing_queue: float = Field(ge=0)
+    outgoing_capacity: float = Field(ge=0)
+    outgoing_occupancy: float = Field(ge=0, le=1)
+
+    def to_domain(self) -> PhaseTrafficState:
+        return PhaseTrafficState(
+            phase_index=self.phase_index,
+            signal_state=self.signal_state,
+            nominal_duration=self.nominal_duration,
+            incoming_lanes=tuple(self.incoming_lanes),
+            outgoing_lanes=tuple(self.outgoing_lanes),
+            incoming_queue=self.incoming_queue,
+            incoming_capacity=self.incoming_capacity,
+            outgoing_queue=self.outgoing_queue,
+            outgoing_capacity=self.outgoing_capacity,
+            outgoing_occupancy=self.outgoing_occupancy,
+        )
+
+
 class VehicleStateModel(BaseModel):
     vehicle_id: str
     lane_id: str
@@ -108,6 +136,7 @@ class JointStateModel(BaseModel):
     detector_values: dict[str, float] = Field(default_factory=dict)
     vehicles: list[VehicleStateModel] = Field(default_factory=list)
     arrival_history: list[int] = Field(default_factory=list)
+    phase_states: list[PhaseTrafficStateModel] = Field(default_factory=list)
 
     def to_domain(self) -> JointState:
         return JointState(
@@ -122,6 +151,7 @@ class JointStateModel(BaseModel):
             detector_values=self.detector_values,
             vehicles=[vehicle.to_domain() for vehicle in self.vehicles],
             arrival_history=self.arrival_history,
+            phase_states=[phase.to_domain() for phase in self.phase_states],
         )
 
 

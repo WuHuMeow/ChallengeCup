@@ -94,6 +94,13 @@
             "title": "Flows",
             "type": "object"
           },
+          "phase_states": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseTrafficStateModel"
+            },
+            "title": "Phase States",
+            "type": "array"
+          },
           "queues": {
             "items": {
               "$ref": "#/components/schemas/QueueStateModel"
@@ -132,6 +139,76 @@
           "elapsed_phase_time"
         ],
         "title": "JointStateModel",
+        "type": "object"
+      },
+      "PhaseTrafficStateModel": {
+        "properties": {
+          "incoming_capacity": {
+            "minimum": 0.0,
+            "title": "Incoming Capacity",
+            "type": "number"
+          },
+          "incoming_lanes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Incoming Lanes",
+            "type": "array"
+          },
+          "incoming_queue": {
+            "minimum": 0.0,
+            "title": "Incoming Queue",
+            "type": "number"
+          },
+          "nominal_duration": {
+            "exclusiveMinimum": 0.0,
+            "title": "Nominal Duration",
+            "type": "number"
+          },
+          "outgoing_capacity": {
+            "minimum": 0.0,
+            "title": "Outgoing Capacity",
+            "type": "number"
+          },
+          "outgoing_lanes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Outgoing Lanes",
+            "type": "array"
+          },
+          "outgoing_occupancy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Outgoing Occupancy",
+            "type": "number"
+          },
+          "outgoing_queue": {
+            "minimum": 0.0,
+            "title": "Outgoing Queue",
+            "type": "number"
+          },
+          "phase_index": {
+            "minimum": 0.0,
+            "title": "Phase Index",
+            "type": "integer"
+          },
+          "signal_state": {
+            "title": "Signal State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase_index",
+          "signal_state",
+          "nominal_duration",
+          "incoming_queue",
+          "incoming_capacity",
+          "outgoing_queue",
+          "outgoing_capacity",
+          "outgoing_occupancy"
+        ],
+        "title": "PhaseTrafficStateModel",
         "type": "object"
       },
       "PredictionResultModel": {

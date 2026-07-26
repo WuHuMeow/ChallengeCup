@@ -4,7 +4,14 @@ from algorithms.base import BaseControlAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from core.types import ControlAction, JointState, QueueState, Scene, SceneMeta
+from core.types import (
+    ControlAction,
+    JointState,
+    PhaseTrafficState,
+    QueueState,
+    Scene,
+    SceneMeta,
+)
 from pathlib import Path
 from typing import List
 
@@ -88,17 +95,110 @@ def test_algorithm_names_unique():
     assert len(set(names)) == 3
 
 
-def test_ca_maxpressure_mvi_selects_max_queue_phase():
-    """MVI: 应选择排队最长方向对应的动作。"""
-    from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-    algo = CAMaxPressureAlgorithm()
-    algo.init(_make_scene())
-    state = _make_state()
-    actions = algo.step(state)
-    assert len(actions) >= 1
-    assert actions[0].tls_id == state.tls_id
+def _phase(
+    phase_index,
+    incoming_queue,
+    incoming_capacity,
+    outgoing_queue,
+    outgoing_capacity,
+    outgoing_occupancy,
+    signal_state="Grr",
+):
+    return PhaseTrafficState(
+        phase_index=phase_index,
+        signal_state=signal_state,
+        nominal_duration=30.0 if "G" in signal_state else 3.0,
+        incoming_lanes=(f"in_{phase_index}",),
+        outgoing_lanes=(f"out_{phase_index}",),
+        incoming_queue=incoming_queue,
+        incoming_capacity=incoming_capacity,
+        outgoing_queue=outgoing_queue,
+        outgoing_capacity=outgoing_capacity,
+        outgoing_occupancy=outgoing_occupancy,
+    )
+
+
+def _phase_state(current, elapsed, phases, flows=None):
+    return JointState(
+        step=100,
+        timestamp=10.0,
+        tls_id="tls_0",
+        current_phase=current,
+        current_phase_name=f"phase_{current}",
+        elapsed_phase_time=elapsed,
+        queues=[],
+        flows=flows or {},
+        phase_states=phases,
+    )
+
+
+def test_ca_mp_uses_capacity_normalized_pressure():
+    phases = [
+        _phase(0, 8, 10, 1, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 12, 30, 0, 30, 0.1),
+        _phase(3, 0, 1, 0, 1, 0.0, signal_state="rrr"),
+    ]
+
+    actions = CAMaxPressureAlgorithm().step(
+        _phase_state(current=0, elapsed=20, phases=phases)
+    )
+
     assert actions[0].action_type == "set_phase"
-    assert "MVI" in actions[0].reason
+    assert actions[0].value == 0
+    assert isinstance(actions[0].value, int)
+    assert actions[1].action_type == "set_phase_duration"
+    assert isinstance(actions[1].value, float)
+
+
+def test_ca_mp_blocks_saturated_downstream_and_uses_safe_transition():
+    phases = [
+        _phase(0, 8, 10, 0, 10, 0.95),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 4, 10, 0, 10, 0.20),
+        _phase(3, 0, 1, 0, 1, 0.0, signal_state="rrr"),
+    ]
+    algorithm = CAMaxPressureAlgorithm()
+
+    first = algorithm.step(_phase_state(current=0, elapsed=20, phases=phases))
+    second = algorithm.step(_phase_state(current=1, elapsed=3, phases=phases))
+
+    assert first[0].value == 1
+    assert "target=2" in first[0].reason
+    assert second[0].value == 2
+    assert second[1].action_type == "set_phase_duration"
+
+
+def test_ca_mp_respects_minimum_green_before_switching():
+    phases = [
+        _phase(0, 1, 10, 0, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 9, 10, 0, 10, 0.1),
+    ]
+
+    actions = CAMaxPressureAlgorithm().step(
+        _phase_state(current=0, elapsed=5, phases=phases)
+    )
+
+    assert actions == []
+
+
+def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_pending_state():
+    phases = [
+        _phase(0, 1, 10, 0, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 100, 10, 0, 10, 0.1),
+    ]
+    algorithm = CAMaxPressureAlgorithm()
+    first = algorithm.step(_phase_state(current=2, elapsed=20, phases=phases))
+
+    duration = next(action.value for action in first if action.action_type == "set_phase_duration")
+    assert algorithm.min_green <= duration <= algorithm.max_green
+
+    algorithm.step(_phase_state(current=0, elapsed=20, phases=phases))
+    assert algorithm.pending_target_phase == 2
+    algorithm.reset()
+    assert algorithm.pending_target_phase is None
 
 
 def test_ca_maxpressure_empty_queues_returns_empty():

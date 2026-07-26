@@ -21,6 +21,7 @@ from core.types import (
     ActionResult,
     ControlAction,
     JointState,
+    PhaseTrafficState,
     QueueState,
     VehicleState,
 )
@@ -253,7 +254,16 @@ class TraCIBridge:
 
         step = int(traci.simulation.getTime())
         current_phase = traci.trafficlight.getPhase(self.tls_id)
-        program = traci.trafficlight.getAllProgramLogics(self.tls_id)[0]
+        programs = traci.trafficlight.getAllProgramLogics(self.tls_id)
+        active_program = traci.trafficlight.getProgram(self.tls_id)
+        program = next(
+            (
+                candidate
+                for candidate in programs
+                if candidate.programID == active_program
+            ),
+            programs[0],
+        )
         phase_obj = program.phases[current_phase]
         phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
         elapsed = (
@@ -295,7 +305,71 @@ class TraCIBridge:
             detector_values={},
             vehicles=self._collect_vehicles(list(traci.vehicle.getIDList())),
             arrival_history=list(self._arrival_window),
+            phase_states=self._build_phase_states(
+                program,
+                traci.trafficlight.getControlledLinks(self.tls_id),
+            ),
         )
+
+    def _build_phase_states(
+        self,
+        program: object,
+        controlled_links: object,
+    ) -> List[PhaseTrafficState]:
+        """Map legal phases to unique incoming/outgoing lane measurements."""
+        links_by_signal = list(controlled_links)
+        states: List[PhaseTrafficState] = []
+        for phase_index, phase in enumerate(program.phases):
+            incoming: set[str] = set()
+            outgoing: set[str] = set()
+            signal_state = str(phase.state)
+            for signal_index, signal in enumerate(signal_state):
+                if signal not in "Gg" or signal_index >= len(links_by_signal):
+                    continue
+                for link in links_by_signal[signal_index] or ():
+                    if len(link) < 2:
+                        continue
+                    incoming.add(str(link[0]))
+                    outgoing.add(str(link[1]))
+
+            incoming_lanes = tuple(sorted(incoming))
+            outgoing_lanes = tuple(sorted(outgoing))
+            incoming_queue = sum(
+                float(traci.lane.getLastStepHaltingNumber(lane))
+                for lane in incoming_lanes
+            )
+            outgoing_queue = sum(
+                float(traci.lane.getLastStepHaltingNumber(lane))
+                for lane in outgoing_lanes
+            )
+            incoming_capacity = sum(
+                self.get_lane_capacity(lane) for lane in incoming_lanes
+            )
+            outgoing_capacity = sum(
+                self.get_lane_capacity(lane) for lane in outgoing_lanes
+            )
+            occupancies = []
+            for lane in outgoing_lanes:
+                occupancy = float(traci.lane.getLastStepOccupancy(lane))
+                if occupancy > 1.0:
+                    occupancy /= 100.0
+                occupancies.append(min(1.0, max(0.0, occupancy)))
+
+            states.append(
+                PhaseTrafficState(
+                    phase_index=phase_index,
+                    signal_state=signal_state,
+                    nominal_duration=float(phase.duration),
+                    incoming_lanes=incoming_lanes,
+                    outgoing_lanes=outgoing_lanes,
+                    incoming_queue=incoming_queue,
+                    incoming_capacity=incoming_capacity,
+                    outgoing_queue=outgoing_queue,
+                    outgoing_capacity=outgoing_capacity,
+                    outgoing_occupancy=max(occupancies, default=0.0),
+                )
+            )
+        return states
 
     def _collect_vehicles(self, ids: List[str]) -> List[VehicleState]:
         """采集车辆快照：先按 vehicle_sample_rate 采样，再按 MAX_VEHICLES 截断。

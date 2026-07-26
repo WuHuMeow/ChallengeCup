@@ -40,6 +40,11 @@ algorithms:
     base_green: 30
     min_green: 10
     max_green: 90
+    # 预测到达量在容量归一化压力中的权重
+    prediction_weight: 0.15
+    # 安全过渡相位的显式持续时间（秒）
+    yellow_duration: 3
+    all_red_duration: 1
     # EWMA 平滑系数
     ewma_alpha: 0.3
     # 云端流量预测时域（秒）

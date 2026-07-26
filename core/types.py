@@ -74,6 +74,22 @@ class QueueState:
     capacity: float = 0.0  # 车道容量（辆）= 车道长度 / 7.5m；0 表示未知
 
 
+@dataclass(frozen=True)
+class PhaseTrafficState:
+    """Traffic measurements associated with one legal SUMO signal phase."""
+
+    phase_index: int
+    signal_state: str
+    nominal_duration: float
+    incoming_lanes: tuple[str, ...]
+    outgoing_lanes: tuple[str, ...]
+    incoming_queue: float
+    incoming_capacity: float
+    outgoing_queue: float
+    outgoing_capacity: float
+    outgoing_occupancy: float
+
+
 @dataclass
 class VehicleState:
     """单辆车快照（高流量下按 vehicle_sample_rate 采样）。"""
@@ -101,6 +117,7 @@ class JointState:
     detector_values: Dict[str, float] = field(default_factory=dict)
     vehicles: List[VehicleState] = field(default_factory=list)  # 采样后的车辆快照
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
+    phase_states: List[PhaseTrafficState] = field(default_factory=list)
 
 
 @dataclass
