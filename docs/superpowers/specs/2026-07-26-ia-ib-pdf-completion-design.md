@@ -48,7 +48,7 @@ IB 负责：
 - TraCI 连接、推进、状态采集、动作应用、重连和关闭；
 - EdgeChannel 延迟、过滤和等待语义；
 - `SimulationRunner` 的统一控制循环；
-- 单次、批量和 API 入口共用的 RunService；
+- 单次、批量和 API 入口共用的 RunService，以及避免 TraCI 全局连接冲突的串行任务队列；
 - `RunArtifacts`、逐步日志、事件日志、SUMO XML 和终态元数据；
 - API 的真实运行、状态、指标、云预测和边缘控制接口；
 - OpenAPI、Postman/Apifox 集合和接口契约测试；
@@ -163,6 +163,8 @@ sum(incoming_queue / incoming_capacity)
 - `RunResult` 组装。
 
 批量实验必须逐次调用 RunService，不能绕过 `RunArtifacts`。
+
+当前 TraCI 桥使用进程内全局连接，因此 RunService 接受多个并发请求时为每个请求立即分配独立 `run_id`，随后按队列串行执行。该设计保证请求和目录隔离，同时避免多个线程争用同一 TraCI 连接；本项目不为 PDF 未要求的并行仿真引入额外多进程复杂度。
 
 ### 5.5 指标与可视化
 
@@ -310,7 +312,7 @@ output/runs/
 - API 端点调用真实 RunService；
 - OpenAPI 与 Postman/Apifox 契约断言；
 - 同参数重复运行不覆盖；
-- 并行运行目录和连接互相隔离。
+- 并发提交获得独立 `run_id` 和目录，并由串行队列避免 TraCI 连接冲突。
 
 ### 8.4 PDF 和赛道 B 验收
 
