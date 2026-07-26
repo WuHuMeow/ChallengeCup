@@ -1,0 +1,903 @@
+{
+  "components": {
+    "schemas": {
+      "ControlActionModel": {
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "tls_id": {
+            "title": "Tls Id",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "tls_id",
+          "action_type",
+          "value",
+          "reason"
+        ],
+        "title": "ControlActionModel",
+        "type": "object"
+      },
+      "ControlActionsModel": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ControlActionModel"
+            },
+            "title": "Actions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "actions"
+        ],
+        "title": "ControlActionsModel",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JointStateModel": {
+        "properties": {
+          "arrival_history": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Arrival History",
+            "type": "array"
+          },
+          "current_phase": {
+            "minimum": 0.0,
+            "title": "Current Phase",
+            "type": "integer"
+          },
+          "current_phase_name": {
+            "title": "Current Phase Name",
+            "type": "string"
+          },
+          "detector_values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Detector Values",
+            "type": "object"
+          },
+          "elapsed_phase_time": {
+            "minimum": 0.0,
+            "title": "Elapsed Phase Time",
+            "type": "number"
+          },
+          "flows": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Flows",
+            "type": "object"
+          },
+          "queues": {
+            "items": {
+              "$ref": "#/components/schemas/QueueStateModel"
+            },
+            "title": "Queues",
+            "type": "array"
+          },
+          "step": {
+            "minimum": 0.0,
+            "title": "Step",
+            "type": "integer"
+          },
+          "timestamp": {
+            "minimum": 0.0,
+            "title": "Timestamp",
+            "type": "number"
+          },
+          "tls_id": {
+            "title": "Tls Id",
+            "type": "string"
+          },
+          "vehicles": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleStateModel"
+            },
+            "title": "Vehicles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "step",
+          "timestamp",
+          "tls_id",
+          "current_phase",
+          "current_phase_name",
+          "elapsed_phase_time"
+        ],
+        "title": "JointStateModel",
+        "type": "object"
+      },
+      "PredictionResultModel": {
+        "properties": {
+          "horizon_seconds": {
+            "title": "Horizon Seconds",
+            "type": "number"
+          },
+          "horizon_steps": {
+            "title": "Horizon Steps",
+            "type": "integer"
+          },
+          "predicted_flows": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Predicted Flows",
+            "type": "object"
+          }
+        },
+        "required": [
+          "horizon_steps",
+          "horizon_seconds",
+          "predicted_flows"
+        ],
+        "title": "PredictionResultModel",
+        "type": "object"
+      },
+      "QueueStateModel": {
+        "properties": {
+          "capacity": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Capacity",
+            "type": "number"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "queue_length": {
+            "title": "Queue Length",
+            "type": "number"
+          },
+          "vehicle_count": {
+            "minimum": 0.0,
+            "title": "Vehicle Count",
+            "type": "integer"
+          },
+          "waiting_time": {
+            "title": "Waiting Time",
+            "type": "number"
+          }
+        },
+        "required": [
+          "direction",
+          "queue_length",
+          "waiting_time",
+          "vehicle_count"
+        ],
+        "title": "QueueStateModel",
+        "type": "object"
+      },
+      "RunRequestModel": {
+        "properties": {
+          "algorithm": {
+            "enum": [
+              "fixed_time",
+              "actuated",
+              "ca_maxpressure"
+            ],
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "edge_delay_steps": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Edge Delay Steps",
+            "type": "integer"
+          },
+          "edge_directions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edge Directions",
+            "type": "array"
+          },
+          "flow_multiplier": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Flow Multiplier",
+            "type": "number"
+          },
+          "intersection_id": {
+            "title": "Intersection Id",
+            "type": "string"
+          },
+          "seed": {
+            "default": 42,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "steps": {
+            "default": 36000,
+            "exclusiveMinimum": 0.0,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/VariantSpecModel"
+          }
+        },
+        "required": [
+          "intersection_id",
+          "algorithm"
+        ],
+        "title": "RunRequestModel",
+        "type": "object"
+      },
+      "RunResultModel": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_dir": {
+            "title": "Run Dir",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason",
+          "run_dir"
+        ],
+        "title": "RunResultModel",
+        "type": "object"
+      },
+      "StateRequestModel": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/JointStateModel"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "StateRequestModel",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VariantSpecModel": {
+        "properties": {
+          "closed_lanes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Closed Lanes",
+            "type": "array"
+          },
+          "closure_begin": {
+            "default": 0.0,
+            "minimum": 0.0,
+            "title": "Closure Begin",
+            "type": "number"
+          },
+          "closure_end": {
+            "default": 3600.0,
+            "minimum": 0.0,
+            "title": "Closure End",
+            "type": "number"
+          },
+          "signal_duration_scale": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Signal Duration Scale",
+            "type": "number"
+          },
+          "vehicle_type_overrides": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Vehicle Type Overrides",
+            "type": "object"
+          }
+        },
+        "title": "VariantSpecModel",
+        "type": "object"
+      },
+      "VehicleStateModel": {
+        "properties": {
+          "lane_id": {
+            "title": "Lane Id",
+            "type": "string"
+          },
+          "speed": {
+            "title": "Speed",
+            "type": "number"
+          },
+          "vehicle_id": {
+            "title": "Vehicle Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "lane_id",
+          "speed"
+        ],
+        "title": "VehicleStateModel",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "雄安车路云协同管控平台",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/cloud/predict": {
+      "post": {
+        "operationId": "cloud_predict_api_cloud_predict_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cloud Predict"
+      }
+    },
+    "/api/edge/control": {
+      "post": {
+        "operationId": "edge_control_api_edge_control_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlActionsModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edge Control"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/runs": {
+      "post": {
+        "operationId": "submit_run_api_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Run"
+      }
+    },
+    "/api/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run"
+      }
+    },
+    "/api/runs/{run_id}/metrics": {
+      "get": {
+        "operationId": "get_run_metrics_api_runs__run_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Run Metrics Api Runs  Run Id  Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run Metrics"
+      }
+    },
+    "/api/runs/{run_id}/stop": {
+      "post": {
+        "operationId": "stop_run_api_runs__run_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Run"
+      }
+    },
+    "/api/scenes": {
+      "get": {
+        "operationId": "list_scenes_api_scenes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response List Scenes Api Scenes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Scenes"
+      }
+    },
+    "/api/simulation/start": {
+      "post": {
+        "deprecated": true,
+        "operationId": "legacy_simulation_start_api_simulation_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Simulation Start"
+      }
+    },
+    "/api/simulation/stop": {
+      "post": {
+        "deprecated": true,
+        "operationId": "legacy_simulation_stop_api_simulation_stop_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Simulation Stop"
+      }
+    },
+    "/health": {
+      "get": {
+        "deprecated": true,
+        "operationId": "legacy_health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Legacy Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Legacy Health"
+      }
+    },
+    "/run": {
+      "post": {
+        "deprecated": true,
+        "operationId": "legacy_run_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Run"
+      }
+    },
+    "/scenes": {
+      "get": {
+        "deprecated": true,
+        "operationId": "legacy_scenes_scenes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "title": "Response Legacy Scenes Scenes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Legacy Scenes"
+      }
+    },
+    "/status": {
+      "get": {
+        "deprecated": true,
+        "operationId": "legacy_status_status_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResultModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Legacy Status"
+      }
+    }
+  }
+}

@@ -1,0 +1,163 @@
+"""Pydantic adapters for the public REST API."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+from core.run_models import RunRequest, RunResult, VariantSpec
+from core.types import (
+    ControlAction,
+    JointState,
+    PredictionResult,
+    QueueState,
+    VehicleState,
+)
+
+
+class VariantSpecModel(BaseModel):
+    vehicle_type_overrides: dict[str, dict[str, str]] = Field(default_factory=dict)
+    signal_duration_scale: float = Field(default=1.0, gt=0)
+    closed_lanes: list[str] = Field(default_factory=list)
+    closure_begin: float = Field(default=0.0, ge=0)
+    closure_end: float = Field(default=3600.0, ge=0)
+
+    def to_domain(self) -> VariantSpec:
+        return VariantSpec(
+            vehicle_type_overrides=self.vehicle_type_overrides,
+            signal_duration_scale=self.signal_duration_scale,
+            closed_lanes=tuple(self.closed_lanes),
+            closure_begin=self.closure_begin,
+            closure_end=self.closure_end,
+        )
+
+
+class RunRequestModel(BaseModel):
+    intersection_id: str
+    algorithm: Literal["fixed_time", "actuated", "ca_maxpressure"]
+    steps: int = Field(default=36000, gt=0)
+    flow_multiplier: float = Field(default=1.0, gt=0)
+    seed: int = Field(default=42, ge=0)
+    edge_delay_steps: int = Field(default=0, ge=0)
+    edge_directions: list[str] = Field(default_factory=list)
+    variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
+
+    def to_domain(self, output_root: Path | None = None) -> RunRequest:
+        return RunRequest(
+            intersection_id=self.intersection_id,
+            algorithm=self.algorithm,
+            steps=self.steps,
+            flow_multiplier=self.flow_multiplier,
+            seed=self.seed,
+            output_root=output_root,
+            edge_delay_steps=self.edge_delay_steps,
+            edge_directions=tuple(self.edge_directions),
+            variant=self.variant.to_domain(),
+        )
+
+
+class RunResultModel(BaseModel):
+    run_id: str
+    status: str
+    reason: str
+    run_dir: str
+    summary: dict[str, Any] | None = None
+
+    @classmethod
+    def from_domain(cls, result: RunResult) -> "RunResultModel":
+        return cls(
+            run_id=result.run_id,
+            status=result.status.value,
+            reason=result.reason,
+            run_dir=str(result.run_dir),
+            summary=result.summary,
+        )
+
+
+class QueueStateModel(BaseModel):
+    direction: str
+    queue_length: float
+    waiting_time: float
+    vehicle_count: int = Field(ge=0)
+    capacity: float = Field(default=0.0, ge=0)
+
+    def to_domain(self) -> QueueState:
+        return QueueState(**self.model_dump())
+
+
+class VehicleStateModel(BaseModel):
+    vehicle_id: str
+    lane_id: str
+    speed: float
+
+    def to_domain(self) -> VehicleState:
+        return VehicleState(**self.model_dump())
+
+
+class JointStateModel(BaseModel):
+    step: int = Field(ge=0)
+    timestamp: float = Field(ge=0)
+    tls_id: str
+    current_phase: int = Field(ge=0)
+    current_phase_name: str
+    elapsed_phase_time: float = Field(ge=0)
+    queues: list[QueueStateModel] = Field(default_factory=list)
+    flows: dict[str, float] = Field(default_factory=dict)
+    detector_values: dict[str, float] = Field(default_factory=dict)
+    vehicles: list[VehicleStateModel] = Field(default_factory=list)
+    arrival_history: list[int] = Field(default_factory=list)
+
+    def to_domain(self) -> JointState:
+        return JointState(
+            step=self.step,
+            timestamp=self.timestamp,
+            tls_id=self.tls_id,
+            current_phase=self.current_phase,
+            current_phase_name=self.current_phase_name,
+            elapsed_phase_time=self.elapsed_phase_time,
+            queues=[queue.to_domain() for queue in self.queues],
+            flows=self.flows,
+            detector_values=self.detector_values,
+            vehicles=[vehicle.to_domain() for vehicle in self.vehicles],
+            arrival_history=self.arrival_history,
+        )
+
+
+class StateRequestModel(BaseModel):
+    state: JointStateModel
+
+
+class PredictionResultModel(BaseModel):
+    horizon_steps: int
+    horizon_seconds: float
+    predicted_flows: dict[str, float]
+
+    @classmethod
+    def from_domain(cls, result: PredictionResult) -> "PredictionResultModel":
+        return cls(
+            horizon_steps=result.horizon_steps,
+            horizon_seconds=result.horizon_seconds,
+            predicted_flows=result.predicted_flows,
+        )
+
+
+class ControlActionModel(BaseModel):
+    tls_id: str
+    action_type: str
+    value: Any
+    reason: str
+
+    @classmethod
+    def from_domain(cls, action: ControlAction) -> "ControlActionModel":
+        return cls(
+            tls_id=action.tls_id,
+            action_type=action.action_type,
+            value=action.value,
+            reason=action.reason,
+        )
+
+
+class ControlActionsModel(BaseModel):
+    actions: list[ControlActionModel]
