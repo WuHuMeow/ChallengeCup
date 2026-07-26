@@ -3,13 +3,20 @@ import json
 from engine.artifacts import RunArtifacts
 
 
-def test_run_artifacts_create_stable_layout(tmp_path):
-    artifacts = RunArtifacts.create(tmp_path, "16", "actuated", 1.5, 42)
+def test_run_artifacts_create_collision_safe_layout(tmp_path):
+    first = RunArtifacts.create(tmp_path, "16", "actuated", 1.5, 42)
+    second = RunArtifacts.create(tmp_path, "16", "actuated", 1.5, 42)
 
-    assert artifacts.run_dir == tmp_path / "i16" / "actuated" / "x1.5" / "s42"
-    assert artifacts.metrics.name == "metrics.csv"
-    assert artifacts.events.name == "events.csv"
-    assert artifacts.tripinfo.name == "tripinfo.xml"
+    expected_parent = tmp_path / "i16" / "actuated" / "x1.5" / "s42"
+    assert first.run_dir.parent == expected_parent
+    assert second.run_dir.parent == expected_parent
+    assert first.run_id != second.run_id
+    assert first.run_dir.name == first.run_id
+    assert first.metrics.name == "metrics.csv"
+    assert first.events.name == "events.csv"
+    assert first.tripinfo.name == "tripinfo.xml"
+    assert first.summary.name == "summary.json"
+    assert first.figures.name == "figures"
 
 
 def test_write_metadata_is_atomic_and_structured(tmp_path):
@@ -27,6 +34,7 @@ def test_write_metadata_is_atomic_and_structured(tmp_path):
 
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert payload["status"] == "completed"
+    assert payload["run_id"] == artifacts.run_id
     assert payload["intersection_id"] == "1"
     assert payload["generated_files"] == ["metrics.csv"]
     assert payload["sumo_version"] == "1.27.1"

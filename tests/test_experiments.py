@@ -45,7 +45,10 @@ def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
         "--output-dir", str(tmp_path),
     ])
     artifacts = build_artifacts(args)
-    assert artifacts.run_dir == tmp_path / "i16" / "actuated" / "x1.5" / "s123"
+    assert artifacts.run_dir.parent == (
+        tmp_path / "i16" / "actuated" / "x1.5" / "s123"
+    )
+    assert artifacts.run_dir.name == artifacts.run_id
 
 
 @pytest.mark.parametrize("option,value", [
@@ -81,7 +84,10 @@ def test_run_single_passes_run_artifacts_to_runner(tmp_path):
         run_single(args)
 
     artifacts = ctor.call_args.kwargs["artifacts"]
-    assert artifacts.run_dir == tmp_path / "i1" / "fixed_time" / "x1" / "s42"
+    assert artifacts.run_dir.parent == (
+        tmp_path / "i1" / "fixed_time" / "x1" / "s42"
+    )
+    assert artifacts.run_dir.name == artifacts.run_id
 
 
 def test_stress_defaults_to_supported_baseline():
