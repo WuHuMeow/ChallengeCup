@@ -2,54 +2,49 @@
 
 ## 目的
 
-使用 `visualization` 模块从仿真结果 CSV 生成对比图表。
+使用 `visualization` 模块从运行目录或矩阵汇总生成可追溯图表。
 
 ## 前置条件
 
-- 已安装项目依赖：`pip install -e .`（含 matplotlib、seaborn）
-- 已有仿真结果 CSV（参见指南 03/04/07）
+- 已安装项目依赖：`pip install -r requirements.txt`
+- 已有包含 `summary.json`、`run_metadata.json` 和指标文件的运行目录
 
 ## 操作步骤
 
 ```python
-from visualization.plots import plot_comparison
+from pathlib import Path
+from visualization.plots import plot_algorithm_comparison
 
 # 对比多算法的排队长度时序
-plot_comparison(
-    csv_paths=[
-        "output/csv/16_fixed_time.csv",
-        "output/csv/16_ca_maxpressure.csv",
+plot_algorithm_comparison(
+    csv_files=[
+        Path("output/runs/.../fixed_time/<run_id>/metrics.csv"),
+        Path("output/runs/.../ca_maxpressure/<run_id>/metrics.csv"),
     ],
+    labels=["fixed_time", "ca_maxpressure"],
+    output_file=Path("output/runs/comparison/queue.png"),
     metric="avg_queue_length",
-    title="路口 16 排队长度对比",
-    output_path="output/figures/queue_comparison.png",
 )
 ```
 
 ### 可用图表函数
 
-查看 `visualization/plots.py` 中的公开函数。典型用法：
+矩阵报告的推荐入口：
 
-```python
-import matplotlib.pyplot as plt
-from visualization import plots
-
-# 具体函数签名见模块 README：visualization/README.md
+```bash
+python -m visualization.report \
+  --input output/runs/matrix-full \
+  --output output/runs/matrix-full/figures
 ```
+
+该命令生成算法柱状图、路口 x 算法热力图、代表性时序/轨迹（输入存在时）、
+`summaries.csv` 和记录来源的 `manifest.json`。
 
 ## 示例
 
-生成完整对比图后保存：
-```bash
-python -c "
-from visualization.plots import plot_comparison
-plot_comparison(
-    csv_paths=['output/csv/16_fixed_time.csv', 'output/csv/16_ca_maxpressure.csv'],
-    metric='avg_delay',
-    output_path='output/figures/delay_16.png'
-)
-"
-```
+`plot_heatmap(results_csv, output_file, metric=...)` 可直接读取包含
+`intersection_id`、`algorithm` 和目标指标的汇总 CSV。缺列或没有数值时会抛出
+`ValueError`，不会生成占位图片。
 
 ## 常见问题
 
@@ -62,4 +57,5 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 ```
 
 **Q: 图片保存在哪？**
-A: 建议保存到 `output/figures/`（已被 .gitignore 覆盖）。交付用图手动复制到 `output/deliverables/`。
+A: 保存到命令指定的运行时目录；这些图表默认不进 Git。只有经复核的具体交付文件才能
+按 `output/deliverables/README.md` 的规则单独纳入版本控制。

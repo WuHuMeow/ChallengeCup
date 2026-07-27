@@ -14,27 +14,21 @@
 ### 运行全部测试
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -q
 ```
 
-预期：66 个测试全部通过。
+当前基线预期：198 个测试全部通过。测试数以后如有变化，以实际无失败输出为准。
 
-### 只跑单元测试
-
-```bash
-python -m pytest tests/ -v
-```
-
-### 只跑集成测试
+### 按模块运行
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/test_algorithms.py tests/test_cloud.py -q
 ```
 
 ### 跑单个测试文件
 
 ```bash
-python -m pytest tests/test_algorithms.py -v
+python -m pytest tests/test_algorithms.py -q
 ```
 
 ### 代码质量检查（lint）
@@ -64,7 +58,8 @@ bash scripts/quality/lint_check.sh
 A: 确认已执行 `pip install -e .`，使 `项目包`可导入。
 
 **Q: 集成测试需要 SUMO 吗？**
-A: 大部分集成测试使用 MockBridge，不需要 SUMO。标注了 `@pytest.mark.sumo` 的测试需要真实 SUMO。
+A: 自动化回归以 MockBridge 和静态契约为主，不等于本地 SUMO、Docker live 或第二机器
+复现证据。真实 IA/IB 验收使用 `scripts/verify_ia_ib.py`，未执行的外部轴必须为 `not_run`。
 
 **Q: 新增了模块，lint 没覆盖到？**
 A: `lint_check.sh` 目前只检查 `engine/`、`cloud/`、`experiments/`。如需扩展，编辑该脚本。

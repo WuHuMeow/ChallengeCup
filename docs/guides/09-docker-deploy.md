@@ -25,24 +25,27 @@ docker compose build
 docker compose up
 ```
 
-### 指定路口
+### 指定路口和算法
 
 ```bash
-docker compose run --rm simulation 1
-docker compose run --rm simulation 16
+docker compose run --rm simulation \
+  --intersection 16 --algorithm ca_maxpressure --steps 36000 \
+  --output-dir /app/output/runs
 ```
 
 ### 直接用 docker run
 
 ```bash
-docker run ca-mp:latest 16
+docker run --rm -v "${PWD}/output:/app/output" ca-mp:latest \
+  --intersection 16 --algorithm ca_maxpressure --steps 36000 \
+  --output-dir /app/output/runs
 ```
 
 ### 查看输出
 
 仿真结果写入容器内 `/app/output/`，通过 volume 映射到宿主机 `./output/`：
 ```bash
-ls output/csv/
+find output/runs -name run_metadata.json
 ```
 
 ## 示例
@@ -50,9 +53,13 @@ ls output/csv/
 完整流程：
 ```bash
 docker compose build
-docker compose run --rm simulation 16
-cat output/csv/16_fixed_time.csv | head -5
+docker compose run --rm simulation \
+  --intersection 16 --algorithm fixed_time --steps 100 \
+  --output-dir /app/output/runs
 ```
+
+Dockerfile、Compose 配置和静态契约已检查；当前没有 Docker live build/run/save/load
+的真实证据，因此 Docker live 状态为 `not_run`。第二机器复现同样保持 `not_run`。
 
 ## 常见问题
 
@@ -60,11 +67,12 @@ cat output/csv/16_fixed_time.csv | head -5
 A: 首次构建需下载 SUMO PPA 包（约 500MB）。后续构建有缓存，只复制代码层。
 
 **Q: 想跑 CA-MP 而不是固定配时？**
-A: 当前 ENTRYPOINT 是 `examples/run_fixed_time.py`。CA-MP 需要修改 command 或进入容器：
-```bash
-docker compose run --rm simulation bash
-python examples/run_ca_max_pressure.py 16
-```
+A: 镜像入口是 `python3 -m experiments.runner`，按上面的命令传入
+`--algorithm ca_maxpressure`，无需修改镜像或进入容器。
 
 **Q: Windows 下路径问题？**
 A: 确保使用 Docker Desktop for Windows，volume 映射使用正斜杠。
+
+**Q: 静态测试通过是否等于 Docker 可交付？**
+A: 不等于。只有真实执行 build/run/save/load 并保留证据后，Docker live 才能从
+`not_run` 改为 `pass`。

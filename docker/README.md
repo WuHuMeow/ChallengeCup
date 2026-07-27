@@ -27,11 +27,10 @@ docker compose run --rm simulation \
   --output-dir /app/output/runs
 ```
 
-容器内环境和路口数据自检：
+静态 Dockerfile 契约可由测试检查：
 
 ```bash
-docker run --rm --entrypoint sumo ca-mp:latest --version
-docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
+python -m pytest tests/test_docker_static.py
 ```
 
 ## 输入与输出
@@ -48,7 +47,8 @@ docker run --rm --entrypoint python3 ca-mp:latest scripts/validate_all.py
 
 ## 已知限制
 
-- 仓库没有记录当前镜像在所有平台上的构建时长和镜像大小实测值。
+- 已核对 Dockerfile、Compose 参数和静态测试；当前仓库没有 Docker live build/run 的执行证据，状态为 `not_run`。
+  Docker live 不能由静态检查或缺少 Docker 的本机替代。
 - 默认参数运行固定配时；可直接覆盖参数选择 actuated 或 ca_maxpressure。
-- 容器自检会启动多个 SUMO 配置，不能作为高频健康检查。
-- 离线答辩环境仍需预先导出镜像或准备可用的软件包缓存。
+- 容器默认入口会启动一次真实仿真，不能作为高频健康检查。
+- 第二机器复现同样为 `not_run`；离线环境需预先导出镜像或准备可用的软件包缓存后，才能收集该证据。

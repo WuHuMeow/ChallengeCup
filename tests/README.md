@@ -37,9 +37,13 @@ Run IA/IB live acceptance separately; these checks start real SUMO processes and
 run Docker when available:
 
 ```powershell
-python scripts/verify_ia_ib.py --quick --output-root output/verification/quick
-python scripts/verify_ia_ib.py --output-root output/verification/final
+python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick
+python scripts/verify_ia_ib.py --output-root output/runs/ia-ib-full
 ```
 
 Live acceptance uses `pass`, `fail`, and `not_run`. A missing Docker executable or
 second-machine run is `not_run`, not a test pass.
+
+These commands create disposable output roots. The retained acceptance record reports 13 checks
+`pass`, 0 `fail`, and an audited 360-run matrix; its generated artifacts were removed. Docker live
+and second-machine reproduction remain `not_run` in that record.

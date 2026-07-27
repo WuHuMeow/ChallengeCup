@@ -9,6 +9,12 @@
 
 本项目为挑战杯 2026 参赛作品（编号 XH-202613），围绕雄安新区"城市大脑"车路云一体化场景，针对"窄路密网"交通特征（路口间距短、进口道容量低、排队回溢快），提出 **CA-MP（Capacity-Aware MaxPressure）** 信号控制算法。基于 SUMO 微观仿真平台，在 20 个真实路口上对比验证固定配时、感应控制、CA-MP 三种策略，形成可复现的车路云协同算法优化平台。
 
+本仓库是团队内部研发仓库。项目 PDF 要求功能一、功能二作为共同基础完成，功能三选择一个方向深入；本项目选择赛道 B（算法调优型），以 CA-MP 的场景适配、参数调优和性能评估为主线。
+
+当前仓库保留可运行代码、20 路口配置、接口与部署说明、实验流程和验收报告。大体积仿真结果及压缩包已删除，需要时按复现指南重新生成。Docker live 与第二机器复现尚无真实证据，状态保持 `not_run`。PPT、Word 报告和演示视频将在后续评委版仓库中整理。
+
+当前 IA/IB 状态见 [`docs/ia-ib-final-verification.md`](docs/ia-ib-final-verification.md)，仿真产物清理与重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](docs/ia-ib-simulation-artifact-cleanup.md)。
+
 `main` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
 
 ---
@@ -58,7 +64,7 @@
 | 功能 | 核心内容 | 系统定位 |
 |------|----------|----------|
 | 功能一 | 智能交通协同管控算法的抽象设计与建模：场景建模、云-边-端数据接口设计、算法逻辑 | 设计层 |
-| 功能二 | 高保真仿真验证平台：场景构建与数据导入、算法接入适配器、可视化验证、Docker 部署 | 平台层 |
+| 功能二 | 高保真仿真验证平台：场景构建与数据导入、算法接入适配器、可视化验证、Docker 部署；PDF 允许任一实用模块，本仓库实现通信仿真、数据/可视化和算法适配器 | 共同基础平台层 |
 | 功能三 | 经典交通管控算法的场景适配与深度优化：固定配时 -> 感应控制 -> CA-MP | 主战场 |
 
 <a id="核心创新"></a>
@@ -75,7 +81,7 @@
 
 ### 当前状态
 
-功能一、功能二与功能三赛道 B 的代码链路已落地：
+功能一、功能二作为共同基础的代码链路已落地；赛道 B 的实现聚焦 CA-MP 场景适配、参数调优和性能评估：
 
 - `RunRequest -> RunService（单 worker） -> VariantBundle -> SimulationRunner` 统一单次、批量和 REST API 运行。
 - 每次运行获得独立 `run_id`，产物写入
@@ -233,22 +239,22 @@ export CC_DATA_ROOT=/path/to/路口数据
 
 ```powershell
 python -m pytest tests/ -q
-python scripts/validate_all.py --output-root output/verification/original
-python scripts/batch_validate.py --output-root output/verification/enhanced --no-report
-python scripts/run_pdf_matrix.py --quick --output-root output/verification/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 --output-root output/verification/matrix-full
+python scripts/validate_all.py --output-root output/runs/validate-original
+python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
+python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick
+python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full
 python scripts/package_offline.py --output-dir output/offline
 ```
 
 完整 IA/IB 验收：
 
 ```powershell
-python scripts/verify_ia_ib.py --quick --output-root output/verification/quick
-python scripts/verify_ia_ib.py --output-root output/verification/final
+python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick
+python scripts/verify_ia_ib.py --output-root output/runs/ia-ib-full
 ```
 
 `verification.json` 对每个检查使用 `pass`、`fail`、`not_run` 三态。Docker 或第二机器没有
-真实证据时保持 `not_run`。
+真实证据时保持 `not_run`。上述目录均由命令运行时创建，当前仓库不保留历史矩阵和验收产物。
 
 ```bash
 bash scripts/quality/lint_check.sh

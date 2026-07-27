@@ -52,7 +52,7 @@ python -c "import sumolib; print('sumolib ok')"
 |------|------|------|
 | `无法导入 traci。请安装 SUMO 并设置 SUMO_HOME…` | 未装 pip 依赖且 `SUMO_HOME` 未设置 | `pip install -r requirements.txt`，并按第 2 节设置环境变量 |
 | `sumo: command not found` | `bin/` 未加入 PATH | 见第 2 节；设置后**重开终端** |
-| `Error: The network file format version '1.20' is not supported` | SUMO 版本过旧（< 1.20） | 升级到 1.27.1；Ubuntu 不要用默认 apt 源（只有 1.12.0），用 `ppa:sumo/stable`（见 `docs/notes/docker-sumo-research.md`） |
+| `Error: The network file format version '1.20' is not supported` | SUMO 版本过旧（< 1.20） | 升级到 1.27.1；Ubuntu 不要用默认 apt 源（只有 1.12.0），用 `ppa:sumo/stable`（见 `docs/notes/docker_sumo_research.md`） |
 | `Warning: Unsafe green phase …` | 主办方原始路网遗留（路口 11/12/18） | 不影响运行，保留即可（见 `docs/migration_log.md`） |
 | `Warning: Missing yellow phase …` | 路口 9 原始配时缺黄灯相位 | 同上，不影响运行 |
 | 输出文件写到错误目录 | SUMO 把 `--output-prefix` 当相对路径拼到配置文件目录 | 传**相对配置文件的相对路径**（参考 `scripts/batch_validate.py`） |

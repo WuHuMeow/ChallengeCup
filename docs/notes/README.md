@@ -4,4 +4,4 @@
 
 | 文件 | 内容 |
 |------|------|
-| [docker-sumo-research.md](docker-sumo-research.md) | Docker 基础镜像和 SUMO 版本选型 |
+| [docker_sumo_research.md](docker_sumo_research.md) | Docker 基础镜像和 SUMO 版本选型 |

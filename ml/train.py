@@ -12,7 +12,11 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 
-def train(features: Dict[str, list], labels: Dict[str, float], alpha: float = 0.3) -> Dict[str, float]:
+def train(
+    features: Dict[str, list],
+    labels: Dict[str, float],
+    alpha: float = 0.3,
+) -> Dict[str, float]:
     """训练模型（MVI：返回默认参数）。
 
     Args:

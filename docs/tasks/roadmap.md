@@ -14,6 +14,14 @@
 
 ---
 
+## 当前验证状态（2026-07-27）
+
+本路线图保存历史周计划，日期、里程碑和进度栏反映编写时的安排，不替代当前状态。当前仓库是内部研发仓库：功能一、功能二作为共同基础完成，项目选择赛道 B，聚焦 CA-MP 的场景适配、参数调优和性能评估。
+
+当前 IA/IB 验证以 [`docs/ia-ib-final-verification.md`](../ia-ib-final-verification.md) 为准：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。大体积仿真结果及压缩包已删除；清理和重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](../ia-ib-simulation-artifact-cleanup.md)。
+
+---
+
 ## 二、团队角色
 
 | 代号 | 角色 | 人数 | 职责概述 |

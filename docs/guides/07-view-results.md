@@ -14,14 +14,22 @@
 
 ```
 output/
-├── csv/          # 指标快照（每 snapshot_interval 步一行）
-├── logs/         # 每步日志 + 事件日志
-└── variants/     # 流量变体 XML（flow_multiplier != 1.0 时生成）
+└── runs/
+    └── i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
+        ├── metrics.csv
+        ├── simulation_log.csv
+        ├── events.csv
+        ├── tripinfo.xml / stats.xml / traj.xml
+        ├── summary.json / run_metadata.json
+        └── variants/
 ```
+
+这些目录由命令运行时创建，当前仓库没有保留已删除的完整矩阵产物。
 
 ### 指标快照 CSV 字段
 
-文件：`output/csv/{路口}_{算法}.csv` 或 `{路口}_x{倍率}_{算法}_s{种子}.csv`
+文件：运行目录内的 `metrics.csv`。`avg_travel_time`、`throughput`、停车和油耗等精确
+运行级指标以同目录 `summary.json` 为准；缺失值为 JSON `null`，不能按 0 解释。
 
 | 列名 | 含义 | 单位 |
 |------|------|------|
@@ -42,7 +50,7 @@ output/
 ```python
 import pandas as pd
 
-df = pd.read_csv("output/csv/16_ca_maxpressure.csv")
+df = pd.read_csv("output/runs/i16/ca_maxpressure/x1.0/s42/<run_id>/metrics.csv")
 print(df[["avg_queue_length", "avg_delay", "total_throughput"]].describe())
 ```
 
@@ -50,6 +58,10 @@ print(df[["avg_queue_length", "avg_delay", "total_throughput"]].describe())
 
 **Q: CSV 文件被 .gitignore 忽略了？**
 A: 是的，`*.csv` 在 `.gitignore` 中。结果文件不提交到仓库，需要时重新运行生成。
+
+**Q: 如何汇总矩阵结果？**
+A: 运行 `python -m visualization.report --input output/runs/matrix-full --output output/runs/matrix-full/figures`，
+它会生成 `summaries.csv`、图表和来源 `manifest.json`。
 
 **Q: 快照间隔太大/太小？**
 A: 修改 `config/default.yaml` 中 `metrics.snapshot_interval`（默认 600 步 = 60 秒一行）。

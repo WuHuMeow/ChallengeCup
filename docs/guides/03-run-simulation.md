@@ -41,10 +41,12 @@ python examples/run_ca_max_pressure.py 16 36000
 ### 方式三：通用入口（支持所有算法）
 
 ```bash
-python examples/run_demo.py [路口编号] [算法名] --sumo
+python -m experiments.runner --intersection [路口编号] --algorithm [算法名] \
+  --steps 36000 --output-dir output/runs
 ```
 
-算法名可选：`fixed_time`、`actuated`、`ca_maxpressure`
+算法名可选：`fixed_time`、`actuated`、`ca_maxpressure`。这是推荐入口，会创建带
+`run_id` 的独立目录并写入终态、精确汇总和 SUMO 原始输出。
 
 ## 示例
 
@@ -60,6 +62,9 @@ python examples/run_ca_max_pressure.py 16 36000
 CSV 输出: output/csv/16_ca_maxpressure.csv
 ```
 
+上例使用的是直接示例脚本，因此只生成简化 CSV；该目录由命令运行时创建，不随仓库保留。
+需要可审计产物时使用方式三。
+
 ## 常见问题
 
 **Q: 报错 "traci 未安装"？**
@@ -68,5 +73,6 @@ A: 执行 `pip install traci sumolib`，或确认 `SUMO_HOME/tools` 在 Python �
 **Q: 仿真步数怎么换算成秒？**
 A: 步长 = 0.1s（路口 11-13、15-20）或 1.0s（路口 1-10）。36000 步 = 3600 秒（1 小时）或 36000 秒。具体看 `engine/configs/demo_N.sumocfg` 中的 `step-length`。
 
-**Q: 输出 CSV 在哪？**
-A: 默认在 `output/csv/` 目录下，文件名格式 `{路口}_{算法}.csv`。
+**Q: 输出文件在哪？**
+A: 通用入口写入 `output/runs/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`；直接示例脚本
+仍写入运行时生成的 `output/csv/{路口}_{算法}.csv`。

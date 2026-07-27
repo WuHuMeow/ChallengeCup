@@ -26,8 +26,10 @@ python examples/run_ca_max_pressure.py 1 3600
 ## 输入与输出
 
 - 输入：`config/default.yaml`、`data/intersection_data/` 中的路口工程，以及命令行路口/算法/步数参数。
-- Mock 输出：默认写入 `output/csv/{路口}_{算法}.csv`。
-- SUMO 输出：指标 CSV 写入 `output/csv/`；增强配置还会产生 SUMO XML 输出。
+- `run_demo.py`、`run_fixed_time.py` 和 `run_ca_max_pressure.py` 直接创建
+  `output/csv/{路口}_{算法}.csv`；这是运行时生成的文件，当前不随仓库保留。
+- SUMO 模式优先使用 `engine/configs/demo_N.sumocfg`。如需可追踪的 `metrics.csv`、事件日志、
+  SUMO XML 和摘要，应使用 `experiments.runner` 的 `--output-dir`；直接示例不创建该运行作用域。
 
 ## 依赖
 
@@ -37,7 +39,6 @@ python examples/run_ca_max_pressure.py 1 3600
 
 ## 已知限制
 
-- `run_demo.py --sumo` 固定运行 3600 步；当前没有独立步数参数。
-- `run_fixed_time.py` 固定运行 3600 步。
-- CA-MP 示例调用的是当前 MVI 控制器，尚未实现完整容量感知压力与溢出门控。
+- `run_demo.py --sumo` 和 `run_fixed_time.py` 固定运行 36000 步；当前没有独立步数参数。
+- CA-MP 示例使用 `CAMaxPressureAlgorithm`；可调参数和完整矩阵入口见 `algorithms/` 与 `scripts/run_pdf_matrix.py`。
 - 示例不负责批量矩阵、断点续跑或统计汇总；这些入口在 `experiments/runner.py`。

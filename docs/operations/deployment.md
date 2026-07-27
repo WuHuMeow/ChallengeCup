@@ -32,9 +32,9 @@
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
-  --quick --output-root output/verification/matrix-quick
+  --quick --output-root output/runs/matrix-quick
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
-  --steps 36000 --output-root output/verification/matrix-full
+  --steps 36000 --output-root output/runs/matrix-full
 ```
 
 完整矩阵为 360 次运行。恢复机制通过 `matrix_state.json` 和每个 `run_id` 目录的完整性决定
@@ -44,12 +44,13 @@
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
-  --quick --output-root output/verification/quick
+  --quick --output-root output/runs/ia-ib-quick
 .\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
-  --output-root output/verification/final
+  --output-root output/runs/ia-ib-full
 ```
 
-状态只使用 `pass`、`fail`、`not_run`。Docker 没有真实执行时必须为 `not_run`。
+这些目录由命令运行时创建，仓库当前不保留矩阵和验收产物。状态只使用 `pass`、`fail`、
+`not_run`。
 
 ## Docker
 
@@ -61,6 +62,9 @@ docker run --rm -v "${PWD}/output:/app/output" ca-mp:ia-ib `
 ```
 
 统一容器入口为 `python3 -m experiments.runner`。
+
+Dockerfile、Compose 配置和静态契约已检查；当前没有 Docker live build/run/save/load
+的真实证据，因此 Docker live 状态为 `not_run`。第二机器复现同样保持 `not_run`。
 
 ## 离线包
 
