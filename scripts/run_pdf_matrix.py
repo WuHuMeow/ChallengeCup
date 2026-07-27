@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,16 +71,84 @@ def request_key(request: RunRequest) -> str:
     ])
 
 
-def is_complete(result_dir: Path) -> bool:
+def read_final_sumo_time(stats_path: Path) -> float | None:
+    """Return the last native SUMO summary timestamp without loading the XML."""
+    final_time = None
+    try:
+        for _, element in ET.iterparse(stats_path, events=("end",)):
+            if element.tag == "step" and element.get("time") is not None:
+                final_time = float(element.get("time"))
+            element.clear()
+    except (OSError, ET.ParseError, TypeError, ValueError):
+        return None
+    return final_time
+
+
+def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
     try:
         metadata = json.loads(
             (result_dir / "run_metadata.json").read_text(encoding="utf-8")
         )
-        return metadata.get("status") == "completed" and all(
+        artifacts_complete = metadata.get("status") == "completed" and all(
             (result_dir / name).stat().st_size > 0
             for name in REQUIRED_ARTIFACTS
         )
-    except (OSError, json.JSONDecodeError):
+        if not artifacts_complete or request is None:
+            return artifacts_complete
+
+        metadata_identity = (
+            str(metadata["intersection_id"]),
+            str(metadata["algorithm"]),
+            float(metadata["flow_multiplier"]),
+            int(metadata["seed"]),
+        )
+        request_identity = (
+            str(request.intersection_id),
+            str(request.algorithm),
+            float(request.flow_multiplier),
+            int(request.seed),
+        )
+        if metadata_identity != request_identity:
+            return False
+        recorded_run_id = metadata.get("run_id")
+        if recorded_run_id is not None and str(recorded_run_id) != result_dir.name:
+            return False
+
+        requested_steps = metadata.get("requested_steps")
+        if requested_steps is not None and requested_steps != request.steps:
+            return False
+        step_length = metadata.get("step_length")
+        if step_length is None:
+            step_length = 0.1
+        step_length = float(step_length)
+        if not math.isfinite(step_length) or step_length <= 0:
+            return False
+        target_time = request.steps * step_length
+        configured_end_time = metadata.get("configured_end_time")
+        if configured_end_time is not None:
+            configured_end_time = float(configured_end_time)
+            if not math.isfinite(configured_end_time) or configured_end_time <= 0:
+                return False
+            target_time = min(target_time, configured_end_time)
+        if not math.isfinite(target_time) or target_time <= 0:
+            return False
+        tolerance = step_length + 1e-9
+        native_final_time = read_final_sumo_time(result_dir / "stats.xml")
+        if (
+            native_final_time is None
+            or not math.isfinite(native_final_time)
+            or native_final_time + tolerance < target_time
+        ):
+            return False
+        recorded_final_time = metadata.get("final_simulation_time")
+        if recorded_final_time is None:
+            return True
+        recorded_final_time = float(recorded_final_time)
+        return (
+            math.isfinite(recorded_final_time)
+            and recorded_final_time + tolerance >= target_time
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return False
 
 
@@ -174,7 +244,7 @@ def run_pdf_matrix(
             key = request_key(request)
             run_id = state.get(key)
             run_dir = _run_dir(request, run_id) if run_id else None
-            if resume and run_dir is not None and is_complete(run_dir):
+            if resume and run_dir is not None and is_complete(run_dir, request):
                 result = _load_result(request, run_id)
             else:
                 result = service.run_sync(request)

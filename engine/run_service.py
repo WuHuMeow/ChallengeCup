@@ -144,6 +144,7 @@ class RunService:
                     started_at=now,
                     ended_at=now,
                     sumo_version="unknown",
+                    requested_steps=request.steps,
                 )
         result = self._result_from_artifacts(artifacts)
         self._store(result)

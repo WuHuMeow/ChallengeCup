@@ -48,6 +48,10 @@ def test_write_metadata_is_atomic_and_structured(tmp_path):
         started_at="2026-07-25T10:00:00+08:00",
         ended_at="2026-07-25T10:01:00+08:00",
         sumo_version="1.27.1",
+        requested_steps=36000,
+        final_simulation_time=3600.0,
+        step_length=0.1,
+        configured_end_time=3600.0,
     )
 
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
@@ -57,3 +61,7 @@ def test_write_metadata_is_atomic_and_structured(tmp_path):
     assert payload["generated_files"] == ["metrics.csv"]
     assert payload["sumo_version"] == "1.27.1"
     assert payload["started_at"] < payload["ended_at"]
+    assert payload["requested_steps"] == 36000
+    assert payload["final_simulation_time"] == 3600.0
+    assert payload["step_length"] == 0.1
+    assert payload["configured_end_time"] == 3600.0

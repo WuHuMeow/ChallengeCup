@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -209,6 +210,41 @@ def test_automated_regression_records_commands_and_exit_codes(monkeypatch):
     assert result.command.count("exit=0") == 5
 
 
+def test_pytest_check_preserves_real_exit_code(monkeypatch):
+    from scripts import verify_ia_ib
+
+    monkeypatch.setattr(
+        verify_ia_ib.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command,
+            7,
+            stdout="",
+            stderr="quality gate failed",
+        ),
+    )
+
+    result = verify_ia_ib._pytest_check("quality", ["tests/test_api.py"])
+
+    assert result.status == "fail"
+    assert result.exit_code == 7
+
+
+def test_pytest_check_fails_on_nonzero_exit_without_output(monkeypatch):
+    from scripts import verify_ia_ib
+
+    monkeypatch.setattr(
+        verify_ia_ib.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 7, "", ""),
+    )
+
+    result = verify_ia_ib._pytest_check("quality", ["tests/test_api.py"])
+
+    assert result.status == "fail"
+    assert result.errors == ["process exited 7 without output"]
+
+
 def test_docker_unavailable_is_not_run_not_pass(tmp_path, monkeypatch):
     from scripts import verify_ia_ib
 
@@ -240,6 +276,119 @@ def test_final_report_has_no_hard_coded_ab_blocker():
     assert "| Check | Status | Exit Code | Seconds |" in report
     assert "| ca_mp_smoke | pass | 0 |" in report
     assert "Exit code: `0`" in report
+
+
+def test_final_report_generates_provenance_and_evidence_axes():
+    from scripts.verify_ia_ib import CheckResult, render_markdown
+
+    results = [
+        CheckResult("automated_regression", "pass", 0.1, "pytest", [], [], 0),
+        CheckResult(
+            "matrix",
+            "pass",
+            0.1,
+            "in-process matrix audit",
+            [],
+            [],
+            None,
+            mode="audited",
+            evidence_paths=["output/verification/matrix/matrix.csv"],
+        ),
+        CheckResult("docker", "not_run", 0.1, "not run", ["unavailable"], []),
+    ]
+    provenance = {
+        "commit": "fe894e2",
+        "dirty": True,
+        "diff_sha256": "a" * 64,
+    }
+
+    report = render_markdown(
+        results,
+        "not run: Docker unavailable",
+        provenance=provenance,
+        second_machine_status="not_run",
+    )
+
+    assert "## Repository provenance" in report
+    assert "commit: `fe894e2`" in report
+    assert f"diff SHA-256: `{'a' * 64}`" in report
+    assert "## Evidence axes" in report
+    assert "repository implementation: pass" in report
+    assert "automated verification: pass" in report
+    assert "local SUMO verification: pass" in report
+    assert "Docker live verification: not_run" in report
+    assert "second-machine reproduction: not_run" in report
+    assert "Mode: `audited`" in report
+    assert "output/verification/matrix/matrix.csv" in report
+
+
+def test_audit_matrix_csv_uses_hardened_run_evidence(tmp_path, monkeypatch):
+    from scripts import verify_ia_ib
+
+    matrix_csv = tmp_path / "matrix.csv"
+    matrix_csv.write_text(
+        "intersection_id,algorithm,flow_multiplier,seed,steps,run_id,status,"
+        "reason,run_dir\n"
+        f"1,fixed_time,1.0,42,36000,run-1,completed,,{tmp_path / 'run-1'}\n",
+        encoding="utf-8",
+    )
+    checked = []
+    monkeypatch.setattr(
+        verify_ia_ib,
+        "is_complete",
+        lambda run_dir, request: checked.append((run_dir, request)) or True,
+    )
+
+    result = verify_ia_ib.audit_matrix_csv(matrix_csv, expected=1)
+
+    assert result.status == "pass"
+    assert result.mode == "audited"
+    assert result.exit_code is None
+    assert result.evidence_paths == [str(matrix_csv)]
+    assert len(checked) == 1
+    assert checked[0][1].steps == 36000
+
+
+def test_audit_matrix_csv_rejects_the_wrong_request_set(tmp_path, monkeypatch):
+    from core.run_models import RunRequest
+    from scripts import verify_ia_ib
+
+    matrix_csv = tmp_path / "matrix.csv"
+    matrix_csv.write_text(
+        "intersection_id,algorithm,flow_multiplier,seed,steps,run_id,status,"
+        "reason,run_dir\n"
+        f"2,fixed_time,1.0,42,36000,run-2,completed,,{tmp_path / 'run-2'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(verify_ia_ib, "is_complete", lambda *args: True)
+    expected = [RunRequest("1", "fixed_time", steps=36000, seed=42)]
+
+    result = verify_ia_ib.audit_matrix_csv(
+        matrix_csv,
+        expected=1,
+        expected_requests=expected,
+    )
+
+    assert result.status == "fail"
+    assert any("request set mismatch" in error for error in result.errors)
+
+
+def test_verify_matrix_rejects_new_completed_result_below_horizon(
+    tmp_path,
+    monkeypatch,
+):
+    from core.run_models import RunRequest, RunResult, RunStatus
+    from scripts import verify_ia_ib
+
+    request = RunRequest("1", "fixed_time", steps=100, output_root=tmp_path)
+    result = RunResult("short", RunStatus.COMPLETED, "", tmp_path / "short")
+    monkeypatch.setattr(verify_ia_ib, "build_pdf_matrix", lambda *args, **kwargs: [request])
+    monkeypatch.setattr(verify_ia_ib, "run_pdf_matrix", lambda *args, **kwargs: [result])
+    monkeypatch.setattr(verify_ia_ib, "is_complete", lambda *args: False)
+
+    check = verify_ia_ib.verify_matrix(tmp_path, quick=True)
+
+    assert any("short: incomplete or below requested horizon" in error for error in check.errors)
 
 
 def test_final_report_uses_flat_document_path():

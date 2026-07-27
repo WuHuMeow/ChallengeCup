@@ -69,6 +69,125 @@ def test_is_complete_requires_every_nonempty_artifact(tmp_path):
     assert is_complete(run_dir) is False
 
 
+def _write_completed_matrix_run(
+    tmp_path,
+    final_time,
+    *,
+    step_length=0.1,
+    configured_end_time=None,
+):
+    run_dir = tmp_path / f"run-{final_time}"
+    run_dir.mkdir()
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps({
+            "intersection_id": "1",
+            "algorithm": "fixed_time",
+            "flow_multiplier": 1.0,
+            "seed": 42,
+            "status": "completed",
+            "requested_steps": 36000,
+            "final_simulation_time": final_time,
+            "step_length": step_length,
+            "configured_end_time": configured_end_time,
+        }),
+        encoding="utf-8",
+    )
+    for name in (
+        "metrics.csv",
+        "events.csv",
+        "simulation_log.csv",
+        "tripinfo.xml",
+        "traj.xml",
+        "summary.json",
+    ):
+        (run_dir / name).write_text("x", encoding="utf-8")
+    (run_dir / "stats.xml").write_text(
+        f'<summary><step time="{final_time:.2f}"/></summary>',
+        encoding="utf-8",
+    )
+    return run_dir
+
+
+def test_is_complete_rejects_short_native_sumo_run(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=3598.0)
+
+    assert is_complete(run_dir, request) is False
+
+
+def test_is_complete_accepts_full_native_sumo_run(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
+
+    assert is_complete(run_dir, request) is True
+
+
+def test_is_complete_accepts_legacy_matrix_metadata(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    for field in (
+        "requested_steps",
+        "final_simulation_time",
+        "step_length",
+        "configured_end_time",
+    ):
+        metadata.pop(field)
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert is_complete(run_dir, request) is True
+
+
+def test_is_complete_caps_requested_steps_at_configured_end(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=3599.0,
+        step_length=1.0,
+        configured_end_time=3600.0,
+    )
+
+    assert is_complete(run_dir, request) is True
+
+
+def test_is_complete_rejects_non_finite_step_length(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=3599.9,
+        step_length=float("nan"),
+    )
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["final_simulation_time"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert is_complete(run_dir, request) is False
+
+
+def test_is_complete_rejects_non_finite_native_time(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=float("nan"))
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["final_simulation_time"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert is_complete(run_dir, request) is False
+
+
+def test_is_complete_rejects_metadata_for_a_different_request(tmp_path):
+    request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["seed"] = 123
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert is_complete(run_dir, request) is False
+
+
 class _FakeService:
     def __init__(self, root):
         self.root = root

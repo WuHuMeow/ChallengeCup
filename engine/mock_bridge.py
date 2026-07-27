@@ -34,12 +34,16 @@ class MockBridge:
         step_length: float = 0.1,
         vehicle_sample_rate: int = 1,
         event_callback: Optional[Callable[[str, str], None]] = None,
+        phase_count: int = 4,
+        program_ids: Optional[set[str]] = None,
     ) -> None:
         self.tls_id = tls_id
         self.directions = directions or list(DEFAULT_DIRECTIONS)
         self.step_length = step_length
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
+        self.phase_count = phase_count
+        self.program_ids = set(program_ids or {"0", "program_0", "program_1"})
         self._current_step: int = 0
         self._started: bool = False
         self._applied_actions: List[ControlAction] = []
@@ -117,7 +121,12 @@ class MockBridge:
         """Validate and record control actions without contacting SUMO."""
         results: list[ActionResult] = []
         for action in actions:
-            _, error = validate_control_action(action, self.tls_id)
+            _, error = validate_control_action(
+                action,
+                self.tls_id,
+                phase_count=self.phase_count,
+                program_ids=self.program_ids,
+            )
             if error is not None:
                 results.append(ActionResult(action, False, error))
                 continue

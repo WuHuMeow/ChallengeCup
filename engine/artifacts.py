@@ -108,6 +108,10 @@ class RunArtifacts:
         started_at: str,
         ended_at: str,
         sumo_version: str,
+        requested_steps: int | None = None,
+        final_simulation_time: float | None = None,
+        step_length: float | None = None,
+        configured_end_time: float | None = None,
     ) -> None:
         """Atomically replace run metadata with the current terminal state."""
         payload = {
@@ -121,6 +125,10 @@ class RunArtifacts:
             "started_at": started_at,
             "ended_at": ended_at,
             "sumo_version": sumo_version,
+            "requested_steps": requested_steps,
+            "final_simulation_time": final_simulation_time,
+            "step_length": step_length,
+            "configured_end_time": configured_end_time,
             "generated_files": [
                 Path(path).name for path in generated_files if Path(path).exists()
             ],

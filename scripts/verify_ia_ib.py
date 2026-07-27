@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field as dataclass_field
 from pathlib import Path
 from typing import Callable
 
@@ -19,7 +21,12 @@ sys.path.insert(0, str(ROOT))
 
 from core.run_models import RunRequest, RunStatus  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
-from scripts.run_pdf_matrix import run_pdf_matrix  # noqa: E402
+from scripts.run_pdf_matrix import (  # noqa: E402
+    build_pdf_matrix,
+    is_complete,
+    request_key,
+    run_pdf_matrix,
+)
 from scripts.stress_memory import parse_stress_args, run_stress  # noqa: E402
 from scripts.validation_common import run_sumo_validation  # noqa: E402
 from visualization.report import generate_matrix_figures  # noqa: E402
@@ -34,6 +41,8 @@ class CheckResult:
     warnings: list[str]
     errors: list[str]
     exit_code: int | None = None
+    mode: str = "in_process"
+    evidence_paths: list[str] = dataclass_field(default_factory=list)
 
 
 def _result(
@@ -44,11 +53,13 @@ def _result(
     errors: list[str],
     *,
     status: str | None = None,
+    exit_code: int | None = None,
+    mode: str = "in_process",
+    evidence_paths: list[str] | None = None,
 ) -> CheckResult:
     resolved = status or ("pass" if not errors else "fail")
     if resolved not in {"pass", "fail", "not_run"}:
         raise ValueError(f"unknown check status: {resolved}")
-    exit_code = None if resolved == "not_run" else (0 if resolved == "pass" else 1)
     return CheckResult(
         name,
         resolved,
@@ -57,11 +68,22 @@ def _result(
         warnings,
         errors,
         exit_code,
+        mode,
+        list(evidence_paths or []),
     )
 
 
 def _not_run(name: str, detail: str) -> CheckResult:
-    return CheckResult(name, "not_run", 0.0, "not run", [detail], [], None)
+    return CheckResult(
+        name,
+        "not_run",
+        0.0,
+        "not run",
+        [detail],
+        [],
+        exit_code=None,
+        mode="not_run",
+    )
 
 
 def verify_data_integrity(_: Path) -> CheckResult:
@@ -98,6 +120,7 @@ def _verify_configs(
     started = time.perf_counter()
     warnings: list[str] = []
     errors: list[str] = []
+    exit_codes: list[int] = []
     for intersection in range(1, 21):
         config = config_root / f"demo_{intersection}.sumocfg"
         if config_root.name == "intersection_data":
@@ -115,6 +138,7 @@ def _verify_configs(
             end=end,
             output_dir=output_root / name / str(intersection),
         )
+        exit_codes.append(result.returncode)
         warnings.extend(
             f"intersection {intersection}: {item}" for item in result.warnings
         )
@@ -129,7 +153,16 @@ def _verify_configs(
         f"--summary-output <{output_root}/{name}/N/stats.xml> "
         f"--fcd-output <{output_root}/{name}/N/traj.xml>"
     )
-    return _result(name, started, command, warnings, errors)
+    return _result(
+        name,
+        started,
+        command,
+        warnings,
+        errors,
+        exit_code=next((code for code in exit_codes if code), 0),
+        mode="executed",
+        evidence_paths=[str(output_root / name)],
+    )
 
 
 def verify_original_configs(
@@ -188,15 +221,20 @@ def _pytest_check(name: str, files: list[str]) -> CheckResult:
     )
     errors = []
     if completed.returncode:
-        errors.append(completed.stdout.strip())
+        if completed.stdout.strip():
+            errors.append(completed.stdout.strip())
         if completed.stderr.strip():
             errors.append(completed.stderr.strip())
+        if not errors:
+            errors.append(f"process exited {completed.returncode} without output")
     return _result(
         name,
         started,
         " ".join(str(part) for part in command),
         [],
         errors,
+        exit_code=completed.returncode,
+        mode="executed",
     )
 
 
@@ -327,17 +365,139 @@ def verify_figure_contracts(verification_root: Path) -> CheckResult:
     )
 
 
-def verify_matrix(verification_root: Path, quick: bool = False) -> CheckResult:
+def _matrix_request_identity(request: RunRequest) -> tuple[str, str, float, int, int]:
+    return (
+        str(request.intersection_id),
+        str(request.algorithm),
+        float(request.flow_multiplier),
+        int(request.seed),
+        int(request.steps),
+    )
+
+
+def _matrix_row_identity(row: dict[str, str]) -> tuple[str, str, float, int, int]:
+    return (
+        str(row["intersection_id"]),
+        str(row["algorithm"]),
+        float(row["flow_multiplier"]),
+        int(row["seed"]),
+        int(row["steps"]),
+    )
+
+
+def audit_matrix_csv(
+    matrix_csv: Path,
+    expected: int = 360,
+    expected_requests: list[RunRequest] | None = None,
+) -> CheckResult:
+    """Audit an existing combined matrix without launching new SUMO runs."""
+    started = time.perf_counter()
+    errors = []
+    try:
+        rows = list(csv.DictReader(Path(matrix_csv).open(encoding="utf-8")))
+    except OSError as exc:
+        rows = []
+        errors.append(str(exc))
+    keys = set()
+    for row in rows:
+        try:
+            keys.add(_matrix_row_identity(row))
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append(f"invalid matrix identity: {exc}")
+    if len(rows) != expected or len(keys) != expected:
+        errors.append(
+            f"matrix rows={len(rows)} unique={len(keys)} expected={expected}"
+        )
+    if expected_requests is not None:
+        expected_keys = {
+            _matrix_request_identity(request) for request in expected_requests
+        }
+        if keys != expected_keys:
+            errors.append(
+                "request set mismatch: "
+                f"missing={len(expected_keys - keys)} "
+                f"unexpected={len(keys - expected_keys)}"
+            )
+    for row in rows:
+        run_id = row.get("run_id", "unknown")
+        if row.get("status") != RunStatus.COMPLETED.value:
+            errors.append(
+                f"{run_id}: status={row.get('status')} reason={row.get('reason', '')}"
+            )
+            continue
+        try:
+            request = RunRequest(
+                intersection_id=row["intersection_id"],
+                algorithm=row["algorithm"],
+                steps=int(row["steps"]),
+                flow_multiplier=float(row["flow_multiplier"]),
+                seed=int(row["seed"]),
+            )
+            run_dir = Path(row["run_dir"])
+            if not run_dir.is_absolute():
+                run_dir = ROOT / run_dir
+            if not is_complete(run_dir, request):
+                errors.append(f"{run_id}: incomplete or below requested horizon")
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append(f"{run_id}: invalid matrix row: {exc}")
+    return _result(
+        "matrix",
+        started,
+        f"in-process audit of {matrix_csv}",
+        [],
+        errors,
+        exit_code=None,
+        mode="audited",
+        evidence_paths=[str(matrix_csv)],
+    )
+
+
+def verify_matrix(
+    verification_root: Path,
+    quick: bool = False,
+    matrix_csv: Path | None = None,
+) -> CheckResult:
     started = time.perf_counter()
     intersections = ("1", "11", "16") if quick else None
     steps = 100 if quick else 36000
+    expected = 54 if quick else 360
+    matrix_root = verification_root / "matrix"
+    requests = build_pdf_matrix(
+        matrix_root,
+        steps=steps,
+        intersections=intersections,
+    )
+    if matrix_csv is not None:
+        return audit_matrix_csv(
+            matrix_csv,
+            expected=expected,
+            expected_requests=requests,
+        )
+    state_path = matrix_root / "matrix_state.json"
+    state = {}
+    if state_path.exists():
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    reusable = 0
+    for request in requests:
+        run_id = state.get(request_key(request))
+        if run_id is None:
+            continue
+        run_dir = (
+            Path(request.output_root)
+            / f"i{request.intersection_id}"
+            / request.algorithm
+            / f"x{request.flow_multiplier:g}"
+            / f"s{request.seed}"
+            / run_id
+        )
+        if is_complete(run_dir, request):
+            reusable += 1
     results = run_pdf_matrix(
-        verification_root / "matrix",
+        matrix_root,
         steps=steps,
         resume=True,
         intersections=intersections,
     )
-    expected = 54 if quick else 360
     errors = []
     if len(results) != expected:
         errors.append(f"expected {expected} rows, got {len(results)}")
@@ -351,6 +511,14 @@ def verify_matrix(verification_root: Path, quick: bool = False) -> CheckResult:
             f"{result.run_id}: {result.status.value}: {result.reason}"
             for result in failed
         )
+    for request, result in zip(requests, results):
+        if (
+            result.status is RunStatus.COMPLETED
+            and not is_complete(result.run_dir, request)
+        ):
+            errors.append(
+                f"{result.run_id}: incomplete or below requested horizon"
+            )
     return _result(
         "matrix",
         started,
@@ -361,6 +529,11 @@ def verify_matrix(verification_root: Path, quick: bool = False) -> CheckResult:
         ),
         [],
         errors,
+        mode="audited" if reusable == expected else "executed",
+        evidence_paths=[
+            str(matrix_root / "matrix.csv"),
+            str(matrix_root / "matrix_state.json"),
+        ],
     )
 
 
@@ -401,7 +574,7 @@ def verify_stress_runs(
     )
 
 
-def verify_automated_regression(_: Path) -> CheckResult:
+def verify_automated_regression(verification_root: Path) -> CheckResult:
     """Run the repository-wide automated acceptance commands."""
     started = time.perf_counter()
     commands = [
@@ -449,6 +622,11 @@ def verify_automated_regression(_: Path) -> CheckResult:
     ]
     errors = []
     details = []
+    exit_codes = []
+    pycache = verification_root / "pycache"
+    pycache.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment["PYTHONPYCACHEPREFIX"] = str(pycache.resolve())
     for command in commands:
         completed = subprocess.run(
             command,
@@ -456,7 +634,9 @@ def verify_automated_regression(_: Path) -> CheckResult:
             capture_output=True,
             text=True,
             check=False,
+            env=environment,
         )
+        exit_codes.append(completed.returncode)
         command_text = " ".join(str(part) for part in command)
         details.append(f"{command_text} [exit={completed.returncode}]")
         if completed.returncode:
@@ -475,6 +655,9 @@ def verify_automated_regression(_: Path) -> CheckResult:
         "; ".join(details),
         [],
         errors,
+        exit_code=next((code for code in exit_codes if code), 0),
+        mode="executed",
+        evidence_paths=[str(pycache)],
     )
 
 
@@ -500,6 +683,8 @@ def verify_docker(verification_root: Path) -> CheckResult:
             static.command,
             static.warnings,
             static.errors,
+            exit_code=static.exit_code,
+            mode="executed",
         )
     docker = shutil.which("docker")
     if docker is None:
@@ -510,6 +695,8 @@ def verify_docker(verification_root: Path) -> CheckResult:
             ["Docker unavailable; live build/run/save/load not run"],
             [],
             status="not_run",
+            exit_code=None,
+            mode="not_run",
         )
     verification_root.mkdir(parents=True, exist_ok=True)
     image_tar = verification_root / "ca-mp-ia-ib.tar"
@@ -522,6 +709,7 @@ def verify_docker(verification_root: Path) -> CheckResult:
         [docker, "run", "--rm", "ca-mp:ia-ib"],
     ]
     errors = []
+    exit_codes = []
     for command in commands:
         completed = subprocess.run(
             command,
@@ -530,6 +718,7 @@ def verify_docker(verification_root: Path) -> CheckResult:
             text=True,
             check=False,
         )
+        exit_codes.append(completed.returncode)
         if completed.returncode:
             errors.append(
                 completed.stderr.strip()
@@ -542,6 +731,9 @@ def verify_docker(verification_root: Path) -> CheckResult:
         "; ".join(" ".join(command) for command in commands),
         [],
         errors,
+        exit_code=next((code for code in exit_codes if code), 0),
+        mode="executed",
+        evidence_paths=[str(image_tar)] if image_tar.exists() else [],
     )
 
 
@@ -577,10 +769,82 @@ def docker_live_status(results: list[CheckResult]) -> str:
     return "fail" if docker.status == "fail" else "pass"
 
 
+def repository_provenance() -> dict[str, object]:
+    """Identify the checked source state without generated report churn."""
+    excluded = (
+        ":(exclude)docs/ia-ib-final-verification.md",
+        ":(exclude)docs/reports/ia-ib-final-verification.md",
+    )
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+
+    commit_result = git("rev-parse", "HEAD")
+    status_result = git(
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--",
+        ".",
+        *excluded,
+    )
+    diff_result = subprocess.run(
+        ["git", "diff", "--binary", "HEAD", "--", ".", *excluded],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    diff_bytes = diff_result.stdout or b""
+    return {
+        "commit": commit_result.stdout.strip() or "unknown",
+        "dirty": bool(status_result.stdout.strip()),
+        "diff_sha256": hashlib.sha256(diff_bytes).hexdigest(),
+    }
+
+
+def _result_status(results: list[CheckResult], name: str) -> str:
+    item = next((candidate for candidate in results if candidate.name == name), None)
+    return item.status if item is not None else "not_run"
+
+
+def _local_sumo_status(results: list[CheckResult]) -> str:
+    names = {
+        "original_100",
+        "enhanced_100",
+        "enhanced_3600",
+        "ca_mp_smoke",
+        "exact_metrics",
+        "figure_contracts",
+        "matrix",
+        "stress_runs",
+    }
+    selected = [item for item in results if item.name in names]
+    if any(item.status == "fail" for item in selected):
+        return "fail"
+    if selected and all(item.status == "pass" for item in selected):
+        return "pass"
+    return "not_run"
+
+
 def render_markdown(
     results: list[CheckResult],
     docker_status: str,
+    *,
+    provenance: dict[str, object] | None = None,
+    second_machine_status: str = "not_run",
 ) -> str:
+    provenance = provenance or repository_provenance()
+    automated_status = _result_status(results, "automated_regression")
+    repository_status = "pass" if automated_status == "pass" else automated_status
+    docker_axis = _result_status(results, "docker")
     lines = [
         "# IA/IB Final Verification",
         "",
@@ -594,6 +858,22 @@ def render_markdown(
         for item in results
     )
     lines.extend(["", "## Docker", "", f"live validation: {docker_status}"])
+    lines.extend([
+        "",
+        "## Repository provenance",
+        "",
+        f"- commit: `{provenance['commit']}`",
+        f"- dirty: `{str(bool(provenance['dirty'])).lower()}`",
+        f"- diff SHA-256: `{provenance['diff_sha256']}`",
+        "",
+        "## Evidence axes",
+        "",
+        f"- repository implementation: {repository_status}",
+        f"- automated verification: {automated_status}",
+        f"- local SUMO verification: {_local_sumo_status(results)}",
+        f"- Docker live verification: {docker_axis}",
+        f"- second-machine reproduction: {second_machine_status}",
+    ])
     for item in results:
         exit_code = item.exit_code if item.exit_code is not None else "N/A"
         lines.extend([
@@ -602,7 +882,9 @@ def render_markdown(
             "",
             f"Command: `{item.command}`",
             f"Exit code: `{exit_code}`",
+            f"Mode: `{item.mode}`",
         ])
+        lines.extend(f"- evidence: `{value}`" for value in item.evidence_paths)
         lines.extend(f"- warning: {value}" for value in item.warnings)
         lines.extend(f"- error: {value}" for value in item.errors)
     return "\n".join(lines) + "\n"
@@ -611,6 +893,11 @@ def render_markdown(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="IA/IB acceptance verification")
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument(
+        "--matrix-csv",
+        type=Path,
+        help="audit this existing matrix CSV instead of launching matrix runs",
+    )
     parser.add_argument(
         "--output-root",
         type=Path,
@@ -634,7 +921,11 @@ def main(argv: list[str] | None = None) -> int:
         verify_ca_mp_smoke(args.output_root),
         verify_exact_metrics(args.output_root),
         verify_figure_contracts(args.output_root),
-        verify_matrix(args.output_root, quick=args.quick),
+        verify_matrix(
+            args.output_root,
+            quick=args.quick,
+            matrix_csv=args.matrix_csv,
+        ),
         verify_stress_runs(args.output_root, quick=args.quick),
         verify_automated_regression(args.output_root),
         verify_docker(args.output_root),
@@ -650,7 +941,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(
-        render_markdown(results, docker_live_status(results)),
+        render_markdown(
+            results,
+            docker_live_status(results),
+            provenance=repository_provenance(),
+        ),
         encoding="utf-8",
     )
     return 1 if any(item.status == "fail" for item in results) else 0

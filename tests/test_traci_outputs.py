@@ -1,5 +1,8 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 from core.types import ControlAction
 from engine.action_validation import validate_control_action
@@ -22,6 +25,38 @@ def test_control_action_validation_normalizes_values_and_rejections():
     assert valid_duration == (3.5, None)
     assert valid_program == ("program_1", None)
     assert invalid == (None, "set_phase value must be an integer: 'north'")
+
+
+@pytest.mark.parametrize("value", [True, -1, 4])
+def test_control_action_validation_rejects_invalid_phase_domain(value):
+    _, error = validate_control_action(
+        ControlAction("tls", "set_phase", value),
+        "tls",
+        phase_count=4,
+    )
+
+    assert error is not None
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_control_action_validation_rejects_non_finite_duration(value):
+    _, error = validate_control_action(
+        ControlAction("tls", "set_phase_duration", value),
+        "tls",
+    )
+
+    assert error is not None
+    assert "finite" in error
+
+
+def test_control_action_validation_rejects_unknown_program():
+    result = validate_control_action(
+        ControlAction("tls", "set_program", "missing"),
+        "tls",
+        program_ids={"program_0", "program_1"},
+    )
+
+    assert result == (None, "unknown signal program: 'missing'")
 
 
 def test_build_cmd_redirects_all_sumo_outputs(tmp_path):
@@ -100,15 +135,72 @@ def test_invalid_actions_return_explicit_rejections_without_side_effects():
     set_program.assert_not_called()
 
 
+def test_traci_rejects_out_of_range_phase_and_unknown_program():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    programs = [
+        SimpleNamespace(programID="program_0", phases=[object()] * 4),
+        SimpleNamespace(programID="program_1", phases=[object()] * 2),
+    ]
+    actions = [
+        ControlAction("tls", "set_phase", 4),
+        ControlAction("tls", "set_program", "missing"),
+    ]
+    with (
+        patch.object(traci.trafficlight, "getAllProgramLogics", return_value=programs),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
+        patch.object(traci.trafficlight, "setPhase") as set_phase,
+        patch.object(traci.trafficlight, "setProgram") as set_program,
+    ):
+        results = bridge.apply_actions(actions)
+
+    assert [result.accepted for result in results] == [False, False]
+    set_phase.assert_not_called()
+    set_program.assert_not_called()
+
+
+def test_traci_rejects_domain_actions_when_program_domain_is_unavailable():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    actions = [
+        ControlAction("tls", "set_phase", 1),
+        ControlAction("tls", "set_phase_duration", 3.0),
+        ControlAction("tls", "set_program", "program_0"),
+    ]
+    with (
+        patch.object(
+            traci.trafficlight,
+            "getAllProgramLogics",
+            side_effect=traci.exceptions.FatalTraCIError("not connected"),
+        ) as get_programs,
+        patch.object(traci.trafficlight, "setPhase") as set_phase,
+        patch.object(traci.trafficlight, "setPhaseDuration") as set_duration,
+        patch.object(traci.trafficlight, "setProgram") as set_program,
+    ):
+        results = bridge.apply_actions(actions)
+
+    assert [result.accepted for result in results] == [False, True, False]
+    assert get_programs.call_count == 2
+    set_phase.assert_not_called()
+    set_duration.assert_called_once_with("tls", 3.0)
+    set_program.assert_not_called()
+
+
 def test_valid_actions_are_applied_and_not_rejected():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"
+    programs = [
+        SimpleNamespace(programID="program_0", phases=[object()] * 4),
+        SimpleNamespace(programID="program_1", phases=[object()] * 3),
+    ]
     actions = [
         ControlAction("tls", "set_phase", 2),
         ControlAction("tls", "set_phase_duration", "3.5"),
         ControlAction("tls", "set_program", "program_1"),
     ]
     with (
+        patch.object(traci.trafficlight, "getAllProgramLogics", return_value=programs),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
         patch.object(traci.trafficlight, "setPhase") as set_phase,
         patch.object(traci.trafficlight, "setPhaseDuration") as set_duration,
         patch.object(traci.trafficlight, "setProgram") as set_program,
@@ -143,3 +235,18 @@ def test_mock_bridge_uses_the_same_action_rejection_contract():
         "unknown action_type: 'unknown'",
     ]
     assert [action.value for action in bridge._applied_actions] == [3]
+
+
+def test_mock_bridge_rejects_the_same_domain_errors_as_traci():
+    bridge = MockBridge(tls_id="tls")
+    actions = [
+        ControlAction("tls", "set_phase", True),
+        ControlAction("tls", "set_phase", 4),
+        ControlAction("tls", "set_phase_duration", float("nan")),
+        ControlAction("tls", "set_program", "missing"),
+    ]
+
+    results = bridge.apply_actions(actions)
+
+    assert [result.accepted for result in results] == [False] * 4
+    assert bridge._applied_actions == []

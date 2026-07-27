@@ -71,6 +71,7 @@ class SimulationRunner:
         self.event_logger = EventLogger(events_csv) if events_csv else None
         self._terminal_reason = ""
         self._sumo_version_value = "unknown"
+        self._last_simulation_time = 0.0
 
         if bridge is not None:
             self.bridge = bridge
@@ -225,6 +226,14 @@ class SimulationRunner:
                         started_at=started_at,
                         ended_at=datetime.now(timezone.utc).isoformat(),
                         sumo_version=self._sumo_version_value,
+                        requested_steps=steps,
+                        final_simulation_time=self._last_simulation_time,
+                        step_length=getattr(self.bridge, "step_length", None),
+                        configured_end_time=getattr(
+                            self.bridge,
+                            "configured_end_time",
+                            None,
+                        ),
                     )
                 except Exception as exc:
                     cleanup_errors.append(exc)
@@ -277,6 +286,7 @@ class SimulationRunner:
             logger.warning("Simulation stopped at step %d", step)
             self._terminal_reason = "bridge returned no simulation time"
             return "disconnected"
+        self._last_simulation_time = float(sim_time)
 
         if self.step_logger:
             self.step_logger.record(step, raw_state)

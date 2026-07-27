@@ -73,6 +73,7 @@ class TraCIBridge:
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.configured_end_time = self._read_configured_end_time()
+        self.step_length = self._read_step_length()
         self.binary = binary
         self.additional_files = list(additional_files or [])
         self.artifacts = artifacts
@@ -95,6 +96,15 @@ class TraCIBridge:
             return float(raw) if raw is not None else None
         except (OSError, ET.ParseError, TypeError, ValueError):
             return None
+
+    def _read_step_length(self) -> float:
+        """Read the configured SUMO step length, whose default is one second."""
+        try:
+            step = ET.parse(self.sumo_cfg).getroot().find("./time/step-length")
+            raw = step.get("value") if step is not None else None
+            return float(raw) if raw is not None else 1.0
+        except (OSError, ET.ParseError, TypeError, ValueError):
+            return 1.0
 
     def _emit(self, event_type: str, detail: str) -> None:
         self.event_callback(event_type, detail)
@@ -416,10 +426,34 @@ class TraCIBridge:
         """
         results: list[ActionResult] = []
         for action in actions:
-            value, error = validate_control_action(action, self.tls_id)
+            value, error = validate_control_action(
+                action,
+                self.tls_id,
+            )
             if error is not None:
                 results.append(ActionResult(action, False, error))
                 continue
+            if action.action_type in {"set_phase", "set_program"}:
+                try:
+                    phase_count, program_ids = self._control_action_domain()
+                except RuntimeError as exc:
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            f"control domain unavailable: {exc}",
+                        )
+                    )
+                    continue
+                value, error = validate_control_action(
+                    action,
+                    self.tls_id,
+                    phase_count=phase_count,
+                    program_ids=program_ids,
+                )
+                if error is not None:
+                    results.append(ActionResult(action, False, error))
+                    continue
             if action.action_type == "set_phase":
                 traci.trafficlight.setPhase(action.tls_id, value)
             elif action.action_type == "set_phase_duration":
@@ -428,6 +462,31 @@ class TraCIBridge:
                 traci.trafficlight.setProgram(action.tls_id, value)
             results.append(ActionResult(action, True, "applied"))
         return results
+
+    def _control_action_domain(self) -> tuple[int, set[str]]:
+        """Return the active phase count and available programs from SUMO."""
+        try:
+            programs = list(traci.trafficlight.getAllProgramLogics(self.tls_id))
+            if not programs:
+                raise RuntimeError("no signal programs returned")
+            active_program = traci.trafficlight.getProgram(self.tls_id)
+        except RuntimeError:
+            raise
+        except (traci.exceptions.TraCIException, traci.exceptions.FatalTraCIError) as exc:
+            detail = str(exc) or type(exc).__name__
+            raise RuntimeError(detail) from exc
+        active_logic = next(
+            (
+                program
+                for program in programs
+                if program.programID == active_program
+            ),
+            programs[0],
+        )
+        return (
+            len(active_logic.phases),
+            {str(program.programID) for program in programs},
+        )
 
     def get_lane_capacity(self, lane_id: str) -> float:
         """车道容量（辆）= 车道长度 / 7.5m（5m 车长 + 2.5m 间距）。
