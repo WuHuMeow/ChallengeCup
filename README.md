@@ -239,22 +239,22 @@ export CC_DATA_ROOT=/path/to/路口数据
 
 ```powershell
 python -m pytest tests/ -q
-python scripts/validate_all.py --output-root output/verification/original
-python scripts/batch_validate.py --output-root output/verification/enhanced --no-report
-python scripts/run_pdf_matrix.py --quick --output-root output/verification/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 --output-root output/verification/matrix-full
+python scripts/validate_all.py --output-root output/runs/validate-original
+python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
+python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick
+python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full
 python scripts/package_offline.py --output-dir output/offline
 ```
 
 完整 IA/IB 验收：
 
 ```powershell
-python scripts/verify_ia_ib.py --quick --output-root output/verification/quick
-python scripts/verify_ia_ib.py --output-root output/verification/final
+python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick
+python scripts/verify_ia_ib.py --output-root output/runs/ia-ib-full
 ```
 
 `verification.json` 对每个检查使用 `pass`、`fail`、`not_run` 三态。Docker 或第二机器没有
-真实证据时保持 `not_run`。
+真实证据时保持 `not_run`。上述目录均由命令运行时创建，当前仓库不保留历史矩阵和验收产物。
 
 ```bash
 bash scripts/quality/lint_check.sh
