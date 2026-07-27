@@ -1,8 +1,7 @@
 """场景注册与配置加载测试。"""
 
-from core.config import Config, get_config
+from core.config import get_config
 from scenes.registry import SceneRegistry
-from pathlib import Path
 
 
 def test_config_loads():

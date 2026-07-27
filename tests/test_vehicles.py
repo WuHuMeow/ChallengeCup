@@ -14,8 +14,10 @@ def test_mock_vehicles_deterministic():
 def test_mock_vehicle_sample_rate():
     full = MockBridge(vehicle_sample_rate=1)
     sampled = MockBridge(vehicle_sample_rate=3)
-    full.start(); sampled.start()
-    full.step(); sampled.step()
+    full.start()
+    sampled.start()
+    full.step()
+    sampled.step()
     n_full = len(full.get_state().vehicles)
     n_sampled = len(sampled.get_state().vehicles)
     assert n_sampled < n_full
