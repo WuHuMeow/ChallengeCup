@@ -1,39 +1,26 @@
 # Output Ownership
 
-`output/` holds generated simulation material. Generated files remain ignored by
-Git; only this file and `deliverables/README.md` are tracked.
+`output/` is the runtime root for generated simulation material. Generated files remain ignored by
+Git; the only retained files are `output/README.md` and `output/deliverables/README.md`.
 
 ## Runtime Outputs
 
-Current runs retain these runtime-facing paths:
+Commands create runtime-facing paths such as:
 
-- `csv/` contains metrics CSV files, including the output from
+- `csv/` for metrics CSV files, including the output from
   `python examples/run_fixed_time.py 1`.
-- `logs/` contains simulation and event logs when a runner is configured to
-  emit them there.
-- `variants/` contains generated flow variants when a runner is configured to
+- `runs/` for run-scoped artifacts from `experiments.runner`, `RunService`, and matrix commands.
+- `variants/` for generated flow variants when a runner is configured to
   emit them there.
 
 Use the run command's output-directory option when available to direct a new
 run to the appropriate runtime directory. These directories are disposable
 generated state and must not be treated as archival evidence.
 
-## Historical Evidence
-
-`archive/` preserves completed validation, experiment, and check evidence:
-
-- `archive/validation/` contains historical `validate` and `validate_quick`
-  runs.
-- `archive/experiments/` contains the W3 audit, stress, and batch-smoke runs.
-- `archive/checks/` contains seed/CLI checks, temporary pytest output, and IB
-  disconnect logs.
-
-Archive contents are retained for inspection and are not runtime input. Do not
-overwrite an existing archive item; create a distinct evidence directory for a
-new retained run. The validation commands `python scripts/validate_all.py`
-and `python scripts/batch_validate.py` currently create fresh
-working output at their configured legacy paths; archive a completed run only
-after it is no longer needed as working state.
+The historical 13-pass/0-fail acceptance record and the audited 360-run matrix are documented in
+`docs/ia-ib-final-verification.md` and `docs/ia-ib-simulation-artifact-cleanup.md`. Their generated
+artifacts and archives were removed; do not describe any generated directory as currently present.
+Docker live and second-machine reproduction remain `not_run` evidence axes.
 
 ## Deliverables
 

@@ -49,12 +49,12 @@ name
 
 ```powershell
 python scripts/run_pdf_matrix.py --quick --tune `
-  --output-root output/verification/tuning-quick
+  --output-root output/runs/tuning-quick
 python scripts/run_pdf_matrix.py --steps 36000 `
-  --output-root output/verification/matrix-full
+  --output-root output/runs/matrix-full
 ```
 
-每个算法运行产物位于：
+上述命令在运行时创建指定的输出根目录；这些目录不随仓库保留。每个算法运行产物位于：
 
 ```text
 <root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
@@ -70,3 +70,6 @@ python scripts/run_pdf_matrix.py --steps 36000 `
 
 主办方原始 J2 信号方案可能触发 SUMO unsafe/unused-state warning；算法运行证据应同时记录
 终态和源数据 warning。
+
+已记录的 360 次矩阵审计为通过状态，但对应的大型生成产物已清理。不要为恢复历史文件而重新运行
+完整矩阵；Docker live 和第二机器复现仍是 `not_run` 的独立证据轴。
