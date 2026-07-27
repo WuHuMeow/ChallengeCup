@@ -233,7 +233,8 @@ export CC_DATA_ROOT=/path/to/路口数据
 
 ```powershell
 python -m pytest tests/ -q
-python scripts/validate_all.py
+python scripts/validate_all.py --output-root output/verification/original
+python scripts/batch_validate.py --output-root output/verification/enhanced --no-report
 python scripts/run_pdf_matrix.py --quick --output-root output/verification/matrix-quick
 python scripts/run_pdf_matrix.py --steps 36000 --output-root output/verification/matrix-full
 python scripts/package_offline.py --output-dir output/offline

@@ -13,16 +13,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from engine.artifacts import RunArtifacts
+
 ROOT = Path(__file__).resolve().parents[1]
-REQUIRED = [
+REQUIRED = (
     "run_metadata.json",
-    "metrics.csv",
-    "simulation_log.csv",
-    "events.csv",
-    "tripinfo.xml",
-    "stats.xml",
-    "traj.xml",
-]
+    *RunArtifacts.required_output_names(),
+)
 
 
 def main() -> int:

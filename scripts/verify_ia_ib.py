@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT_PATH = ROOT / "docs" / "ia-ib-final-verification.md"
 sys.path.insert(0, str(ROOT))
 
 from core.run_models import RunRequest, RunStatus  # noqa: E402
@@ -32,6 +33,7 @@ class CheckResult:
     command: str
     warnings: list[str]
     errors: list[str]
+    exit_code: int | None = None
 
 
 def _result(
@@ -46,6 +48,7 @@ def _result(
     resolved = status or ("pass" if not errors else "fail")
     if resolved not in {"pass", "fail", "not_run"}:
         raise ValueError(f"unknown check status: {resolved}")
+    exit_code = None if resolved == "not_run" else (0 if resolved == "pass" else 1)
     return CheckResult(
         name,
         resolved,
@@ -53,11 +56,12 @@ def _result(
         command,
         warnings,
         errors,
+        exit_code,
     )
 
 
 def _not_run(name: str, detail: str) -> CheckResult:
-    return CheckResult(name, "not_run", 0.0, "not run", [detail], [])
+    return CheckResult(name, "not_run", 0.0, "not run", [detail], [], None)
 
 
 def verify_data_integrity(_: Path) -> CheckResult:
@@ -397,6 +401,83 @@ def verify_stress_runs(
     )
 
 
+def verify_automated_regression(_: Path) -> CheckResult:
+    """Run the repository-wide automated acceptance commands."""
+    started = time.perf_counter()
+    commands = [
+        [sys.executable, "-m", "pytest", "tests", "-q", "-p", "no:cacheprovider"],
+        [
+            sys.executable,
+            "-m",
+            "compileall",
+            "-q",
+            "algorithms",
+            "api",
+            "cloud",
+            "core",
+            "engine",
+            "experiments",
+            "ml",
+            "scenes",
+            "scripts",
+            "visualization",
+        ],
+        [
+            sys.executable,
+            "-c",
+            (
+                "import algorithms, api, cloud, core, engine, experiments, "
+                "ml, scenes, scripts, visualization"
+            ),
+        ],
+        [
+            sys.executable,
+            "-m",
+            "flake8",
+            "algorithms",
+            "api",
+            "cloud",
+            "core",
+            "engine",
+            "experiments",
+            "scenes",
+            "scripts",
+            "visualization",
+            "--max-line-length=100",
+        ],
+        ["git", "diff", "--check"],
+    ]
+    errors = []
+    details = []
+    for command in commands:
+        completed = subprocess.run(
+            command,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        command_text = " ".join(str(part) for part in command)
+        details.append(f"{command_text} [exit={completed.returncode}]")
+        if completed.returncode:
+            output = "\n".join(
+                value.strip()
+                for value in (completed.stdout, completed.stderr)
+                if value.strip()
+            )
+            errors.append(
+                f"{command_text} exited {completed.returncode}"
+                + (f":\n{output}" if output else "")
+            )
+    return _result(
+        "automated_regression",
+        started,
+        "; ".join(details),
+        [],
+        errors,
+    )
+
+
 def verify_baseline_runs(
     verification_root: Path,
     steps: int = 3600,
@@ -477,6 +558,7 @@ checks: list[tuple[str, Callable[..., CheckResult]]] = [
     ("figure_contracts", verify_figure_contracts),
     ("matrix", verify_matrix),
     ("stress_runs", verify_stress_runs),
+    ("automated_regression", verify_automated_regression),
     ("docker", verify_docker),
 ]
 
@@ -502,16 +584,25 @@ def render_markdown(
     lines = [
         "# IA/IB Final Verification",
         "",
-        "| Check | Status | Seconds |",
-        "|---|---:|---:|",
+        "| Check | Status | Exit Code | Seconds |",
+        "|---|---:|---:|---:|",
     ]
     lines.extend(
-        f"| {item.name} | {item.status} | {item.duration_seconds:.2f} |"
+        f"| {item.name} | {item.status} | "
+        f"{item.exit_code if item.exit_code is not None else 'N/A'} | "
+        f"{item.duration_seconds:.2f} |"
         for item in results
     )
     lines.extend(["", "## Docker", "", f"live validation: {docker_status}"])
     for item in results:
-        lines.extend(["", f"## {item.name}", "", f"Command: `{item.command}`"])
+        exit_code = item.exit_code if item.exit_code is not None else "N/A"
+        lines.extend([
+            "",
+            f"## {item.name}",
+            "",
+            f"Command: `{item.command}`",
+            f"Exit code: `{exit_code}`",
+        ])
         lines.extend(f"- warning: {value}" for value in item.warnings)
         lines.extend(f"- error: {value}" for value in item.errors)
     return "\n".join(lines) + "\n"
@@ -545,6 +636,7 @@ def main(argv: list[str] | None = None) -> int:
         verify_figure_contracts(args.output_root),
         verify_matrix(args.output_root, quick=args.quick),
         verify_stress_runs(args.output_root, quick=args.quick),
+        verify_automated_regression(args.output_root),
         verify_docker(args.output_root),
     ]
     (args.output_root / "verification.json").write_text(
@@ -556,9 +648,8 @@ def main(argv: list[str] | None = None) -> int:
         + "\n",
         encoding="utf-8",
     )
-    report = ROOT / "docs" / "reports" / "ia-ib-final-verification.md"
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(
+    REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_PATH.write_text(
         render_markdown(results, docker_live_status(results)),
         encoding="utf-8",
     )

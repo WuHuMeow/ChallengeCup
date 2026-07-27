@@ -17,6 +17,7 @@ from core.types import (
     QueueState,
     VehicleState,
 )
+from engine.action_validation import validate_control_action
 
 logger = logging.getLogger(__name__)
 
@@ -116,62 +117,9 @@ class MockBridge:
         """Validate and record control actions without contacting SUMO."""
         results: list[ActionResult] = []
         for action in actions:
-            if action.tls_id != self.tls_id:
-                results.append(
-                    ActionResult(action, False, f"unknown tls_id: {action.tls_id!r}")
-                )
-                continue
-            if action.action_type == "set_phase":
-                if not isinstance(action.value, int):
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            f"set_phase value must be an integer: {action.value!r}",
-                        )
-                    )
-                    continue
-            elif action.action_type == "set_phase_duration":
-                try:
-                    duration = float(action.value)
-                except (TypeError, ValueError):
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_phase_duration value must be numeric: "
-                            f"{action.value!r}",
-                        )
-                    )
-                    continue
-                if duration <= 0:
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_phase_duration value must be positive: "
-                            f"{duration!r}",
-                        )
-                    )
-                    continue
-            elif action.action_type == "set_program":
-                if not str(action.value).strip():
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_program value must be non-empty",
-                        )
-                    )
-                    continue
-            else:
-                results.append(
-                    ActionResult(
-                        action,
-                        False,
-                        f"unknown action_type: {action.action_type!r}",
-                    )
-                )
+            _, error = validate_control_action(action, self.tls_id)
+            if error is not None:
+                results.append(ActionResult(action, False, error))
                 continue
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",

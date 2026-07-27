@@ -15,6 +15,7 @@
 | [edge_mapping.md](edge_mapping.md) | 20 个路口边 ID、方向和进出口属性 |
 | [migration_log.md](migration_log.md) | SUMO 版本迁移记录 |
 | [batch_validate_report.md](batch_validate_report.md) | 增强配置批量验证结果 |
+| [ia-ib-final-verification.md](ia-ib-final-verification.md) | IA/IB 最终验收命令、退出码和证据 |
 | [guides/](guides/) | Git、Markdown、数据导入、实验和测试指南 |
 | [tasks/](tasks/) | Gitee 风格的路线图和每周任务书 |
 | [superpowers/specs/](superpowers/specs/) | 架构、接口和算法设计文档及图示 |
@@ -33,8 +34,8 @@
 以下命令从仓库根目录执行：
 
 ```powershell
-python scripts/validate_all.py
-python scripts/batch_validate.py
+python scripts/validate_all.py --output-root output/verification/original
+python scripts/batch_validate.py --output-root output/verification/enhanced --no-report
 python scripts/generate_edge_mapping.py
 ```
 

@@ -105,6 +105,10 @@ class _ConfiguredEndBridge(_EarlyEndBridge):
     configured_end_time = 0.1
 
 
+class _ExhaustedBeforeConfiguredEndBridge(_EarlyEndBridge):
+    configured_end_time = 0.3
+
+
 def test_reaching_configured_sumo_end_is_completed(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
 
@@ -118,6 +122,22 @@ def test_reaching_configured_sumo_end_is_completed(tmp_path):
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert payload["status"] == "completed"
     assert payload["reason"] == ""
+
+
+def test_exhausted_simulation_with_configured_end_advances_to_horizon(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    bridge = _ExhaustedBeforeConfiguredEndBridge()
+
+    SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(10)
+
+    payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    assert payload["status"] == "completed"
+    assert bridge._current_step == 3
 
 
 def test_ordinary_early_end_is_distinct_from_disconnect(tmp_path):

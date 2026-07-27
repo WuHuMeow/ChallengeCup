@@ -176,8 +176,37 @@ def test_verifier_has_pdf_aligned_checks():
         "figure_contracts",
         "matrix",
         "stress_runs",
+        "automated_regression",
         "docker",
     ]
+
+
+def test_automated_regression_records_commands_and_exit_codes(monkeypatch):
+    from scripts import verify_ia_ib
+
+    calls = []
+
+    def completed(command, **kwargs):
+        calls.append(command)
+        return type(
+            "Result",
+            (),
+            {"returncode": 0, "stdout": "", "stderr": ""},
+        )()
+
+    monkeypatch.setattr(verify_ia_ib.subprocess, "run", completed)
+
+    result = verify_ia_ib.verify_automated_regression(Path("unused"))
+
+    assert result.status == "pass"
+    assert result.exit_code == 0
+    assert len(calls) == 5
+    assert any(command[1:3] == ["-m", "pytest"] for command in calls)
+    assert any(command[1:3] == ["-m", "compileall"] for command in calls)
+    assert any(command[1] == "-c" and "import algorithms" in command[2] for command in calls)
+    assert any(command[1:3] == ["-m", "flake8"] for command in calls)
+    assert ["git", "diff", "--check"] in calls
+    assert result.command.count("exit=0") == 5
 
 
 def test_docker_unavailable_is_not_run_not_pass(tmp_path, monkeypatch):
@@ -202,12 +231,21 @@ def test_final_report_has_no_hard_coded_ab_blocker():
     from scripts.verify_ia_ib import CheckResult, render_markdown
 
     report = render_markdown(
-        [CheckResult("ca_mp_smoke", "pass", 0.1, "run", [], [])],
+        [CheckResult("ca_mp_smoke", "pass", 0.1, "run", [], [], exit_code=0)],
         "not run: Docker unavailable",
     )
 
     assert "CA-MP remains an AB blocker" not in report
     assert "AB blocker:" not in report
+    assert "| Check | Status | Exit Code | Seconds |" in report
+    assert "| ca_mp_smoke | pass | 0 |" in report
+    assert "Exit code: `0`" in report
+
+
+def test_final_report_uses_flat_document_path():
+    from scripts.verify_ia_ib import REPORT_PATH, ROOT
+
+    assert REPORT_PATH == ROOT / "docs" / "ia-ib-final-verification.md"
 
 
 def test_offline_package_marks_second_machine_not_run(tmp_path, monkeypatch):

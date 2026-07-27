@@ -101,7 +101,7 @@ API 和 CLI 都调用单 worker 的 `RunService`，不会绕过统一运行目�
 - 1.5 倍流量压力运行；
 - Docker 静态检查，以及环境可用时的 live build/run。
 
-验收输出 `verification.json` 和 `docs/reports/ia-ib-final-verification.md`，检查状态严格为
+验收输出 `verification.json` 和 `docs/ia-ib-final-verification.md`，检查状态严格为
 `pass`、`fail`、`not_run`。
 
 ## 6. Docker

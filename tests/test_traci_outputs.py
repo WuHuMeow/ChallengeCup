@@ -2,9 +2,26 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.types import ControlAction
+from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.mock_bridge import MockBridge
 from engine.traci_bridge import TraCIBridge, traci
+
+
+def test_control_action_validation_normalizes_values_and_rejections():
+    valid_duration = validate_control_action(
+        ControlAction("tls", "set_phase_duration", "3.5"), "tls"
+    )
+    valid_program = validate_control_action(
+        ControlAction("tls", "set_program", " program_1 "), "tls"
+    )
+    invalid = validate_control_action(
+        ControlAction("tls", "set_phase", "north"), "tls"
+    )
+
+    assert valid_duration == (3.5, None)
+    assert valid_program == ("program_1", None)
+    assert invalid == (None, "set_phase value must be an integer: 'north'")
 
 
 def test_build_cmd_redirects_all_sumo_outputs(tmp_path):

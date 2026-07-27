@@ -19,6 +19,24 @@ def test_run_artifacts_create_collision_safe_layout(tmp_path):
     assert first.figures.name == "figures"
 
 
+def test_required_output_contract_is_shared_by_runners_and_checker():
+    from scripts.check_outputs import REQUIRED
+    from scripts.run_pdf_matrix import REQUIRED_ARTIFACTS
+
+    expected = (
+        "metrics.csv",
+        "simulation_log.csv",
+        "events.csv",
+        "tripinfo.xml",
+        "stats.xml",
+        "traj.xml",
+        "summary.json",
+    )
+    assert RunArtifacts.required_output_names() == expected
+    assert REQUIRED_ARTIFACTS == expected
+    assert tuple(REQUIRED) == ("run_metadata.json", *expected)
+
+
 def test_write_metadata_is_atomic_and_structured(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     artifacts.metrics.write_text("step\n0\n", encoding="utf-8")

@@ -28,6 +28,25 @@ def test_active_docs_reference_current_verification_commands():
     assert "scripts/verify_ia_ib.py" in scripts
 
 
+def test_authoritative_docs_include_required_validation_output_roots():
+    root_readme = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    docs_readme = (REPOSITORY_ROOT / "docs" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (root_readme, docs_readme):
+        assert "scripts/validate_all.py --output-root" in text
+        assert "scripts/batch_validate.py --output-root" in text
+
+
+def test_generated_reports_use_flat_document_paths():
+    from scripts import batch_validate
+    from scripts.verify_ia_ib import REPORT_PATH
+
+    assert batch_validate.REPORT == REPOSITORY_ROOT / "docs" / "batch_validate_report.md"
+    assert REPORT_PATH == REPOSITORY_ROOT / "docs" / "ia-ib-final-verification.md"
+
+
 def _active_docs_text():
     paths = [
         "README.md",

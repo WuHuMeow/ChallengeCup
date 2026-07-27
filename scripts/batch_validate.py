@@ -16,7 +16,7 @@ else:
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG_DIR = ROOT / "engine" / "configs"
-REPORT = ROOT / "docs" / "reports" / "batch-validation-report.md"
+REPORT = ROOT / "docs" / "batch_validate_report.md"
 
 
 def run_one(intersection_id: int, steps: int, output_root: Path) -> dict:

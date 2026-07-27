@@ -25,6 +25,7 @@ from core.types import (
     QueueState,
     VehicleState,
 )
+from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 
 logger = logging.getLogger(__name__)
@@ -415,67 +416,16 @@ class TraCIBridge:
         """
         results: list[ActionResult] = []
         for action in actions:
-            if action.tls_id != self.tls_id:
-                results.append(
-                    ActionResult(action, False, f"unknown tls_id: {action.tls_id!r}")
-                )
+            value, error = validate_control_action(action, self.tls_id)
+            if error is not None:
+                results.append(ActionResult(action, False, error))
                 continue
             if action.action_type == "set_phase":
-                if not isinstance(action.value, int):
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            f"set_phase value must be an integer: {action.value!r}",
-                        )
-                    )
-                    continue
-                traci.trafficlight.setPhase(action.tls_id, action.value)
+                traci.trafficlight.setPhase(action.tls_id, value)
             elif action.action_type == "set_phase_duration":
-                try:
-                    duration = float(action.value)
-                except (TypeError, ValueError):
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_phase_duration value must be numeric: "
-                            f"{action.value!r}",
-                        )
-                    )
-                    continue
-                if duration <= 0:
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_phase_duration value must be positive: "
-                            f"{duration!r}",
-                        )
-                    )
-                    continue
-                traci.trafficlight.setPhaseDuration(action.tls_id, duration)
+                traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
-                program = str(action.value).strip()
-                if not program:
-                    results.append(
-                        ActionResult(
-                            action,
-                            False,
-                            "set_program value must be non-empty",
-                        )
-                    )
-                    continue
-                traci.trafficlight.setProgram(action.tls_id, program)
-            else:
-                results.append(
-                    ActionResult(
-                        action,
-                        False,
-                        f"unknown action_type: {action.action_type!r}",
-                    )
-                )
-                continue
+                traci.trafficlight.setProgram(action.tls_id, value)
             results.append(ActionResult(action, True, "applied"))
         return results
 

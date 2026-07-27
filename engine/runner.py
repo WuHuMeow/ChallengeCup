@@ -294,8 +294,10 @@ class SimulationRunner:
             )
         if self.bridge.is_exhausted():
             configured_end = getattr(self.bridge, "configured_end_time", None)
-            if configured_end is not None and sim_time >= configured_end:
-                return "configured_end"
+            if configured_end is not None:
+                if sim_time >= configured_end:
+                    return "configured_end"
+                return "continue"
             return "exhausted"
         return "continue"
 

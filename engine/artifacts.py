@@ -17,6 +17,19 @@ class RunArtifacts:
     seed: int
     run_id: str
 
+    @staticmethod
+    def required_output_names() -> tuple[str, ...]:
+        """Return the canonical files required for a completed run."""
+        return (
+            "metrics.csv",
+            "simulation_log.csv",
+            "events.csv",
+            "tripinfo.xml",
+            "stats.xml",
+            "traj.xml",
+            "summary.json",
+        )
+
     @classmethod
     def create(
         cls,

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from core.run_models import RunRequest, RunResult, RunStatus  # noqa: E402
+from engine.artifacts import RunArtifacts  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
 from experiments.tuning import tune_ca_mp  # noqa: E402
 
@@ -19,15 +20,7 @@ from experiments.tuning import tune_ca_mp  # noqa: E402
 ALGORITHMS = ("fixed_time", "actuated", "ca_maxpressure")
 FLOW_MULTIPLIERS = (1.0, 1.5)
 SEEDS = (42, 123, 456)
-REQUIRED_ARTIFACTS = (
-    "metrics.csv",
-    "events.csv",
-    "simulation_log.csv",
-    "tripinfo.xml",
-    "stats.xml",
-    "traj.xml",
-    "summary.json",
-)
+REQUIRED_ARTIFACTS = RunArtifacts.required_output_names()
 
 
 def _selected_params(output_root: Path) -> dict[str, float]:
