@@ -2,5 +2,5 @@
 
 | 文件 | 内容 |
 |------|------|
-| [edge-mapping.md](edge-mapping.md) | 20 路口边 ID、方向和进出口属性（脚本生成） |
-| [competition/](competition/) | 赛题原始 PDF |
+| [边 ID 与方向映射](../edge_mapping.md) | 20 路口边 ID、方向和进出口属性（脚本生成） |
+| [赛题原始 PDF](../pdf/XH-202613_面向雄安新区“城市大脑”的车路云.pdf) | 功能一、功能二和功能三赛道要求 |
