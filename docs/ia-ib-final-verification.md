@@ -3,19 +3,19 @@
 | Check | Status | Exit Code | Seconds |
 |---|---:|---:|---:|
 | data_integrity | pass | N/A | 0.02 |
-| original_100 | pass | 0 | 4.46 |
-| enhanced_100 | pass | 0 | 4.41 |
-| enhanced_3600 | pass | 0 | 65.97 |
-| variant_contracts | pass | 0 | 1.26 |
-| runtime_contracts | pass | 0 | 1.33 |
-| api_contracts | pass | 0 | 2.44 |
-| ca_mp_smoke | pass | N/A | 1.67 |
-| exact_metrics | pass | N/A | 1.66 |
-| figure_contracts | pass | N/A | 5.03 |
-| matrix | pass | N/A | 30.41 |
-| stress_runs | pass | N/A | 299.72 |
-| automated_regression | pass | 0 | 7.60 |
-| docker | not_run | N/A | 0.38 |
+| original_100 | pass | 0 | 4.53 |
+| enhanced_100 | pass | 0 | 4.38 |
+| enhanced_3600 | pass | 0 | 60.76 |
+| variant_contracts | pass | 0 | 0.44 |
+| runtime_contracts | pass | 0 | 0.74 |
+| api_contracts | pass | 0 | 1.87 |
+| ca_mp_smoke | pass | N/A | 1.43 |
+| exact_metrics | pass | N/A | 1.32 |
+| figure_contracts | pass | N/A | 3.78 |
+| matrix | pass | N/A | 26.09 |
+| stress_runs | pass | N/A | 219.27 |
+| automated_regression | pass | 0 | 6.12 |
+| docker | not_run | N/A | 0.35 |
 
 ## Docker
 
@@ -23,7 +23,7 @@ live validation: not run: Docker unavailable
 
 ## Repository provenance
 
-- commit: `f31f04e5fadd26196ef8ced6bc4bd1bff78c3253`
+- commit: `a4a68dfec420fe31b0b97480d8ca89d0f52425a8`
 - dirty: `false`
 - diff SHA-256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 
