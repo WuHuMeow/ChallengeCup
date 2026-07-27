@@ -2,34 +2,51 @@
 
 | Check | Status | Exit Code | Seconds |
 |---|---:|---:|---:|
-| data_integrity | pass | 0 | 0.01 |
-| original_100 | pass | 0 | 4.30 |
-| enhanced_100 | pass | 0 | 4.33 |
-| enhanced_3600 | pass | 0 | 59.91 |
-| variant_contracts | pass | 0 | 0.52 |
-| runtime_contracts | pass | 0 | 0.67 |
-| api_contracts | pass | 0 | 1.58 |
-| ca_mp_smoke | pass | 0 | 1.48 |
-| exact_metrics | pass | 0 | 1.64 |
-| figure_contracts | pass | 0 | 3.72 |
-| matrix | pass | 0 | 0.08 |
-| stress_runs | pass | 0 | 273.37 |
-| docker | not_run | N/A | 0.28 |
-| automated_regression | pass | 0 | 5.60 |
+| data_integrity | pass | N/A | 0.02 |
+| original_100 | pass | 0 | 4.46 |
+| enhanced_100 | pass | 0 | 4.41 |
+| enhanced_3600 | pass | 0 | 65.97 |
+| variant_contracts | pass | 0 | 1.26 |
+| runtime_contracts | pass | 0 | 1.33 |
+| api_contracts | pass | 0 | 2.44 |
+| ca_mp_smoke | pass | N/A | 1.67 |
+| exact_metrics | pass | N/A | 1.66 |
+| figure_contracts | pass | N/A | 5.03 |
+| matrix | pass | N/A | 30.41 |
+| stress_runs | pass | N/A | 299.72 |
+| automated_regression | pass | 0 | 7.60 |
+| docker | not_run | N/A | 0.38 |
 
 ## Docker
 
 live validation: not run: Docker unavailable
 
+## Repository provenance
+
+- commit: `f31f04e5fadd26196ef8ced6bc4bd1bff78c3253`
+- dirty: `false`
+- diff SHA-256: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+
+## Evidence axes
+
+- repository implementation: pass
+- automated verification: pass
+- local SUMO verification: pass
+- Docker live verification: not_run
+- second-machine reproduction: not_run
+
 ## data_integrity
 
 Command: `static data inventory`
-Exit code: `0`
+Exit code: `N/A`
+Mode: `in_process`
 
 ## original_100
 
-Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\data\intersection_data/demo_N.sumocfg> --no-step-log true -e 100 --tripinfo-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/original_100/N/tripinfo.xml> --summary-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/original_100/N/stats.xml> --fcd-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/original_100/N/traj.xml>`
+Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\data\intersection_data/demo_N.sumocfg> --no-step-log true -e 100 --tripinfo-output <output\verification\final-sharded/original_100/N/tripinfo.xml> --summary-output <output\verification\final-sharded/original_100/N/stats.xml> --fcd-output <output\verification\final-sharded/original_100/N/traj.xml>`
 Exit code: `0`
+Mode: `executed`
+- evidence: `output\verification\final-sharded\original_100`
 - warning: intersection 9: Warning: Missing yellow phase in tlLogic 'J1', program '0' for tl-index 7 when switching to phase 4.
 - warning: intersection 11: Warning: Unused states in tlLogic 'J2', program '0' in phase 0 after tl-index 17
 - warning: intersection 11: Warning: Unsafe green phase 0 in tlLogic 'J2', program '0'. Lane '-E0_0' is targeted by 2 'G'-links. (use 'g' instead) Overall 4 lanes in 2 phases are unsafe.
@@ -38,8 +55,10 @@ Exit code: `0`
 
 ## enhanced_100
 
-Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\engine\configs/demo_N.sumocfg> --no-step-log true -e 100 --tripinfo-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_100/N/tripinfo.xml> --summary-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_100/N/stats.xml> --fcd-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_100/N/traj.xml>`
+Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\engine\configs/demo_N.sumocfg> --no-step-log true -e 100 --tripinfo-output <output\verification\final-sharded/enhanced_100/N/tripinfo.xml> --summary-output <output\verification\final-sharded/enhanced_100/N/stats.xml> --fcd-output <output\verification\final-sharded/enhanced_100/N/traj.xml>`
 Exit code: `0`
+Mode: `executed`
+- evidence: `output\verification\final-sharded\enhanced_100`
 - warning: intersection 9: Warning: Missing yellow phase in tlLogic 'J1', program '0' for tl-index 7 when switching to phase 4.
 - warning: intersection 11: Warning: Unused states in tlLogic 'J2', program '0' in phase 0 after tl-index 17
 - warning: intersection 11: Warning: Unsafe green phase 0 in tlLogic 'J2', program '0'. Lane '-E0_0' is targeted by 2 'G'-links. (use 'g' instead) Overall 4 lanes in 2 phases are unsafe.
@@ -48,8 +67,10 @@ Exit code: `0`
 
 ## enhanced_3600
 
-Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\engine\configs/demo_N.sumocfg> --no-step-log true -e 3600 --tripinfo-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_3600/N/tripinfo.xml> --summary-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_3600/N/stats.xml> --fcd-output <C:\Users\peng\Desktop\project\ChallengeCup\output\verification\final-sharded/enhanced_3600/N/traj.xml>`
+Command: `sumo -c <C:\Users\peng\Desktop\project\ChallengeCup\engine\configs/demo_N.sumocfg> --no-step-log true -e 3600 --tripinfo-output <output\verification\final-sharded/enhanced_3600/N/tripinfo.xml> --summary-output <output\verification\final-sharded/enhanced_3600/N/stats.xml> --fcd-output <output\verification\final-sharded/enhanced_3600/N/traj.xml>`
 Exit code: `0`
+Mode: `executed`
+- evidence: `output\verification\final-sharded\enhanced_3600`
 - warning: intersection 9: Warning: Missing yellow phase in tlLogic 'J1', program '0' for tl-index 7 when switching to phase 4.
 - warning: intersection 11: Warning: Unused states in tlLogic 'J2', program '0' in phase 0 after tl-index 17
 - warning: intersection 11: Warning: Unsafe green phase 0 in tlLogic 'J2', program '0'. Lane '-E0_0' is targeted by 2 'G'-links. (use 'g' instead) Overall 4 lanes in 2 phases are unsafe.
@@ -73,60 +94,63 @@ Exit code: `0`
 
 ## variant_contracts
 
-Command: `C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m pytest tests/test_variants.py tests/test_scenes.py -q -p no:cacheprovider`
+Command: `C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest tests/test_variants.py tests/test_scenes.py -q -p no:cacheprovider`
 Exit code: `0`
+Mode: `executed`
 
 ## runtime_contracts
 
-Command: `C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_events.py tests/test_resilience.py tests/test_runner_channel.py -q -p no:cacheprovider`
+Command: `C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest tests/test_run_service.py tests/test_events.py tests/test_resilience.py tests/test_runner_channel.py -q -p no:cacheprovider`
 Exit code: `0`
+Mode: `executed`
 
 ## api_contracts
 
-Command: `C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m pytest tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider`
+Command: `C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider`
 Exit code: `0`
+Mode: `executed`
 
 ## ca_mp_smoke
 
 Command: `RunService(RunRequest('1','ca_maxpressure',steps=100,flow=1.5))`
-Exit code: `0`
+Exit code: `N/A`
+Mode: `in_process`
 
 ## exact_metrics
 
 Command: `fixed_time 100-step run; parse tripinfo.xml -> summary.json`
-Exit code: `0`
+Exit code: `N/A`
+Mode: `in_process`
 
 ## figure_contracts
 
 Command: `pytest tests/test_visualization.py; python -m visualization.report`
-Exit code: `0`
+Exit code: `N/A`
+Mode: `in_process`
 
 ## matrix
 
-Command: `20 isolated local processes; each process uses RunService(max_workers=1); 360 x 36000-step audit`
-Exit code: `0`
+Command: `in-process audit of output\verification\final-sharded\matrix.csv`
+Exit code: `N/A`
+Mode: `audited`
+- evidence: `output\verification\final-sharded\matrix.csv`
 
 ## stress_runs
 
 Command: `python scripts/stress_memory.py --intersections 1 11 16`
-Exit code: `0`
-
-## docker
-
-Command: `C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m pytest tests/test_docker_static.py -q -p no:cacheprovider`
 Exit code: `N/A`
-- warning: Docker unavailable; live build/run/save/load not run
+Mode: `in_process`
 
 ## automated_regression
 
-Command: `C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m pytest tests -q -p no:cacheprovider [exit=0]; C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts visualization [exit=0]; C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -c import algorithms, api, cloud, core, engine, experiments, ml, scenes, scripts, visualization [exit=0]; C:\Users\peng\Desktop\project\ChallengeCup\.venv\Scripts\python.exe -m flake8 algorithms api cloud core engine experiments scenes scripts visualization --max-line-length=100 [exit=0]; git diff --check [exit=0]`
+Command: `C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest tests -q -p no:cacheprovider [exit=0]; C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts visualization [exit=0]; C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -c import algorithms, api, cloud, core, engine, experiments, ml, scenes, scripts, visualization [exit=0]; C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m flake8 algorithms api cloud core engine experiments scenes scripts visualization --max-line-length=100 [exit=0]; git diff --check [exit=0]`
 Exit code: `0`
+Mode: `executed`
+- evidence: `output\verification\final-sharded\pycache`
 
-## Evidence axes
+## docker
 
-- repository implementation: pass (`main` commit `745dc4b`)
-- automated verification: see `automated_regression`
-- local SUMO verification: see original/enhanced/matrix/stress checks
-- Docker live verification: not run: Docker unavailable
-- second-machine reproduction: not_run (no independent evidence supplied)
-- report/PPT/video: independent deliverables; not claimed by IA/IB verification
+Command: `C:\Users\peng\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pytest tests/test_docker_static.py -q -p no:cacheprovider`
+Exit code: `N/A`
+Mode: `not_run`
+- warning: Docker unavailable; live build/run/save/load not run
