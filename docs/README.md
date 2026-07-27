@@ -10,6 +10,13 @@
 - [SUMO 环境安装与版本检查](sumo_env_setup.md)
 - [操作指南](guides/)
 
+最小验证入口（输出目录由命令在运行时创建）：
+
+```powershell
+python scripts/validate_all.py --output-root output/runs/validate-original
+python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
+```
+
 ## PDF 与验收依据
 
 - [原始赛题 PDF](pdf/XH-202613_面向雄安新区“城市大脑”的车路云.pdf)
