@@ -1,7 +1,8 @@
 # 部署与复现
 
 本文是 IA/IB 的规范部署入口。原始 `data/intersection_data/` 只读，所有运行和验收产物写入
-`output/` 下的独立目录。
+`output/` 下的独立目录。仓库当前不保留完整矩阵、验收输出或压缩包；下列命令会在本机
+重新创建一次性运行目录。
 
 ## 1. 本地环境
 
@@ -12,7 +13,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 sumo --version
 .\.venv\Scripts\python.exe scripts/validate_all.py `
-  --steps 100 --output-root output/verification/original
+  --steps 100 --output-root output/runs/validate-original
 ```
 
 ### Linux / macOS
@@ -23,7 +24,7 @@ python3 -m venv .venv
 python -m pip install -r requirements-dev.txt
 sumo --version
 python scripts/validate_all.py \
-  --steps 100 --output-root output/verification/original
+  --steps 100 --output-root output/runs/validate-original
 ```
 
 项目以 SUMO 1.27.1 验证；安装细节见 `docs/sumo_env_setup.md`。
@@ -69,14 +70,14 @@ API 和 CLI 都调用单 worker 的 `RunService`，不会绕过统一运行目�
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
-  --quick --output-root output/verification/matrix-quick
+  --quick --output-root output/runs/matrix-quick
 ```
 
 完整 PDF 矩阵为 20 路口、3 算法、2 流量、3 种子，共 360 次，每次 36000 步：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py `
-  --steps 36000 --output-root output/verification/matrix-full
+  --steps 36000 --output-root output/runs/matrix-full
 ```
 
 首次需要同时校准 CA-MP 时可加 `--tune`。恢复运行会读取 `matrix_state.json`，只跳过终态
@@ -87,9 +88,9 @@ API 和 CLI 都调用单 worker 的 `RunService`，不会绕过统一运行目�
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
-  --quick --output-root output/verification/quick
+  --quick --output-root output/runs/ia-ib-quick
 .\.venv\Scripts\python.exe scripts/verify_ia_ib.py `
-  --output-root output/verification/final
+  --output-root output/runs/ia-ib-full
 ```
 
 `--quick` 会跳过增强配置的 3600 步检查，并把该项写为 `not_run`。完整验收包括：
@@ -128,8 +129,8 @@ docker compose run --rm simulation `
   --steps 36000 --output-dir /app/output/runs
 ```
 
-本机没有 Docker、镜像未构建或 live 命令未执行时，Docker 证据状态为 `not_run`，静态
-Dockerfile 测试通过不能替代真实容器运行。
+Dockerfile、Compose 配置和静态契约已检查；当前没有 Docker live build/run/save/load
+的真实证据，因此 Docker live 状态为 `not_run`。第二机器复现同样保持 `not_run`。
 
 ## 7. 离线包与第二机器
 
@@ -160,9 +161,9 @@ manifest 记录每个文件的 SHA-256 和字节数。第二机器证据必须�
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/check_outputs.py `
-  --root output/verification/final
+  --root output/runs/ia-ib-full
 .\.venv\Scripts\python.exe scripts/check_seed_repro.py `
-  --steps 300 --output-root output/verification/seed
+  --steps 300 --output-root output/runs/seed-repro
 ```
 
 ## 9. 已知源数据 warning
@@ -173,5 +174,6 @@ manifest 记录每个文件的 SHA-256 和字节数。第二机器证据必须�
 
 ## 10. 交付边界
 
-IA/IB 验收覆盖仓库实现、自动测试、本地 SUMO、Docker live 和第二机器复现五条证据轴。
-PPT、Word 实验报告和演示视频仍是独立提交材料。
+当前记录中，仓库实现、自动测试和本地 SUMO 证据已经验收；Docker live 与第二机器复现
+仍为 `not_run`。历史 `output/verification/` 路径只是脚本可创建的运行时根目录，不是当前
+仓库中保留的产物。PPT、Word 实验报告和演示视频仍是独立提交材料。

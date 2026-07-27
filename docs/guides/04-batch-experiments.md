@@ -21,7 +21,7 @@ python -m experiments.runner \
   --flow-multiplier 1.5 \
   --seed 42 \
   --steps 36000 \
-  --output-dir output/exp1
+  --output-dir output/runs
 ```
 
 参数说明：
@@ -49,6 +49,20 @@ results = run_batch(
 print(f"完成 {len(results)} 次实验")
 ```
 
+`run_batch()` 返回 `RunResult` 列表；每次运行使用
+`<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/` 独立目录。
+
+### 可恢复的 PDF 矩阵（推荐）
+
+```bash
+python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick
+python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full
+```
+
+脚本把索引写入 `matrix.csv` 和 `matrix_state.json`。恢复时仅跳过终态为 `completed`、
+达到要求仿真时长且必需产物完整的运行。上述目录均为本地生成内容，当前仓库不保留历史
+360 次矩阵产物。
+
 ### 使用任务拆分脚本（双机并行）
 
 ```bash
@@ -68,10 +82,13 @@ results = run_batch(intersection_ids=["16"], steps=3600)
 ## 常见问题
 
 **Q: 跑到一半中断了怎么办？**
-A: 已完成的 CSV 不受影响。重新运行时跳过已有输出文件即可（手动检查 `output/csv/` 目录）。
+A: 使用相同 `--output-root` 重新执行 `scripts/run_pdf_matrix.py`。不要按文件名手动跳过，
+恢复逻辑会核对 `matrix_state.json`、运行终态、仿真时长和必需产物。
 
 **Q: 输出文件命名规则？**
-A: `{路口}_x{倍率}_{算法}_s{种子}.csv`，如 `16_x1.5_ca_maxpressure_s42.csv`。
+A: 每次运行位于 `<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`，矩阵根目录另有
+`matrix.csv` 和 `matrix_state.json`。
 
 **Q: 内存不够？**
-A: 用 `python scripts/stress_memory.py 16 36000` 测试峰值。Python 侧峰值应 < 1GB。
+A: 用 `python scripts/stress_memory.py --intersections 16 --steps 36000 --output-root output/runs/stress`
+测试峰值。默认阈值为 1024MiB，可通过 `--max-python-mib` 调整。

@@ -22,9 +22,11 @@ git config --global user.email "你的邮箱"
 ### 克隆仓库到本地
 
 ```bash
-git clone https://gitee.com/fyx0927/challenge-cup.git
+git clone https://github.com/WuHuMeow/ChallengeCup.git
 cd challenge-cup
 ```
+
+Gitee 仓库是已合入的上游结构来源；团队日常协作和推送以 GitHub `origin` 为准。
 
 ---
 
@@ -36,8 +38,8 @@ cd challenge-cup
 # 1. 查看当前修改了哪些文件
 git status
 
-# 2. 把所有修改加入暂存区
-git add .
+# 2. 只暂存本次确认过的文件
+git add README.md docs/
 
 # 3. 写提交说明并提交到本地
 git commit -m "docs: 修改了 XXX"
@@ -77,10 +79,10 @@ git commit -m "fix: 修复 runner.py 断点续跑逻辑"
 git pull origin main
 ```
 
-如果本地已有未提交的修改，建议先提交再拉取：
+如果本地已有未提交的修改，先确认这些修改属于当前任务，再提交并拉取：
 
 ```bash
-git add .
+git add <本次修改的文件>
 git commit -m "docs: 保存本地修改"
 git pull origin main
 ```
@@ -114,7 +116,7 @@ Automatic merge failed; fix conflicts and then commit the result.
 4. 重新提交：
 
 ```bash
-git add .
+git add <已解决冲突的文件>
 git commit -m "fix: 解决合并冲突"
 git push origin main
 ```
@@ -148,11 +150,11 @@ git log --oneline -- README.md
 ## 7. 撤销本地修改（谨慎使用）
 
 ```bash
-# 撤销某个文件的所有本地修改（未 add 时）
-git checkout -- 文件名
+# 撤销某个文件的所有本地修改（未暂存时；会丢弃该文件修改）
+git restore --worktree 文件名
 
-# 撤销已经 add 但未 commit 的修改
-git reset HEAD 文件名
+# 取消暂存但保留工作区修改
+git restore --staged 文件名
 
 # 撤销最近一次 commit（保留修改）
 git reset --soft HEAD~1
@@ -165,7 +167,7 @@ git reset --soft HEAD~1
 | 命令 | 作用 |
 |------|------|
 | `git status` | 查看当前仓库状态 |
-| `git add .` | 添加所有修改到暂存区 |
+| `git add <文件>` | 添加已确认的文件到暂存区 |
 | `git commit -m "说明"` | 提交到本地 |
 | `git push origin main` | 推送到 GitHub |
 | `git pull origin main` | 拉取最新代码 |

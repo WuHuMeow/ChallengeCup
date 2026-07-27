@@ -235,9 +235,9 @@ PDF 矩阵：
 
 ```powershell
 python scripts/run_pdf_matrix.py --quick `
-  --output-root output/verification/matrix-quick
+  --output-root output/runs/matrix-quick
 python scripts/run_pdf_matrix.py --steps 36000 `
-  --output-root output/verification/matrix-full
+  --output-root output/runs/matrix-full
 ```
 
 完整矩阵为 `20 路口 x 3 算法 x 2 流量 x 3 种子 = 360` 次。脚本使用
@@ -256,8 +256,8 @@ Docker 不可用、镜像不存在或未提供第二机器证据时，对应状�
 ## 8. 验收边界
 
 ```powershell
-python scripts/verify_ia_ib.py --quick --output-root output/verification/quick
-python scripts/verify_ia_ib.py --output-root output/verification/final
+python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick
+python scripts/verify_ia_ib.py --output-root output/runs/ia-ib-full
 ```
 
 最终报告必须区分：
@@ -270,3 +270,5 @@ python scripts/verify_ia_ib.py --output-root output/verification/final
 
 主办方原始 J2 信号方案产生的 unsafe/unused-state warning 必须保留为源数据警告。
 PPT、Word 实验报告和演示视频属于独立交付，不包含在 IA/IB 仓库实现完成度内。
+上述输出根目录均由命令运行时创建；历史大型矩阵产物和压缩包已删除。Dockerfile、Compose
+配置和静态契约已检查，但 Docker live 与第二机器复现没有真实证据，均保持 `not_run`。

@@ -91,7 +91,7 @@
 示例：
 
 ```markdown
-[系统设计文档](./superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)
+[系统设计文档](../superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md)
 ```
 
 ---
@@ -105,7 +105,7 @@
 示例：
 
 ```markdown
-![系统架构](./superpowers/specs/images/architecture.svg)
+![系统架构](../architecture/images/architecture.svg)
 ```
 
 > 提示：本项目架构图、数据流图等优先提供 SVG 格式（`architecture.svg`、`simulation-loop.svg`、`team-org.svg`、`dependencies.svg`、`timeline.svg`），可无限缩放。PNG 版本用于兼容性备份。
@@ -238,11 +238,12 @@ GitHub 会自动渲染标题为锚点，因此可以用链接手动生成目录�
 |------|------|------|
 | `README.md` | 项目门面：竞赛信息、快速开始、项目结构、团队分工 | 仓库根目录 README |
 | `docs/guides/` | 团队协作指南：Markdown、Git、引用 | 本文件、git-workflow.md |
-| `docs/superpowers/specs/` | 系统设计文档与架构图 | 2026-07-14-xiongan-vehicle-road-cloud-design.md |
+| `docs/architecture/` | 当前架构与接口摘要 | interface.md、images/ |
+| `docs/superpowers/specs/` | 历史设计文档 | 2026-07-14-xiongan-vehicle-road-cloud-design.md |
 | `docs/superpowers/plans/` | 实施计划 | 2026-07-14-xiongan-track-b-plan.md |
-| `docs/tasks/` | 团队分工总览、组织架构图与个人任务书 | 01-人1-仿真引擎.md、org-chart.svg |
-| `docs/api-spec.md` | 接口文档（功能一要求） | REST API + Postman |
-| `output/` | 提交材料：报告、PPT、视频、CSV | 答辩PPT.pptx、demo_video.mp4 |
+| `docs/tasks/` | 历史周任务和角色安排 | w1/IA_infra_a.md、roadmap.md |
+| `docs/interface.md`、`docs/api/` | 当前接口文档与静态 API 契约 | openapi.json、postman_collection.json |
+| `output/` | 本地生成的运行产物；默认不纳入 Git | runs/、deliverables/ |
 
 ## 16. 图片与 SVG 规范
 
@@ -256,22 +257,23 @@ GitHub 会自动渲染标题为锚点，因此可以用链接手动生成目录�
 
 | SVG 文件 | 位置 | 说明 |
 |----------|------|------|
-| `architecture.svg` | `docs/superpowers/specs/images/` | 系统整体架构图 |
-| `simulation-loop.svg` | `docs/superpowers/specs/images/` | 单步仿真循环与 ML 增强路径 |
-| `team-org.svg` | `docs/superpowers/specs/images/` | 团队组织架构图 |
-| `dependencies.svg` | `docs/superpowers/specs/images/` | 组间依赖关系图 |
-| `timeline.svg` | `docs/superpowers/specs/images/` | 开发阶段甘特图 |
+| `architecture.svg` | `docs/architecture/images/` | 系统整体架构图 |
+| `simulation-loop.svg` | `docs/architecture/images/` | 单步仿真循环与 ML 增强路径 |
+| `team-org.svg` | `docs/architecture/images/` | 团队组织架构图 |
+| `dependencies.svg` | `docs/architecture/images/` | 组间依赖关系图 |
+| `timeline.svg` | `docs/architecture/images/` | 开发阶段甘特图 |
 | `org-chart.svg` | `docs/tasks/` | 团队架构图（任务书用） |
 
 ### 16.3 引用示例
 
 ```markdown
-![系统架构](../superpowers/specs/images/architecture.svg)
+![系统架构](../architecture/images/architecture.svg)
 ```
 
 ## 17. 任务书写作规范
 
-个人任务书统一放在 `docs/tasks/` 目录，文件命名为 `0X-人X-角色.md`。
+周任务书统一放在 `docs/tasks/w1/` 至 `docs/tasks/w6/`，文件名沿用角色编码，例如
+`IA_infra_a.md`。这些文件记录当周计划和勾选状态，不作为当前完成度证明。
 
 建议结构：
 
