@@ -1,12 +1,13 @@
 # EX（实验组） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：完成 runner.py 联调、验证采集脚本、开始预跑实验（路口 1-10 原始流量）
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 每日任务
 
 ### Day 1（7/27 周日）
 
-- [ ] 与 IB 联调 `experiments/runner.py`：确认支持 `--seed`、`--flow-multiplier`、`--output-dir`
+- [x] 与 IB 联调 `experiments/runner.py`：确认支持 `--seed`、`--flow-multiplier`、`--output-dir`
 - [ ] 用路口 1 跑一次完整实验（ca_maxpressure / original / seed=42）
 - [ ] 验证输出目录下有：tripinfo.xml、stats.xml、traj.xml、simulation_log.csv（或 MetricsCollector CSV）
 - [ ] 修复联调中发现的问题，记录到 README 常见问题
@@ -46,7 +47,7 @@ print({k: round(v, 2) for k, v in m.items() if k in expected})
 
 ### Day 3（7/29 周二）
 
-- [ ] 在 `experiments/runner.py` 中添加断点续跑（已完成的实验跳过）
+- [ ] 在 `experiments/runner.py` 中添加断点续跑（当前 `run_batch()` 不提供该能力；可恢复矩阵入口见 `scripts/run_pdf_matrix.py`）
 - [ ] 添加进度显示：`[42/360] Running: i5_ca_maxpressure_high_s123`
 - [ ] 添加失败重试（最多 2 次）
 - [ ] 每跑完一组追加结果到 `experiments/results/summary.csv`

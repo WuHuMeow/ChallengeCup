@@ -1,7 +1,8 @@
 # 仿真基础设施 A（IA） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：确保 20 路口在新版 SUMO 下稳定运行 3600 步，并协助实验组准备批量运行环境
-> **完成状态（2026-07-24）**：（已完成） 核心任务完成——3600 步 20/20 全通过（合计约 60s，估算 360 次实验 ≈0.3h，见 `docs/batch_validate_report.md`）；`engine/configs/` 增强版 ×20（含 tripinfo/fcd/summary 与 GUI 自动播放）；`scripts/batch_validate.py` / `docs/sumo_env_setup.md` / Docker 调研笔记已交付；`runner.py` 已切换增强版配置。（待办）剩余：协助 EX 联调、Docker 实机构建待 EX/AB 就绪后进行。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） 核心任务完成——3600 步 20/20 全通过（合计约 60s，估算 360 次实验 ≈0.3h，见 `docs/batch_validate_report.md`）；`engine/configs/` 增强版 ×20（含 tripinfo/fcd/summary 与 GUI 自动播放）；`scripts/batch_validate.py` / `docs/sumo_env_setup.md` / Docker 调研笔记已交付；`runner.py` 已切换增强版配置。（待办）剩余：协助 EX 联调、Docker 实机构建待 EX/AB 就绪后进行。
 
 ## 每日任务
 

@@ -1,6 +1,7 @@
 # EX（实验组） W5 任务书
 
 > 周期：8/17（周日）- 8/23（周六） | 核心目标：最终数据整理、协助报告数据章节、确保实验可复现
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 每日任务
 
@@ -72,7 +73,7 @@ pd.DataFrame(records).to_csv("experiments/results/significance_tests.csv", index
 
 ### Day 4（8/20 周三）
 
-- [ ] 完善 `experiments/README.md` 可复现说明：如何从零复现全部 360 组实验
+- [x] 完善 `experiments/README.md` 可复现说明：如何从零复现全部 360 组实验
 - [ ] 写明预计运行时间（30-60 小时）与硬件要求
 - [ ] 写明随机种子说明（seeds=[42,123,456]）
 - [ ] 确认任何人按说明能复现结果

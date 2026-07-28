@@ -1,5 +1,7 @@
 # IA/IB Final Verification
 
+> 当前分工关联状态（2026-07-28）：IA/IB 的仓库实现、自动化回归和本地 SUMO 验证可视为完成；Docker live 与第二机器复现仍为 `not_run`。角色总表见 [`docs/tasks/current-status.md`](tasks/current-status.md)。本文件保留本次验收的原始 commit 和证据来源，不将后续仓库清理误写成新的实机验证。
+
 | Check | Status | Exit Code | Seconds |
 |---|---:|---:|---:|
 | data_integrity | pass | N/A | 0.02 |

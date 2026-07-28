@@ -1,7 +1,8 @@
 # 仿真基础设施 B（IB） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：实现 TraCIBridge 与 SimulationRunner，封装 TraCI 接口并产出稳定的 JointState 流
-> **完成状态（2026-07-24）**：（已完成） TraCIBridge（get_state/apply_actions/step/close/get_lane_capacity）、SimulationRunner、CloudPolicy 骨架、examples/run_fixed_time.py 均已交付；路口 1 固定配时 3600 步跑通退出码 0。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） TraCIBridge（get_state/apply_actions/step/close/get_lane_capacity）、SimulationRunner、CloudPolicy 骨架、examples/run_fixed_time.py 均已交付；路口 1 固定配时 3600 步跑通退出码 0。
 
 ## 本周背景
 
@@ -41,10 +42,10 @@ traci.close()
 
 ### Day 2（7/21 周一）
 
-- [ ] 创建 `engine/traci_bridge.py`，定义 `TraCIBridge` 类骨架（`__init__ / get_state / apply_actions / tick / close`）
-- [ ] 实现 `get_state(step) -> JointState`：采集各进口道排队、当前相位索引/名称、检测器流量，组装为 `JointState`
-- [ ] 实现 `apply_actions(List[ControlAction])`：按 `action_type` 分发到 `setPhase / setPhaseDuration / setProgram`
-- [ ] 实现 `get_lane_capacity(lane_id) = lane_length / 7.5`（5m 车长 + 2.5m 间距，CA-MP 后续要用）
+- [x] 创建 `engine/traci_bridge.py`，定义 `TraCIBridge` 类骨架（`__init__ / get_state / apply_actions / tick / close`）
+- [x] 实现 `get_state(step) -> JointState`：采集各进口道排队、当前相位索引/名称、检测器流量，组装为 `JointState`
+- [x] 实现 `apply_actions(List[ControlAction])`：按 `action_type` 分发到 `setPhase / setPhaseDuration / setProgram`
+- [x] 实现 `get_lane_capacity(lane_id) = lane_length / 7.5`（5m 车长 + 2.5m 间距，CA-MP 后续要用）
 - [ ] TraCI 连接失败时给出清晰报错（提示检查 `SUMO_HOME`）
 
 ```python
@@ -88,10 +89,10 @@ class TraCIBridge:
 
 ### Day 3（7/22 周二）
 
-- [ ] 创建 `engine/runner.py`，实现 `SimulationRunner.run(steps)` 主循环：`tick → get_state → algorithm.step → apply_actions → 记录指标`
-- [ ] 创建 `cloud/cloud_policy.py`，实现 `CloudPolicy.predict(state)` 骨架（默认每 60 步下发一次参数）
+- [x] 创建 `engine/runner.py`，实现 `SimulationRunner.run(steps)` 主循环：`tick → get_state → algorithm.step → apply_actions → 记录指标`
+- [x] 创建 `cloud/cloud_policy.py`，实现 `CloudPolicy.predict(state)` 骨架（默认每 60 步下发一次参数）
 - [ ] `_tick()` 中组装 `SimulationMetrics` 并返回 dict，便于上层聚合
-- [ ] 与 TL 对齐 `BaseControlAlgorithm` 接口（`init / step / reset / name`），确保 runner 调用方式一致
+- [x] 与 TL 对齐 `BaseControlAlgorithm` 接口（`init / step / reset / name`），确保 runner 调用方式一致
 
 ```python
 # engine/runner.py
@@ -128,7 +129,7 @@ class SimulationRunner:
 
 ### Day 4（7/23 周三）
 
-- [ ] 与 TL 协调，创建 `examples/run_fixed_time.py`：从命令行接收 `intersection_id` 与 `steps`
+- [x] 与 TL 协调，创建 `examples/run_fixed_time.py`：从命令行接收 `intersection_id` 与 `steps`
 - [ ] 在脚本中根据路口编号拼装 `SceneMeta`（`sumo_net / sumo_rou / sumo_cfg / timing_xlsx` 等路径）
 - [ ] AA 的 `FixedTimeAlgorithm` 若未完成，先用 placeholder（返回空动作列表）跑通框架
 - [ ] 确认 `output/` 目录存在，CSV 写入路径正确
@@ -166,7 +167,7 @@ if __name__ == "__main__":
 
 ### Day 5（7/24 周四）
 
-- [ ] 与 AA 联调：把真正的 `FixedTimeAlgorithm` 接入 runner，跑通路口 1 的 3600 步
+- [x] 与 AA 联调：把真正的 `FixedTimeAlgorithm` 接入 runner，跑通路口 1 的 3600 步
 - [ ] 完善 `get_state()` 的进口道筛选逻辑（参考 IA 的 `docs/edge_mapping.md`，区分进口/出口边）
 - [ ] 完善 `flows` 字典采集：从检测器或 lane 流量读取
 - [ ] 校对 `get_lane_capacity()` 实现，确保 7.5m 系数有注释说明
@@ -190,8 +191,8 @@ def get_lane_capacity(self, lane_id: str) -> float:
 
 ### Day 6（7/25 周五）
 
-- [ ] 创建 `examples/run_ca_max_pressure.py`，把 AB 的 CA-MP 算法接入 runner
-- [ ] 跑 `python examples/run_ca_max_pressure.py 1 3600`，确认无异常
+- [x] 创建 `examples/run_ca_max_pressure.py`，把 AB 的 CA-MP 算法接入 runner
+- [x] 跑 `python examples/run_ca_max_pressure.py 1 3600`，确认无异常
 - [ ] 检查输出 CSV：平均排队、压力值是否在合理范围（不为 0、不发散）
 - [ ] 修复联调中发现的 bug（典型：相位索引越界、ControlAction 字段缺失）
 

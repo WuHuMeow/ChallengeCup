@@ -1,6 +1,7 @@
 # 算法 A（AA） W5 任务书
 
 > 周期：8/17（周日）- 8/23（周六） | 核心目标：基线算法代码最终清理、协助报告与 PPT 中算法部分
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ---
 
@@ -10,7 +11,7 @@
 
 **基线代码最终清理**
 
-- [ ] 对 `fixed_time.py` / `rule_adaptive.py` 做最终 review
+- [x] 对 `fixed_time.py` / `rule_adaptive.py` 做最终 review
 - [ ] 删除调试代码（临时 print、注释掉的实验逻辑），确认 docstring 完整
 - [ ] 确认参数可配置（`min_green` / `max_green` / `queue_threshold` 来自 `config/default.yaml`）
 - [ ] 提交给 TL

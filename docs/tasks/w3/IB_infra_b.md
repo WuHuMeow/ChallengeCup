@@ -1,16 +1,17 @@
 # 仿真基础设施 B（IB） W3 任务书
 
 > 周期：8/3（周日）- 8/9（周六） | 核心目标：保障 experiments/runner.py 在全量实验中稳定运行，完善日志输出并协助实验组
-> **完成状态（2026-07-24）**：（已完成） FatalTraCIError 优雅断线处理；events.csv 溢流门控日志；traci_bridge 性能优化；deployment.md 定稿（Windows/Linux + 输出文件说明）；w3-log-audit.md 12 组审计通过。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） FatalTraCIError 优雅断线处理；events.csv 溢流门控日志；traci_bridge 性能优化；deployment.md 定稿（Windows/Linux + 输出文件说明）；w3-log-audit.md 12 组审计通过。
 
 ## 每日任务
 
 ### Day 1（8/3 周日）
 
 - [ ] 监控 `experiments/runner.py` 在全量实验（20 路口 × 多算法）中的稳定性，记录任何崩溃日志
-- [ ] 在 `engine/traci_bridge.py` 中包裹 `traci.simulationStep()`：捕获 `traci.exceptions.FatalTraCIError`，断开时优雅退出而非崩溃
+- [x] 在 `engine/traci_bridge.py` 中包裹 `traci.simulationStep()`：捕获 `traci.exceptions.FatalTraCIError`，断开时优雅退出而非崩溃
 - [ ] 添加可选自动重连：连续运行超过阈值时关闭并重启 SUMO 进程
-- [ ] 在 `SimulationRunner.run()` 外层加 `try/finally`，确保 `bridge.close()` 一定被调用
+- [x] 在 `SimulationRunner.run()` 外层加 `try/finally`，确保 `bridge.close()` 一定被调用
 
 ```python
 # engine/traci_bridge.py（节选）
@@ -40,8 +41,8 @@ class TraCIBridge:
 ### Day 2（8/4 周一）
 
 - [ ] 确认所有 20 路口的 `simulation_log.csv` 列名与格式一致（方向列按路口实际进口数自适应）
-- [ ] 在 `engine/runner.py` 中新增溢出门控事件日志：每次触发追加一行到 `{output_dir}/events.csv`
-- [ ] 事件字段：`step, time, event, detail`，detail 用 `key=value` 串拼接（lane / occupancy / forced_phase）
+- [x] 在 `engine/runner.py` 中新增溢出门控事件日志：每次触发追加一行到 `{output_dir}/events.csv`
+- [x] 事件字段：`step, time, event, detail`，detail 用 `key=value` 串拼接（lane / occupancy / forced_phase）
 - [ ] 与 DA 确认事件日志格式满足报告引用需求
 
 ```python
@@ -60,7 +61,7 @@ def _log_overflow_event(self, step: int, time: float,
 ### Day 3（8/5 周二）
 
 - [ ] 协助 EX 处理 `experiments/runner.py` 运行中的问题（参数、路径、超时）
-- [ ] 性能优化：在 `get_state()` 中跳过非必要的逐车采集（`vehicle.getPosition` 等），仅 GUI 模式才采车端字段
+- [x] 性能优化：在 `get_state()` 中跳过非必要的逐车采集（`vehicle.getPosition` 等），仅 GUI 模式才采车端字段
 - [ ] 减少 TraCI 调用：把 `lane.getLastStepHaltingNumber` 等批量改用 `traci.lane.getIDList()` + 一次性订阅
 - [ ] 测量优化前后单步耗时（目标：0.1s 步长路口运行时间可接受）
 
@@ -82,7 +83,7 @@ def get_state(self, step: int, full_vehicle_data: bool = False) -> JointState:
 
 - [ ] 确认所有 20 路口实验的 `simulation_log.csv` 已正确生成
 - [ ] 抽查 5 个路口（建议 1 / 5 / 11 / 16 / 20）的日志：相位切换是否合理、溢出门控事件是否记录
-- [ ] 把抽查结果写入 `docs/w3-log-audit.md`（DA 后续可引用）
+- [x] 把抽查结果写入 `docs/w3-log-audit.md`（DA 后续可引用）
 - [ ] 发现异常立即修复并重跑该路口
 
 ```python
@@ -99,9 +100,9 @@ for path in glob.glob("output/*/simulation_log.csv"):
 
 ### Day 5（8/7 周四）
 
-- [ ] 完善 `docs/deployment.md`：完整安装步骤（Windows / Linux 双平台）、环境变量配置（`SUMO_HOME`）
-- [ ] 添加运行命令示例：单路口、批量、Docker（与 IA 协调镜像内容）
-- [ ] 添加输出文件说明：`tripinfo.xml / stats.xml / traj.xml / simulation_log.csv / events.csv` 各字段含义
+- [x] 完善 `docs/deployment.md`：完整安装步骤（Windows / Linux 双平台）、环境变量配置（`SUMO_HOME`）
+- [x] 添加运行命令示例：单路口、批量、Docker（与 IA 协调镜像内容）
+- [x] 添加输出文件说明：`tripinfo.xml / stats.xml / traj.xml / simulation_log.csv / events.csv` 各字段含义
 - [ ] 这是 PDF 硬性要求的"详细的部署运行说明文档"，必须可被陌生人复现
 
 ```markdown

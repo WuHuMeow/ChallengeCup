@@ -93,9 +93,11 @@
 - `summary.json` 从 SUMO `tripinfo.xml` 与队列快照计算精确指标；缺失的精确量使用 JSON
   `null`，不伪造为 `0`。
 
-**IA/IB 仓库实现状态（2026-07-26）**：W1-W6 代码、自动化契约、真实本地 SUMO 验证、
-实验矩阵、图表来源追踪、离线包和验收三态均已实现。Docker 实机构建/运行和第二机器复现
-是独立证据轴；当前机器未执行时必须记录为 `not_run`，不能写成通过。
+**仓库与分工状态（2026-07-28）**：当前基线位于 `main` 分支，代码测试为 198 passed；
+IA/IB 的仓库实现、自动化契约、真实本地 SUMO 验证、实验矩阵和图表来源追踪已完成。
+大型仿真产物已清理，正式数值和图表需要按复现入口重新生成。Docker 实机构建/运行和第二机器复现
+是独立证据轴；当前没有真实证据时必须记录为 `not_run`。角色级完成情况见
+[`docs/tasks/current-status.md`](docs/tasks/current-status.md)。
 
 ---
 
@@ -555,16 +557,16 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ![团队组织](docs/architecture/images/team-org.png)
 
-| 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-24） |
+| 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-28） |
 |------|------|------|----------|----------|--------------------|
 | TL | Tech Lead | 1 | 架构设计、接口定义、代码合入、集成协调 | `core/types.py` + `algorithms/base.py` + 集成 | 部分完成：核心契约、接口、文档 taxonomy 与集成验证已落地；最终集成和交付审查待完成 |
-| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 仓库实现与本地 SUMO 验证完成；Docker live、第二机器按独立证据轴记录 |
-| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成 |
-| AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基础实现完成：FixedTime 与 Actuated 控制器、测试和固定配时实跑已完成；全矩阵复核待完成 |
-| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、溢出门控、动态绿灯和校准链路已完成 |
-| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式全量证据按验收报告记录 |
-| DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 待完成：技术 Markdown 已有；Word 报告、PPT 和提交排版待完成 |
-| DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；PyQt 看板与演示视频待完成 |
+| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 基础实现与本地 SUMO 验证完成；Docker live、镜像指标和第二机器复现待真实证据 |
+| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成；外部环境验证待完成 |
+| AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基线实现、测试和固定配时实跑完成；全矩阵复核和最终基线口径待完成 |
+| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、容量归一化、溢出门控、动态绿灯和 EWMA/校准链路完成；最终性能答辩口径待确认 |
+| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式数据需重生成并与报告对齐 |
+| DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 未完成：仅有技术 Markdown 提纲；Word/PDF 报告、PPT、演示方案和排版待完成 |
+| DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；演示视频缺失，PyQt 看板未实现（可选加分项） |
 
 ### 个人任务书入口
 
@@ -609,12 +611,12 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 | # | 材料 | 格式 | 负责人 | 状态 |
 |---|------|------|--------|------|
 | 1 | PPT 汇报 | .pptx | DA | 待完成 |
-| 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 基础设施与目录整理已完成，算法/实验/交付继续集成 |
+| 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 本地代码链路和自动化验证完成；最终集成审查待完成 |
 | 3 | 部署运行说明文档 | Markdown | IB | 已完成，路径为 `docs/deployment.md` |
 | 4 | 实验评估报告 | Word | DA + EX | 待完成 |
 | 5 | 演示视频（5-8 分钟） | .mp4 | DB | 待完成 |
 | 6 | 实际场景演示方案 | Word/Markdown | DA | 待完成 |
-| 7 | Dockerfile + 部署文档 | Dockerfile + docs/ | IB | 文件已完成，真实镜像构建待验证 |
+| 7 | Dockerfile + 部署文档 | Dockerfile + docs/ | IB | 文件已完成，Docker live 构建/运行和镜像指标待验证 |
 
 压缩包命名格式：`学校全称-团队名称-车路云协同管控算法与平台-负责人姓名`
 

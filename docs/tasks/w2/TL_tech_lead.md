@@ -1,6 +1,7 @@
 # Tech Lead W2 任务书
 
 > 周期：7/27–8/2 | 核心目标：完成云-边-端联调，三种算法在路口 1 出对比数据
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 本周背景
 
@@ -12,8 +13,8 @@
 
 - [ ] 检查 W1 交付物完整性：IA 的 20 路口迁移、IB 的 engine 模块、AA/AB 的算法、EX 的实验框架是否全部合入
 - [ ] 解决 W1 遗留的集成问题（如有）
-- [ ] 确认 `experiments/runner.py` 的 `run_batch()` 支持三种算法
-- [ ] 确认 `run_batch()` 支持 `seeds` 和 `levels` 参数
+- [x] 确认 `experiments/runner.py` 的 `run_batch()` 支持三种算法
+- [x] 确认 `run_batch()` 支持 `seeds` 和 `levels` 参数
 
 确认算法注册表完整：
 
