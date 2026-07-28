@@ -133,7 +133,7 @@
 
 #### 系统架构
 
-保留现有 SVG 图：`./docs/superpowers/specs/images/architecture.svg`
+保留现有 SVG 图：`./docs/architecture/images/architecture.svg`
 并补充一句话说明：SUMO 仿真引擎 → TraCI 数据采集 → CSV → XGBoost 训练 → model.pkl → 算法推理 → 指标输出。
 
 #### 核心策略
@@ -278,7 +278,7 @@ ChallengeCup/
 
 - `.gitignore`：内容合理，保持不变。
 - `docs/superpowers/plans/*.md`：继续保留，本设计不涉及修改。
-- `docs/superpowers/specs/images/*.svg`：继续引用，不改动。
+- `docs/architecture/images/*.svg`：继续引用，不改动。
 
 ---
 

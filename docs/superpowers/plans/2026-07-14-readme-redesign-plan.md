@@ -301,7 +301,7 @@ git commit -m "chore: add requirements.txt with SUMO, ML, API and viz dependenci
 - Modify: `README.md` (complete rewrite)
 
 **Interfaces:**
-- Consumes: design doc `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`, team doc `docs/tasks/README.md`, and SVG images in `docs/superpowers/specs/images/`.
+- Consumes: design doc `docs/superpowers/specs/2026-07-14-xiongan-vehicle-road-cloud-design.md`, team doc `docs/tasks/README.md`, and SVG images in `docs/architecture/images/`.
 - Produces: a comprehensive `README.md` with badges, TOC, environment setup, quick start, project structure, docs navigation, milestones, team, scoring alignment, and submission checklist.
 
 - [ ] **Step 1: Write the new `README.md`**
@@ -388,7 +388,7 @@ Content (save as `README.md`):
 
 ## （建设） 系统架构
 
-![系统架构](../specs/images/architecture.png)
+![系统架构](../../architecture/images/architecture.png)
 
 **数据流**：SUMO 仿真 → TraCI 数据采集 → CSV 数据集 → XGBoost 训练 → `ml/model.pkl` → 算法推理 → 指标输出 → 可视化报告。
 

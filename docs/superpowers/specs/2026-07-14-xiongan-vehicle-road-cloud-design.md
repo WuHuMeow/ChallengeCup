@@ -42,7 +42,7 @@
 
 ### 2.1 架构图
 
-![系统整体架构图](./images/architecture.png)
+![系统整体架构图](../../architecture/images/architecture.png)
 
 ### 2.2 设计原则
 
@@ -130,7 +130,7 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
 
 **单步仿真循环**：
 
-![单步仿真循环与ML增强路径](./images/simulation-loop.png)
+![单步仿真循环与ML增强路径](../../architecture/images/simulation-loop.png)
 
 ### 3.2 ML 模型模块（赛道 B 核心新增）
 
@@ -412,7 +412,7 @@ GET    /api/vehicle/status       → 车端/灯端状态快照
 
 ### 8.1 组织架构
 
-![团队8人组织架构图](./images/team-org.png)
+![团队8人组织架构图](../../architecture/images/team-org.png)
 
 ### 8.2 详细分工
 
@@ -450,7 +450,7 @@ GET    /api/vehicle/status       → 车端/灯端状态快照
 
 ### 8.3 组间依赖
 
-![组间依赖关系图](./images/dependencies.svg)
+![组间依赖关系图](../../architecture/images/dependencies.svg)
 
 ---
 
@@ -458,7 +458,7 @@ GET    /api/vehicle/status       → 车端/灯端状态快照
 
 ### 9.1 总览甘特图
 
-![开发阶段甘特图](./images/timeline.png)
+![开发阶段甘特图](../../architecture/images/timeline.png)
 
 ### 9.2 第一阶段：基础搭建（7.16–7.30，2 周）
 

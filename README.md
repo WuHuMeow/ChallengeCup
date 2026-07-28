@@ -431,7 +431,7 @@ intersection_data/{id}/
 
 ## 系统架构
 
-![系统架构](docs/superpowers/specs/images/architecture.png)
+![系统架构](docs/architecture/images/architecture.png)
 
 <a id="云-边-端协同框架"></a>
 
@@ -449,7 +449,7 @@ intersection_data/{id}/
 
 ### 仿真数据流
 
-![仿真数据流](docs/superpowers/specs/images/simulation-loop.png)
+![仿真数据流](docs/architecture/images/simulation-loop.png)
 
 每个仿真步的完整循环：
 
@@ -553,7 +553,7 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 团队分工
 
-![团队组织](docs/superpowers/specs/images/team-org.png)
+![团队组织](docs/architecture/images/team-org.png)
 
 | 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-24） |
 |------|------|------|----------|----------|--------------------|
@@ -587,7 +587,7 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 开发计划
 
-![时间线](docs/superpowers/specs/images/timeline.png)
+![时间线](docs/architecture/images/timeline.png)
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|

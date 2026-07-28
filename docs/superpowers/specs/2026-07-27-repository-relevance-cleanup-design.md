@@ -29,9 +29,9 @@ no current artifact or runtime role.
 
 Use `docs/architecture/images/` as the single canonical architecture-image
 directory. Update all active and historical Markdown references that currently
-point to `docs/superpowers/specs/images/`, then delete the byte-identical duplicate
-files from that directory. Historical prose remains unchanged apart from link
-targets needed to keep local links valid.
+point to the duplicate image directory, then delete its byte-identical files.
+Historical prose remains unchanged apart from link targets needed to keep local
+links valid.
 
 ## Local-Only Cleanup
 

@@ -88,13 +88,13 @@ In the cleanup design, replace the removed-directory path in prose with “the d
 
 - [ ] **Step 2: Confirm the old image directory is no longer referenced**
 
-Run:
+Run (excluding this implementation plan, which records the deletion command):
 
 ```powershell
-rg -n 'docs/superpowers/specs/images|superpowers/specs/images|\.\./specs/images|\./images/' README.md docs -g '*.md'
+rg -n 'docs/superpowers/specs/images|superpowers/specs/images|\.\./specs/images|\./images/' README.md docs -g '*.md' -g '!docs/superpowers/plans/2026-07-28-repository-relevance-cleanup.md'
 ```
 
-Expected: no output.
+Expected: no output from current documentation; only this plan may contain the old path as an auditable deletion target.
 
 ### Task 3: Remove tracked redundant files
 
@@ -185,7 +185,7 @@ Expected: `.venv` is `True`; the three removed directories are `False`.
 Run the repository's strict UTF-8 and local-link checks, then:
 
 ```powershell
-rg -n 'docs/superpowers/specs/images|superpowers/specs/images|\.\./specs/images|\./images/' README.md docs -g '*.md'
+rg -n 'docs/superpowers/specs/images|superpowers/specs/images|\.\./specs/images|\./images/' README.md docs -g '*.md' -g '!docs/superpowers/plans/2026-07-28-repository-relevance-cleanup.md'
 git diff --check
 ```
 

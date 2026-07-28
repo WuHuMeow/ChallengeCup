@@ -52,9 +52,9 @@
 
 ## 四、技术架构
 
-![CA-MP 云-边-端三层协同架构](../superpowers/specs/images/architecture.svg)
+![CA-MP 云-边-端三层协同架构](../architecture/images/architecture.svg)
 
-![仿真循环数据流](../superpowers/specs/images/simulation-loop.svg)
+![仿真循环数据流](../architecture/images/simulation-loop.svg)
 
 ---
 
