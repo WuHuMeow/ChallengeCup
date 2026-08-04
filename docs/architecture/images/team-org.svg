@@ -1,187 +1,184 @@
-<svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 1280 780"
-     role="img"
-     aria-labelledby="team-title team-desc">
-  <title id="team-title">角色、模块与交付接口责任矩阵</title>
-  <desc id="team-desc">八个项目角色按契约与仿真、算法与实验、交付与表达分组，并连接到真实仓库目录和当前可验证或待外部核验的交付边界。</desc>
-
-  <defs>
-    <marker id="team-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
-    </marker>
-    <marker id="team-open" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-      <path d="M1,1 L9,4 L1,7" fill="none" stroke="#64748b" stroke-width="1.4"/>
-    </marker>
-  </defs>
-
-  <style>
-    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 24px; font-weight: 700; fill: #17324d; }
-    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
-    .group-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 13px; font-weight: 700; fill: #17324d; }
-    .role { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 15px; font-weight: 700; fill: #17324d; }
-    .role-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; fill: #3c566d; }
-    .text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #52677d; }
-    .path { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #536b82; }
-    .status { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; font-weight: 700; fill: #6b4b22; }
-    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
-    .group-a { fill: #f7f9fb; stroke: #a9bbc9; stroke-width: 1.3; }
-    .group-b { fill: #f5faf9; stroke: #8fb9b0; stroke-width: 1.3; }
-    .group-c { fill: #fcf8f1; stroke: #c7a97a; stroke-width: 1.3; }
-    .role-box { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
-    .role-box-blue { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.4; }
-    .role-box-teal { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.4; }
-    .role-box-amber { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.4; }
-    .status-local { fill: #e9f4ee; stroke: #7ca88b; stroke-width: 1; }
-    .status-external { fill: #fff2df; stroke: #c49a63; stroke-width: 1; }
-    .flow { fill: none; stroke: #1f4e79; stroke-width: 1.5; marker-end: url(#team-blue); }
-    .link { fill: none; stroke: #64748b; stroke-width: 1.3; stroke-dasharray: 7 5; marker-end: url(#team-open); }
-    .label-bg { fill: #ffffff; stroke: #d7e0e7; stroke-width: 0.8; }
-    .rule { stroke: #c9d5df; stroke-width: 1; }
-  </style>
-
-  <rect width="1280" height="780" fill="#ffffff"/>
-  <text x="640" y="36" text-anchor="middle" class="title">角色、模块与交付接口责任矩阵</text>
-  <text x="640" y="59" text-anchor="middle" class="subtitle">仓库责任接口视图 · 代码存在、内部验证与外部提交材料分开表达</text>
-
-  <rect x="24" y="82" width="1232" height="624" rx="12" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.4"/>
-  <text x="44" y="108" class="tiny">角色代号沿用项目任务书；路径和状态来自当前仓库文档，不代表个人成员编号或比赛平台收件结果。</text>
-
-  <g id="contract-simulation">
-    <rect x="44" y="126" width="370" height="454" rx="10" class="group-a"/>
-    <text x="64" y="154" class="group-title">A · 契约与仿真</text>
-    <text x="64" y="174" class="tiny">核心类型、场景、运行时和部署边界</text>
-
-    <rect x="64" y="194" width="330" height="74" rx="8" class="role-box-blue"/>
-    <text x="82" y="218" class="role">TL</text>
-    <text x="132" y="215" class="role-title">技术契约与集成</text>
-    <text x="132" y="234" class="path">core/ · docs/architecture/</text>
-    <text x="132" y="252" class="text">类型、接口、集成审查、仓库整理</text>
-    <rect x="82" y="278" width="294" height="23" rx="5" class="status-local"/>
-    <text x="96" y="294" class="status">代码/本地验证 · 最终集成审查待确认</text>
-
-    <rect x="64" y="326" width="154" height="112" rx="8" class="role-box"/>
-    <text x="82" y="351" class="role">IA</text>
-    <text x="82" y="371" class="role-title">SUMO / 场景基础</text>
-    <text x="82" y="391" class="path">scenes/ · data/</text>
-    <text x="82" y="409" class="text">20 路口配置</text>
-    <text x="82" y="425" class="text">本地迁移验证</text>
-    <rect x="82" y="450" width="118" height="23" rx="5" class="status-local"/>
-    <text x="91" y="466" class="status">基础完成</text>
-
-    <rect x="240" y="326" width="154" height="112" rx="8" class="role-box"/>
-    <text x="258" y="351" class="role">IB</text>
-    <text x="258" y="371" class="role-title">运行时与接口</text>
-    <text x="258" y="391" class="path">engine/ · api/</text>
-    <text x="258" y="409" class="text">TraCI / Runner</text>
-    <text x="258" y="425" class="text">Docker / docs</text>
-    <rect x="258" y="450" width="118" height="23" rx="5" class="status-local"/>
-    <text x="267" y="466" class="status">基础完成</text>
-
-    <path d="M229,268 V272 H52 V310 H141 V326" class="flow"/>
-    <path d="M52,310 H317 V326" class="flow"/>
-    <rect x="177" y="302" width="104" height="22" rx="4" class="label-bg"/>
-    <text x="229" y="318" text-anchor="middle" class="tiny">契约 / 场景</text>
-  </g>
-
-  <g id="algorithm-experiment">
-    <rect x="454" y="126" width="370" height="454" rx="10" class="group-b"/>
-    <text x="474" y="154" class="group-title">B · 算法与实验</text>
-    <text x="474" y="174" class="tiny">策略实现、云端参数、矩阵和指标来源</text>
-
-    <rect x="474" y="194" width="154" height="112" rx="8" class="role-box-teal"/>
-    <text x="492" y="219" class="role">AA</text>
-    <text x="492" y="239" class="role-title">基线算法</text>
-    <text x="492" y="259" class="path">algorithms/</text>
-    <text x="492" y="277" class="text">FixedTime</text>
-    <text x="492" y="293" class="text">Actuated</text>
-    <rect x="492" y="316" width="118" height="23" rx="5" class="status-local"/>
-    <text x="501" y="332" class="status">部分完成</text>
-
-    <rect x="646" y="194" width="154" height="112" rx="8" class="role-box-teal"/>
-    <text x="664" y="219" class="role">AB</text>
-    <text x="664" y="239" class="role-title">CA-MP 核心</text>
-    <text x="664" y="259" class="path">algorithms/ca_max_pressure.py</text>
-    <text x="664" y="277" class="text">CloudPolicy / EWMA</text>
-    <text x="664" y="293" class="text">合法相位 / 溢出门控</text>
-    <rect x="664" y="316" width="118" height="23" rx="5" class="status-local"/>
-    <text x="673" y="332" class="status">实现完成</text>
-
-    <rect x="474" y="364" width="326" height="112" rx="8" class="role-box-teal"/>
-    <text x="492" y="389" class="role">EX</text>
-    <text x="542" y="386" class="role-title">实验矩阵、指标和图表来源链</text>
-    <text x="492" y="409" class="path">experiments/ · visualization/</text>
-    <text x="492" y="429" class="text">20 路口 · 算法 · 流量 · 种子</text>
-    <text x="492" y="447" class="text">summary.json → figures / manifest</text>
-    <rect x="492" y="488" width="294" height="23" rx="5" class="status-external"/>
-    <text x="506" y="504" class="status">基础完成 · 正式数值需重生成</text>
-
-    <path d="M551,306 V310 H462 V350 H637 V364" class="flow"/>
-    <path d="M723,306 V310 H812 V350 H637 V364" class="flow"/>
-    <rect x="570" y="334" width="134" height="24" rx="4" class="label-bg"/>
-    <text x="637" y="350" text-anchor="middle" class="tiny">ControlAction / metrics</text>
-  </g>
-
-  <g id="delivery">
-    <rect x="864" y="126" width="370" height="454" rx="10" class="group-c"/>
-    <text x="884" y="154" class="group-title">C · 交付与表达</text>
-    <text x="884" y="174" class="tiny">报告、图表、演示素材和最终提交边界</text>
-
-    <rect x="884" y="194" width="154" height="112" rx="8" class="role-box-amber"/>
-    <text x="902" y="219" class="role">DA</text>
-    <text x="902" y="239" class="role-title">报告 / PPT</text>
-    <text x="902" y="259" class="path">report/ · deliverables</text>
-    <text x="902" y="277" class="text">图注 / 结果对齐</text>
-    <text x="902" y="293" class="text">排版 / 提交包</text>
-    <rect x="902" y="316" width="118" height="23" rx="5" class="status-external"/>
-    <text x="911" y="332" class="status">未完成</text>
-
-    <rect x="1056" y="194" width="154" height="112" rx="8" class="role-box-amber"/>
-    <text x="1074" y="219" class="role">DB</text>
-    <text x="1074" y="239" class="role-title">可视化 / 视频</text>
-    <text x="1074" y="259" class="path">visualization/ · demo</text>
-    <text x="1074" y="277" class="text">Matplotlib 图表</text>
-    <text x="1074" y="293" class="text">演示素材 / 剪辑</text>
-    <rect x="1074" y="316" width="118" height="23" rx="5" class="status-external"/>
-    <text x="1083" y="332" class="status">部分完成</text>
-
-    <rect x="884" y="364" width="326" height="112" rx="8" class="role-box-amber"/>
-    <text x="902" y="389" class="role-title">外部交付证据边界</text>
-    <text x="902" y="412" class="text">Docker live · 第二机器复现</text>
-    <text x="902" y="431" class="text">Word/PDF · PPT · 视频 · 提交包</text>
-    <rect x="902" y="488" width="294" height="23" rx="5" class="status-external"/>
-    <text x="916" y="504" class="status">待外部核验 / 未发现独立成品</text>
-
-    <path d="M800,420 H842 V250 H884" class="link"/>
-    <rect x="800" y="228" width="84" height="24" rx="4" class="label-bg"/>
-    <text x="842" y="244" text-anchor="middle" class="tiny">数字 / 图表</text>
-  </g>
-
-  <g id="interfaces">
-    <path d="M414,520 H454" class="flow"/>
-    <rect x="407" y="498" width="54" height="24" rx="4" class="label-bg"/>
-    <text x="434" y="514" text-anchor="middle" class="tiny">contracts</text>
-    <path d="M824,420 H864" class="flow"/>
-    <rect x="819" y="398" width="50" height="24" rx="4" class="label-bg"/>
-    <text x="844" y="414" text-anchor="middle" class="tiny">figures</text>
-    <path d="M1038,306 V350 H637 V364" class="link"/>
-    <rect x="1038" y="330" width="104" height="24" rx="4" class="label-bg"/>
-    <text x="1048" y="346" class="tiny">报告数字回溯</text>
-
-    <rect x="44" y="606" width="1190" height="72" rx="8" fill="#f7f9fb" stroke="#c3d0dc" stroke-width="1"/>
-    <text x="64" y="631" class="group-title">接口节奏</text>
-    <text x="64" y="653" class="text">契约冻结 → 算法接入 → 本地/矩阵验证 → 图表与报告数字对齐 → 外部环境和提交材料核验</text>
-    <text x="64" y="670" class="tiny">图中“基础完成/实现完成”只描述仓库可验证路径；not_run 不等于 pass，外部材料不能由代码存在自动推导。</text>
-  </g>
-
-  <g id="legend">
-    <line x1="52" y1="736" x2="92" y2="736" class="flow"/>
-    <text x="102" y="740" class="tiny">责任/交付接口</text>
-    <line x1="246" y1="736" x2="286" y2="736" class="link"/>
-    <text x="296" y="740" class="tiny">来源/回溯关系</text>
-    <rect x="452" y="726" width="18" height="18" rx="4" class="status-local"/>
-    <text x="480" y="740" class="tiny">代码/本地验证</text>
-    <rect x="632" y="726" width="18" height="18" rx="4" class="status-external"/>
-    <text x="660" y="740" class="tiny">待外部核验/交付</text>
-    <text x="1228" y="740" text-anchor="end" class="tiny">Source: docs/tasks/current-status.md · status vocabulary is evidence-scoped</text>
-  </g>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.3 (20260303.0454)
+ -->
+<!-- Title: team_org Pages: 1 -->
+<svg role="img" aria-labelledby="team-org-title team-org-desc" width="1023pt" height="338pt"
+ viewBox="0.00 0.00 1023.00 338.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title id="team-org-title">角色、模块与交付接口责任矩阵</title>
+  <desc id="team-org-desc">技术契约、SUMO 基础、运行时接口、基础算法、CA-MP、实验复现和交付表达通过明确接口连接，外部交付结果以独立核验为准。</desc>
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(20.16 317.76)">
+<title>team_org</title>
+<polygon fill="white" stroke="none" points="-20.16,20.16 -20.16,-317.76 1002.59,-317.76 1002.59,20.16 -20.16,20.16"/>
+<text xml:space="preserve" text-anchor="middle" x="491.22" y="-277.4" font-family="Arial" font-size="18.00" fill="#17324d">角色、模块与交付接口责任矩阵</text>
+<g id="clust1" class="cluster">
+<title>cluster_contract</title>
+<path fill="#f7f9fb" stroke="#a8c0d2" d="M20,-57C20,-57 275.63,-57 275.63,-57 281.63,-57 287.63,-63 287.63,-69 287.63,-69 287.63,-248 287.63,-248 287.63,-254 281.63,-260 275.63,-260 275.63,-260 20,-260 20,-260 14,-260 8,-254 8,-248 8,-248 8,-69 8,-69 8,-63 14,-57 20,-57"/>
+<text xml:space="preserve" text-anchor="middle" x="147.82" y="-246.1" font-family="Arial" font-size="11.00" fill="#49647b">A · 契约与仿真</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_algorithm</title>
+<path fill="#f5faf9" stroke="#7baaa2" d="M335.63,-57C335.63,-57 626.29,-57 626.29,-57 632.29,-57 638.29,-63 638.29,-69 638.29,-69 638.29,-248 638.29,-248 638.29,-254 632.29,-260 626.29,-260 626.29,-260 335.63,-260 335.63,-260 329.63,-260 323.63,-254 323.63,-248 323.63,-248 323.63,-69 323.63,-69 323.63,-63 329.63,-57 335.63,-57"/>
+<text xml:space="preserve" text-anchor="middle" x="480.96" y="-246.1" font-family="Arial" font-size="11.00" fill="#496d67">B · 算法与实验</text>
+</g>
+<g id="clust5" class="cluster">
+<title>cluster_delivery</title>
+<path fill="#fcf8f1" stroke="#e1cfb1" d="M686.29,-8C686.29,-8 962.43,-8 962.43,-8 968.43,-8 974.43,-14 974.43,-20 974.43,-20 974.43,-199 974.43,-199 974.43,-205 968.43,-211 962.43,-211 962.43,-211 686.29,-211 686.29,-211 680.29,-211 674.29,-205 674.29,-199 674.29,-199 674.29,-20 674.29,-20 674.29,-14 680.29,-8 686.29,-8"/>
+<text xml:space="preserve" text-anchor="middle" x="824.36" y="-197.1" font-family="Arial" font-size="11.00" fill="#80633e">C · 交付与表达</text>
+</g>
+<!-- tl -->
+<g id="node1" class="node">
+<title>tl</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M128.08,-176.8C128.08,-176.8 28,-176.8 28,-176.8 22,-176.8 16,-170.8 16,-164.8 16,-164.8 16,-131.2 16,-131.2 16,-125.2 22,-119.2 28,-119.2 28,-119.2 128.08,-119.2 128.08,-119.2 134.08,-119.2 140.08,-125.2 140.08,-131.2 140.08,-131.2 140.08,-164.8 140.08,-164.8 140.08,-170.8 134.08,-176.8 128.08,-176.8"/>
+<text xml:space="preserve" text-anchor="middle" x="78.04" y="-161.5" font-family="Arial" font-size="9.00" fill="#17324d">TL</text>
+<text xml:space="preserve" text-anchor="middle" x="78.04" y="-150.7" font-family="Arial" font-size="9.00" fill="#17324d">技术与总契约</text>
+<text xml:space="preserve" text-anchor="middle" x="78.04" y="-139.9" font-family="Arial" font-size="9.00" fill="#17324d">core/ · docs/architecture/</text>
+<text xml:space="preserve" text-anchor="middle" x="78.04" y="-129.1" font-family="Arial" font-size="9.00" fill="#17324d">类型、接口、取舍、仓库全局</text>
+</g>
+<!-- ia -->
+<g id="node2" class="node">
+<title>ia</title>
+<path fill="#ffffff" stroke="#3d6f9e" stroke-width="1.15" d="M267.63,-133.2C267.63,-133.2 204.08,-133.2 204.08,-133.2 198.08,-133.2 192.08,-127.2 192.08,-121.2 192.08,-121.2 192.08,-76.8 192.08,-76.8 192.08,-70.8 198.08,-64.8 204.08,-64.8 204.08,-64.8 267.63,-64.8 267.63,-64.8 273.63,-64.8 279.63,-70.8 279.63,-76.8 279.63,-76.8 279.63,-121.2 279.63,-121.2 279.63,-127.2 273.63,-133.2 267.63,-133.2"/>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-117.9" font-family="Arial" font-size="9.00" fill="#17324d">IA</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-107.1" font-family="Arial" font-size="9.00" fill="#17324d">SUMO / 服务基础</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-96.3" font-family="Arial" font-size="9.00" fill="#17324d">scenes/ · data/</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-85.5" font-family="Arial" font-size="9.00" fill="#17324d">20 个路口配置</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-74.7" font-family="Arial" font-size="9.00" fill="#17324d">本地桥接验证</text>
+</g>
+<!-- tl&#45;&gt;ia -->
+<g id="edge1" class="edge">
+<title>tl&#45;&gt;ia</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M140.41,-126.2C140.41,-126.2 182.76,-126.2 182.76,-126.2"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="182.76,-128.72 189.96,-126.2 182.76,-123.68 182.76,-128.72"/>
+<rect x="158.50" y="-138.60" width="39.50" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="178.25" y="-128.6" font-family="Arial" font-size="8.00" fill="#41566b">契约 / 场景</text>
+</g>
+<!-- ib -->
+<g id="node3" class="node">
+<title>ib</title>
+<path fill="#ffffff" stroke="#3d6f9e" stroke-width="1.15" d="M265.14,-231.2C265.14,-231.2 206.58,-231.2 206.58,-231.2 200.58,-231.2 194.58,-225.2 194.58,-219.2 194.58,-219.2 194.58,-174.8 194.58,-174.8 194.58,-168.8 200.58,-162.8 206.58,-162.8 206.58,-162.8 265.14,-162.8 265.14,-162.8 271.14,-162.8 277.14,-168.8 277.14,-174.8 277.14,-174.8 277.14,-219.2 277.14,-219.2 277.14,-225.2 271.14,-231.2 265.14,-231.2"/>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-215.9" font-family="Arial" font-size="9.00" fill="#17324d">IB</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-205.1" font-family="Arial" font-size="9.00" fill="#17324d">运行时接口</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-194.3" font-family="Arial" font-size="9.00" fill="#17324d">TraCI / Runner</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-183.5" font-family="Arial" font-size="9.00" fill="#17324d">Docker / 文档</text>
+<text xml:space="preserve" text-anchor="middle" x="235.86" y="-172.7" font-family="Arial" font-size="9.00" fill="#17324d">接口回归</text>
+</g>
+<!-- tl&#45;&gt;ib -->
+<g id="edge2" class="edge">
+<title>tl&#45;&gt;ib</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M140.41,-169.8C140.41,-169.8 185.13,-169.8 185.13,-169.8"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="185.13,-172.32 192.33,-169.8 185.13,-167.28 185.13,-172.32"/>
+</g>
+<!-- aa -->
+<g id="node4" class="node">
+<title>aa</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M430.21,-133.2C430.21,-133.2 343.63,-133.2 343.63,-133.2 337.63,-133.2 331.63,-127.2 331.63,-121.2 331.63,-121.2 331.63,-76.8 331.63,-76.8 331.63,-70.8 337.63,-64.8 343.63,-64.8 343.63,-64.8 430.21,-64.8 430.21,-64.8 436.21,-64.8 442.21,-70.8 442.21,-76.8 442.21,-76.8 442.21,-121.2 442.21,-121.2 442.21,-127.2 436.21,-133.2 430.21,-133.2"/>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-117.9" font-family="Arial" font-size="9.00" fill="#17324d">AA</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-107.1" font-family="Arial" font-size="9.00" fill="#17324d">基础算法</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-96.3" font-family="Arial" font-size="9.00" fill="#17324d">algorithms/</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-85.5" font-family="Arial" font-size="9.00" fill="#17324d">FixedTime · Actuated</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-74.7" font-family="Arial" font-size="9.00" fill="#17324d">基准对比</text>
+</g>
+<!-- ia&#45;&gt;aa -->
+<g id="edge3" class="edge">
+<title>ia&#45;&gt;aa</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M279.96,-99C279.96,-99 322.03,-99 322.03,-99"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="322.03,-101.52 329.23,-99 322.03,-96.48 322.03,-101.52"/>
+<rect x="284.33" y="-101.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="294.33" y="-91.8" font-family="Arial" font-size="8.00" fill="#41566b">契约</text>
+</g>
+<!-- ab -->
+<g id="node5" class="node">
+<title>ab</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M427.96,-231.2C427.96,-231.2 345.88,-231.2 345.88,-231.2 339.88,-231.2 333.88,-225.2 333.88,-219.2 333.88,-219.2 333.88,-174.8 333.88,-174.8 333.88,-168.8 339.88,-162.8 345.88,-162.8 345.88,-162.8 427.96,-162.8 427.96,-162.8 433.96,-162.8 439.96,-168.8 439.96,-174.8 439.96,-174.8 439.96,-219.2 439.96,-219.2 439.96,-225.2 433.96,-231.2 427.96,-231.2"/>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-215.9" font-family="Arial" font-size="9.00" fill="#17324d">AB</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-205.1" font-family="Arial" font-size="9.00" fill="#17324d">CA&#45;MP 核心</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-194.3" font-family="Arial" font-size="9.00" fill="#17324d">algorithms/ca_mp.py</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-183.5" font-family="Arial" font-size="9.00" fill="#17324d">CloudPolicy / EWMA</text>
+<text xml:space="preserve" text-anchor="middle" x="386.92" y="-172.7" font-family="Arial" font-size="9.00" fill="#17324d">合法相位 / 调试</text>
+</g>
+<!-- ib&#45;&gt;ab -->
+<g id="edge4" class="edge">
+<title>ib&#45;&gt;ab</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M277.54,-197C277.54,-197 324.3,-197 324.3,-197"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="324.3,-199.52 331.5,-197 324.3,-194.48 324.3,-199.52"/>
+</g>
+<!-- ex -->
+<g id="node6" class="node">
+<title>ex</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M618.29,-133.2C618.29,-133.2 506.21,-133.2 506.21,-133.2 500.21,-133.2 494.21,-127.2 494.21,-121.2 494.21,-121.2 494.21,-76.8 494.21,-76.8 494.21,-70.8 500.21,-64.8 506.21,-64.8 506.21,-64.8 618.29,-64.8 618.29,-64.8 624.29,-64.8 630.29,-70.8 630.29,-76.8 630.29,-76.8 630.29,-121.2 630.29,-121.2 630.29,-127.2 624.29,-133.2 618.29,-133.2"/>
+<text xml:space="preserve" text-anchor="middle" x="562.25" y="-117.9" font-family="Arial" font-size="9.00" fill="#17324d">EX</text>
+<text xml:space="preserve" text-anchor="middle" x="562.25" y="-107.1" font-family="Arial" font-size="9.00" fill="#17324d">实验矩阵、指标与复现</text>
+<text xml:space="preserve" text-anchor="middle" x="562.25" y="-96.3" font-family="Arial" font-size="9.00" fill="#17324d">experiments/ · visualization/</text>
+<text xml:space="preserve" text-anchor="middle" x="562.25" y="-85.5" font-family="Arial" font-size="9.00" fill="#17324d">20 个路口 · 种子 · 平均</text>
+<text xml:space="preserve" text-anchor="middle" x="562.25" y="-74.7" font-family="Arial" font-size="9.00" fill="#17324d">summary.json / 图表</text>
+</g>
+<!-- aa&#45;&gt;ex -->
+<g id="edge5" class="edge">
+<title>aa&#45;&gt;ex</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M442.39,-99C442.39,-99 484.73,-99 484.73,-99"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="484.73,-101.52 491.93,-99 484.73,-96.48 484.73,-101.52"/>
+<rect x="453.08" y="-109.00" width="89.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="497.58" y="-99" font-family="Arial" font-size="8.00" fill="#41566b">ControlAction / 指标</text>
+</g>
+<!-- ab&#45;&gt;ex -->
+<g id="edge6" class="edge">
+<title>ab&#45;&gt;ex</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M440.05,-172.5C491.71,-172.5 562.43,-172.5 562.43,-172.5 562.43,-172.5 562.43,-142.77 562.43,-142.77"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="564.95,-142.77 562.43,-135.57 559.91,-142.77 564.95,-142.77"/>
+</g>
+<!-- da -->
+<g id="node7" class="node">
+<title>da</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M779.88,-84.2C779.88,-84.2 694.29,-84.2 694.29,-84.2 688.29,-84.2 682.29,-78.2 682.29,-72.2 682.29,-72.2 682.29,-27.8 682.29,-27.8 682.29,-21.8 688.29,-15.8 694.29,-15.8 694.29,-15.8 779.88,-15.8 779.88,-15.8 785.88,-15.8 791.88,-21.8 791.88,-27.8 791.88,-27.8 791.88,-72.2 791.88,-72.2 791.88,-78.2 785.88,-84.2 779.88,-84.2"/>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-68.9" font-family="Arial" font-size="9.00" fill="#17324d">DA</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-58.1" font-family="Arial" font-size="9.00" fill="#17324d">报告 / PPT</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-47.3" font-family="Arial" font-size="9.00" fill="#17324d">report/ · deliverables/</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-36.5" font-family="Arial" font-size="9.00" fill="#17324d">核对：材料、结论、数据</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-25.7" font-family="Arial" font-size="9.00" fill="#17324d">排版 / 交付</text>
+</g>
+<!-- ex&#45;&gt;da -->
+<g id="edge7" class="edge">
+<title>ex&#45;&gt;da</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M630.85,-74.5C630.85,-74.5 672.74,-74.5 672.74,-74.5"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="672.74,-77.02 679.94,-74.5 672.74,-71.98 672.74,-77.02"/>
+<rect x="635.13" y="-77.30" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="645.13" y="-67.3" font-family="Arial" font-size="8.00" fill="#41566b">图表</text>
+</g>
+<!-- db -->
+<g id="node8" class="node">
+<title>db</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M774.87,-182.2C774.87,-182.2 699.3,-182.2 699.3,-182.2 693.3,-182.2 687.3,-176.2 687.3,-170.2 687.3,-170.2 687.3,-125.8 687.3,-125.8 687.3,-119.8 693.3,-113.8 699.3,-113.8 699.3,-113.8 774.87,-113.8 774.87,-113.8 780.87,-113.8 786.87,-119.8 786.87,-125.8 786.87,-125.8 786.87,-170.2 786.87,-170.2 786.87,-176.2 780.87,-182.2 774.87,-182.2"/>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-166.9" font-family="Arial" font-size="9.00" fill="#17324d">DB</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-156.1" font-family="Arial" font-size="9.00" fill="#17324d">可视化 / 备份</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-145.3" font-family="Arial" font-size="9.00" fill="#17324d">visualization/ · 演示</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-134.5" font-family="Arial" font-size="9.00" fill="#17324d">Matplotlib 图表</text>
+<text xml:space="preserve" text-anchor="middle" x="737.09" y="-123.7" font-family="Arial" font-size="9.00" fill="#17324d">演示素材 / 证据</text>
+</g>
+<!-- ex&#45;&gt;db -->
+<g id="edge8" class="edge">
+<title>ex&#45;&gt;db</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.3" d="M630.85,-123.5C630.85,-123.5 677.63,-123.5 677.63,-123.5"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.3" points="677.63,-126.02 684.83,-123.5 677.63,-120.98 677.63,-126.02"/>
+</g>
+<!-- external -->
+<g id="node9" class="node">
+<title>external</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M954.43,-127.8C954.43,-127.8 855.88,-127.8 855.88,-127.8 849.88,-127.8 843.88,-121.8 843.88,-115.8 843.88,-115.8 843.88,-82.2 843.88,-82.2 843.88,-76.2 849.88,-70.2 855.88,-70.2 855.88,-70.2 954.43,-70.2 954.43,-70.2 960.43,-70.2 966.43,-76.2 966.43,-82.2 966.43,-82.2 966.43,-115.8 966.43,-115.8 966.43,-121.8 960.43,-127.8 954.43,-127.8"/>
+<text xml:space="preserve" text-anchor="middle" x="905.15" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">外部交付核验</text>
+<text xml:space="preserve" text-anchor="middle" x="905.15" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">Docker 实机 · 第二机器</text>
+<text xml:space="preserve" text-anchor="middle" x="905.15" y="-90.9" font-family="Arial" font-size="9.00" fill="#17324d">Word / PDF · PPT · 视频</text>
+<text xml:space="preserve" text-anchor="middle" x="905.15" y="-80.1" font-family="Arial" font-size="9.00" fill="#17324d">结果以外部核验为准</text>
+</g>
+<!-- da&#45;&gt;external -->
+<g id="edge9" class="edge">
+<title>da&#45;&gt;external</title>
+<path fill="none" stroke="#64748b" stroke-width="1.3" stroke-dasharray="5,2" d="M792.12,-77.2C792.12,-77.2 834.14,-77.2 834.14,-77.2"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.3" points="834.14,-79.72 841.34,-77.2 834.14,-74.68 834.14,-79.72"/>
+<rect x="815.63" y="-80.00" width="35.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="833.13" y="-70" font-family="Arial" font-size="8.00" fill="#41566b">报告数字回溯</text>
+</g>
+<!-- db&#45;&gt;external -->
+<g id="edge10" class="edge">
+<title>db&#45;&gt;external</title>
+<path fill="none" stroke="#64748b" stroke-width="1.3" stroke-dasharray="5,2" d="M787.06,-120.8C787.06,-120.8 834.3,-120.8 834.3,-120.8"/>
+<polygon fill="#64748b" stroke="#64748b" stroke-width="1.3" points="834.3,-123.32 841.5,-120.8 834.3,-118.28 834.3,-123.32"/>
+</g>
+</g>
 </svg>

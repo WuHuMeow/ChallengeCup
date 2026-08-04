@@ -105,10 +105,10 @@
 示例：
 
 ```markdown
-![统一运行容器架构与 Cloud/Edge/End 映射](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 ```
 
-> 提示：本项目五张架构类图以 SVG 作为规范发布源（`architecture.svg`、`simulation-loop.svg`、`team-org.svg`、`dependencies.svg`、`timeline.svg`），可无限缩放并保留可检索文本。目录中若存在 PNG，它们可能是历史兼容导出；新增 Markdown 应引用 SVG，并在发布 PNG 前确认其与 SVG 内容同步。
+> 提示：本项目五张架构类图只保留 SVG 发布物（`architecture.svg`、`simulation-loop.svg`、`team-org.svg`、`dependencies.svg`、`timeline.svg`），可无限缩放并保留可检索文本。新增 Markdown 应直接引用 SVG，不再添加对应 PNG 或临时源文件。
 
 ---
 
@@ -257,7 +257,7 @@ GitHub 会自动渲染标题为锚点，因此可以用链接手动生成目录�
 
 | SVG 文件 | 位置 | 说明 |
 |----------|------|------|
-| `architecture.svg` | `docs/architecture/images/` | 统一运行容器架构与 Cloud/Edge/End 映射 |
+| `architecture.svg` | `docs/architecture/images/` | 统一运行容器架构与云端 / 边缘 / 终端映射 |
 | `simulation-loop.svg` | `docs/architecture/images/` | 单次仿真控制循环与证据生成 |
 | `team-org.svg` | `docs/architecture/images/` | 角色、模块与交付接口责任矩阵 |
 | `dependencies.svg` | `docs/architecture/images/` | 模块依赖、只读输入与证据输出边界 |
@@ -266,7 +266,7 @@ GitHub 会自动渲染标题为锚点，因此可以用链接手动生成目录�
 ### 16.3 引用示例
 
 ```markdown
-![统一运行容器架构与 Cloud/Edge/End 映射](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 ```
 
 ## 17. 任务书写作规范

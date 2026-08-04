@@ -54,7 +54,7 @@
 
 ## 四、技术架构
 
-![统一运行容器架构与 Cloud/Edge/End 映射](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 
 ![单次仿真控制循环与证据生成](../architecture/images/simulation-loop.svg)
 

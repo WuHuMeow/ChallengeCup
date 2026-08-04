@@ -1,211 +1,129 @@
-<svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="0 0 1440 920"
-     role="img"
-     aria-labelledby="timeline-title timeline-desc">
-  <title id="timeline-title">工程复现与交付阶段门控图</title>
-  <desc id="timeline-desc">图示 ChallengeCup 从赛题约束和只读场景，经统一运行契约、本地 SUMO 或 Mock 验证、实验矩阵重生成、Docker 与第二机器复现，直到报告、PPT、视频和提交包的当前证据边界；not_run 不等于 pass。</desc>
-
-  <defs>
-    <marker id="timeline-flow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
-      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
-    </marker>
-  </defs>
-
-  <style>
-    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 25px; font-weight: 700; fill: #17324d; }
-    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
-    .section-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; fill: #17324d; }
-    .stage-index { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; fill: #49647b; }
-    .stage-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; fill: #17324d; }
-    .stage-path { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #52677d; }
-    .stage-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #41566b; }
-    .stage-note { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #6b4b22; }
-    .status-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 700; fill: #17324d; }
-    .body-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; fill: #3c566d; }
-    .body-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #52677d; }
-    .mono-text { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #536b82; }
-    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
-    .card { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
-    .card-code { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.4; }
-    .card-local { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.4; }
-    .card-refresh { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.4; }
-    .card-external { fill: #f7f8fa; stroke: #8293a3; stroke-width: 1.4; }
-    .card-delivery { fill: #fcf8f1; stroke: #b5874a; stroke-width: 1.4; }
-    .accent-code { stroke: #3d6f9e; stroke-width: 4; }
-    .accent-local { stroke: #4f9a8c; stroke-width: 4; }
-    .accent-refresh { stroke: #b5874a; stroke-width: 4; }
-    .accent-external { stroke: #8293a3; stroke-width: 4; }
-    .accent-delivery { stroke: #b5874a; stroke-width: 4; }
-    .status-code { fill: #eaf2fa; stroke: #7fa1bf; stroke-width: 1; }
-    .status-local { fill: #e7f4ef; stroke: #7ca88b; stroke-width: 1; }
-    .status-refresh { fill: #fff1da; stroke: #c49a63; stroke-width: 1; }
-    .status-external { fill: #eef0f3; stroke: #9aa8b5; stroke-width: 1; }
-    .status-delivery { fill: #fff1da; stroke: #c49a63; stroke-width: 1; }
-    .flow { fill: none; stroke: #1f4e79; stroke-width: 1.6; marker-end: url(#timeline-flow); }
-    .rule { stroke: #c9d5df; stroke-width: 1; }
-    .separator { stroke: #d7e0e7; stroke-width: 1; }
-  </style>
-
-  <rect width="1440" height="920" fill="#ffffff"/>
-
-  <g id="title-block">
-    <text x="720" y="37" text-anchor="middle" class="title">工程复现与交付阶段门控图</text>
-    <text x="720" y="61" text-anchor="middle" class="subtitle">以仓库证据和赛题 PDF 要求为边界 · 代码存在、实验重生成、外部核验与最终材料分开记录</text>
-    <rect x="28" y="82" width="1384" height="48" rx="8" fill="#f7f9fb" stroke="#c9d5df" stroke-width="1"/>
-    <text x="52" y="111" class="body-text">实验设计规模：</text>
-    <text x="140" y="111" class="mono-text">20 × 3 × 2 × 3 = 360</text>
-    <text x="310" y="111" class="body-text">组；该数字表示矩阵设计入口，不表示当前证据已经完成 360 次运行。</text>
-    <text x="1112" y="111" class="status-text">状态优先于颜色</text>
-  </g>
-
-  <g id="stage-flow" aria-label="六个阶段依次通过门控">
-    <path d="M231 328 H250" class="flow"/>
-    <path d="M464 328 H483" class="flow"/>
-    <path d="M697 328 H716" class="flow"/>
-    <path d="M930 328 H949" class="flow"/>
-    <path d="M1163 328 H1182" class="flow"/>
-    <text x="241" y="315" text-anchor="middle" class="tiny">G1</text>
-    <text x="474" y="315" text-anchor="middle" class="tiny">G2</text>
-    <text x="707" y="315" text-anchor="middle" class="tiny">G3</text>
-    <text x="940" y="315" text-anchor="middle" class="tiny">G4</text>
-    <text x="1173" y="315" text-anchor="middle" class="tiny">G5</text>
-  </g>
-
-  <g id="stages" aria-label="工程阶段">
-    <g id="stage-01">
-      <rect x="26" y="150" width="205" height="350" rx="10" class="card-code"/>
-      <line x1="26" y1="150" x2="231" y2="150" class="accent-code"/>
-      <text x="44" y="181" class="stage-index">S1 · INPUT</text>
-      <text x="44" y="207" class="stage-title">赛题约束</text>
-      <text x="44" y="227" class="stage-title">与只读场景</text>
-      <text x="44" y="258" class="stage-path">docs/pdf/</text>
-      <text x="44" y="273" class="stage-path">data/intersection_data/</text>
-      <text x="44" y="311" class="stage-text">PDF：20 个路口</text>
-      <text x="44" y="330" class="stage-text">可运行源代码</text>
-      <text x="44" y="349" class="stage-text">对比实验与可追溯材料</text>
-      <text x="44" y="386" class="stage-note">原始场景保持只读</text>
-      <line x1="44" y1="414" x2="213" y2="414" class="separator"/>
-      <rect x="44" y="437" width="169" height="31" rx="6" class="status-code"/>
-      <text x="128" y="457" text-anchor="middle" class="status-text">代码 / 文档</text>
-    </g>
-
-    <g id="stage-02">
-      <rect x="259" y="150" width="205" height="350" rx="10" class="card-local"/>
-      <line x1="259" y1="150" x2="464" y2="150" class="accent-local"/>
-      <text x="277" y="181" class="stage-index">S2 · CONTRACT</text>
-      <text x="277" y="207" class="stage-title">契约与</text>
-      <text x="277" y="227" class="stage-title">统一入口</text>
-      <text x="277" y="258" class="stage-path">core/ · engine/ · api/</text>
-      <text x="277" y="311" class="stage-text">RunRequest → RunService</text>
-      <text x="277" y="330" class="stage-text">SceneRegistry</text>
-      <text x="277" y="349" class="stage-text">VariantGenerator</text>
-      <text x="277" y="368" class="stage-text">按 run_id 隔离产物</text>
-      <line x1="277" y1="414" x2="446" y2="414" class="separator"/>
-      <rect x="277" y="437" width="169" height="31" rx="6" class="status-local"/>
-      <text x="361" y="457" text-anchor="middle" class="status-text">代码 / 本地验证</text>
-    </g>
-
-    <g id="stage-03">
-      <rect x="492" y="150" width="205" height="350" rx="10" class="card-local"/>
-      <line x1="492" y1="150" x2="697" y2="150" class="accent-local"/>
-      <text x="510" y="181" class="stage-index">S3 · RUNTIME</text>
-      <text x="510" y="207" class="stage-title">本地 SUMO / Mock</text>
-      <text x="510" y="227" class="stage-title">与算法验证</text>
-      <text x="510" y="258" class="stage-path">engine/ · algorithms/ · cloud/</text>
-      <text x="510" y="311" class="stage-text">TraCIBridge / MockBridge</text>
-      <text x="510" y="330" class="stage-text">fixed_time · actuated</text>
-      <text x="510" y="349" class="stage-text">ca_maxpressure · EdgeChannel</text>
-      <text x="510" y="386" class="stage-note">本地证据不替代外部复现</text>
-      <line x1="510" y1="414" x2="679" y2="414" class="separator"/>
-      <rect x="510" y="437" width="169" height="31" rx="6" class="status-local"/>
-      <text x="594" y="457" text-anchor="middle" class="status-text">代码 / 本地证据</text>
-    </g>
-
-    <g id="stage-04">
-      <rect x="725" y="150" width="205" height="350" rx="10" class="card-refresh"/>
-      <line x1="725" y1="150" x2="930" y2="150" class="accent-refresh"/>
-      <text x="743" y="181" class="stage-index">S4 · MATRIX</text>
-      <text x="743" y="207" class="stage-title">矩阵与图表</text>
-      <text x="743" y="227" class="stage-title">重生成</text>
-      <text x="743" y="258" class="stage-path">scripts/run_pdf_matrix.py</text>
-      <text x="743" y="311" class="stage-text">20 × 3 × 2 × 3 = 360</text>
-      <text x="743" y="330" class="stage-text">逐 run_id 产物与 manifest</text>
-      <text x="743" y="349" class="stage-text">metrics / tripinfo / summary</text>
-      <text x="743" y="368" class="stage-text">visualization 图表链路</text>
-      <line x1="743" y1="414" x2="912" y2="414" class="separator"/>
-      <rect x="743" y="437" width="169" height="31" rx="6" class="status-refresh"/>
-      <text x="827" y="457" text-anchor="middle" class="status-text">需重生成</text>
-    </g>
-
-    <g id="stage-05">
-      <rect x="958" y="150" width="205" height="350" rx="10" class="card-external"/>
-      <line x1="958" y1="150" x2="1163" y2="150" class="accent-external"/>
-      <text x="976" y="181" class="stage-index">S5 · REPRODUCE</text>
-      <text x="976" y="207" class="stage-title">Docker live</text>
-      <text x="976" y="227" class="stage-title">/ 第二机器复现</text>
-      <text x="976" y="258" class="stage-path">docker/ · docs/deployment.md</text>
-      <text x="976" y="311" class="stage-text">镜像构建与真实运行</text>
-      <text x="976" y="330" class="stage-text">第二环境复现</text>
-      <text x="976" y="349" class="stage-text">独立证据与环境记录</text>
-      <text x="976" y="386" class="stage-note">not_run ≠ pass</text>
-      <line x1="976" y1="414" x2="1145" y2="414" class="separator"/>
-      <rect x="976" y="437" width="169" height="31" rx="6" class="status-external"/>
-      <text x="1060" y="457" text-anchor="middle" class="status-text">not_run</text>
-    </g>
-
-    <g id="stage-06">
-      <rect x="1191" y="150" width="205" height="350" rx="10" class="card-delivery"/>
-      <line x1="1191" y1="150" x2="1396" y2="150" class="accent-delivery"/>
-      <text x="1209" y="181" class="stage-index">S6 · DELIVERY</text>
-      <text x="1209" y="207" class="stage-title">报告、PPT、视频</text>
-      <text x="1209" y="227" class="stage-title">与提交包</text>
-      <text x="1209" y="258" class="stage-path">report/ · 外部交付</text>
-      <text x="1209" y="311" class="stage-text">Word / PDF 实验报告</text>
-      <text x="1209" y="330" class="stage-text">PPT 与 5–8 分钟视频</text>
-      <text x="1209" y="349" class="stage-text">实际场景方案与提交包</text>
-      <text x="1209" y="386" class="stage-note">独立于代码验收</text>
-      <line x1="1209" y1="414" x2="1378" y2="414" class="separator"/>
-      <rect x="1209" y="437" width="169" height="31" rx="6" class="status-delivery"/>
-      <text x="1293" y="457" text-anchor="middle" class="status-text">未发现 / 待交付</text>
-    </g>
-  </g>
-
-  <g id="evidence-boundary" aria-label="阶段证据边界">
-    <rect x="28" y="535" width="1384" height="210" rx="10" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.2"/>
-    <text x="52" y="568" class="section-title">阶段门控与证据边界</text>
-    <line x1="52" y1="584" x2="1388" y2="584" class="rule"/>
-    <line x1="480" y1="602" x2="480" y2="718" class="separator"/>
-    <line x1="930" y1="602" x2="930" y2="718" class="separator"/>
-
-    <text x="52" y="612" class="body-title">S1–S3 · 可直接复核</text>
-    <text x="52" y="637" class="body-text">源码、契约、Mock / 本地 SUMO 运行入口</text>
-    <text x="52" y="657" class="body-text">支持 compileall、接口检查与本地验证</text>
-    <text x="52" y="677" class="body-text">对应架构图和仿真循环中的真实模块</text>
-
-    <text x="518" y="612" class="body-title">S4–S5 · 需要重新执行</text>
-    <text x="518" y="637" class="body-text">正式矩阵产物和图表不随代码自动产生</text>
-    <text x="518" y="657" class="body-text">Docker live、第二机器复现需独立证据</text>
-    <text x="518" y="677" class="body-text">`not_run` 仅表示尚未执行或证据缺失</text>
-
-    <text x="968" y="612" class="body-title">S6 · 独立交付</text>
-    <text x="968" y="637" class="body-text">Word / PDF、PPT、视频和场景方案</text>
-    <text x="968" y="657" class="body-text">须与代码、实验数据和图表逐项对齐</text>
-    <text x="968" y="677" class="body-text">仓库存在实现不等于提交材料完成</text>
-  </g>
-
-  <g id="legend" aria-label="图例">
-    <rect x="28" y="775" width="1384" height="108" rx="10" fill="#f7f9fb" stroke="#c9d5df" stroke-width="1"/>
-    <text x="52" y="806" class="section-title">图例</text>
-    <line x1="146" y1="802" x2="222" y2="802" class="flow"/>
-    <text x="238" y="806" class="body-text">流程门控方向</text>
-    <rect x="356" y="788" width="112" height="27" rx="6" class="status-local"/>
-    <text x="412" y="806" text-anchor="middle" class="status-text">代码 / 本地证据</text>
-    <rect x="500" y="788" width="96" height="27" rx="6" class="status-refresh"/>
-    <text x="548" y="806" text-anchor="middle" class="status-text">需重生成</text>
-    <rect x="628" y="788" width="82" height="27" rx="6" class="status-external"/>
-    <text x="669" y="806" text-anchor="middle" class="status-text">not_run</text>
-    <rect x="742" y="788" width="112" height="27" rx="6" class="status-delivery"/>
-    <text x="798" y="806" text-anchor="middle" class="status-text">待交付</text>
-    <text x="52" y="850" class="tiny">颜色只作辅助；阶段编号、文字状态和证据边界共同表达含义，适合灰度打印与论文版式引用。</text>
-  </g>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.3 (20260303.0454)
+ -->
+<!-- Title: timeline Pages: 1 -->
+<svg role="img" aria-labelledby="timeline-title timeline-desc" width="1367pt" height="232pt"
+ viewBox="0.00 0.00 1367.00 232.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title id="timeline-title">工程复现与交付阶段门控</title>
+  <desc id="timeline-desc">项目从输入事实、契约接口、本地运行、矩阵重生成、Docker 或第二机器复现进入报告、PPT、视频和验收交付，并保留每阶段证据边界。</desc>
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(20.16 211.4)">
+<title>timeline</title>
+<polygon fill="white" stroke="none" points="-20.16,20.16 -20.16,-211.4 1346.39,-211.4 1346.39,20.16 -20.16,20.16"/>
+<text xml:space="preserve" text-anchor="middle" x="663.12" y="-171.04" font-family="Arial" font-size="18.00" fill="#17324d">工程复现与交付阶段门控</text>
+<g id="clust1" class="cluster">
+<title>cluster_boundaries</title>
+<path fill="#f7f9fb" stroke="#c3d0dc" d="M1010.24,-8C1010.24,-8 1306.23,-8 1306.23,-8 1312.23,-8 1318.23,-14 1318.23,-20 1318.23,-20 1318.23,-83 1318.23,-83 1318.23,-89 1312.23,-95 1306.23,-95 1306.23,-95 1010.24,-95 1010.24,-95 1004.24,-95 998.24,-89 998.24,-83 998.24,-83 998.24,-20 998.24,-20 998.24,-14 1004.24,-8 1010.24,-8"/>
+<text xml:space="preserve" text-anchor="middle" x="1158.24" y="-81.1" font-family="Arial" font-size="11.00" fill="#49647b">阶段门控与证据边界</text>
+</g>
+<!-- s1 -->
+<g id="node1" class="node">
+<title>s1</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M104.98,-161.64C104.98,-161.64 12,-161.64 12,-161.64 6,-161.64 0,-155.64 0,-149.64 0,-149.64 0,-102.36 0,-102.36 0,-96.36 6,-90.36 12,-90.36 12,-90.36 104.98,-90.36 104.98,-90.36 110.98,-90.36 116.98,-96.36 116.98,-102.36 116.98,-102.36 116.98,-149.64 116.98,-149.64 116.98,-155.64 110.98,-161.64 104.98,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="58.49" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S1 · 输入</text>
+<text xml:space="preserve" text-anchor="middle" x="58.49" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">高风险事实与只读数据</text>
+<text xml:space="preserve" text-anchor="middle" x="58.49" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">data/intersection_data/</text>
+<text xml:space="preserve" text-anchor="middle" x="58.49" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">PDF：20 个路口</text>
+<text xml:space="preserve" text-anchor="middle" x="58.49" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：代码 / 文档</text>
+</g>
+<!-- s2 -->
+<g id="node2" class="node">
+<title>s2</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M287.96,-161.64C287.96,-161.64 176.98,-161.64 176.98,-161.64 170.98,-161.64 164.98,-155.64 164.98,-149.64 164.98,-149.64 164.98,-102.36 164.98,-102.36 164.98,-96.36 170.98,-90.36 176.98,-90.36 176.98,-90.36 287.96,-90.36 287.96,-90.36 293.96,-90.36 299.96,-96.36 299.96,-102.36 299.96,-102.36 299.96,-149.64 299.96,-149.64 299.96,-155.64 293.96,-161.64 287.96,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="232.47" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S2 · 契约</text>
+<text xml:space="preserve" text-anchor="middle" x="232.47" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">契约与接口入口</text>
+<text xml:space="preserve" text-anchor="middle" x="232.47" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">core/ · docs/</text>
+<text xml:space="preserve" text-anchor="middle" x="232.47" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">RunRequest → RunService</text>
+<text xml:space="preserve" text-anchor="middle" x="232.47" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：代码 / 检查记录</text>
+</g>
+<!-- s1&#45;&gt;s2 -->
+<g id="edge1" class="edge">
+<title>s1&#45;&gt;s2</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.45" d="M117.39,-126C117.39,-126 155.24,-126 155.24,-126"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.45" points="155.24,-128.52 162.44,-126 155.24,-123.48 155.24,-128.52"/>
+<rect x="120.98" y="-128.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="130.98" y="-118.8" font-family="Arial" font-size="8.00" fill="#41566b">G1</text>
+</g>
+<!-- s3 -->
+<g id="node3" class="node">
+<title>s3</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M465.41,-161.64C465.41,-161.64 359.96,-161.64 359.96,-161.64 353.96,-161.64 347.96,-155.64 347.96,-149.64 347.96,-149.64 347.96,-102.36 347.96,-102.36 347.96,-96.36 353.96,-90.36 359.96,-90.36 359.96,-90.36 465.41,-90.36 465.41,-90.36 471.41,-90.36 477.41,-96.36 477.41,-102.36 477.41,-102.36 477.41,-149.64 477.41,-149.64 477.41,-155.64 471.41,-161.64 465.41,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="412.69" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S3 · 运行</text>
+<text xml:space="preserve" text-anchor="middle" x="412.69" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">本地 SUMO / Mock</text>
+<text xml:space="preserve" text-anchor="middle" x="412.69" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">可审计仿真</text>
+<text xml:space="preserve" text-anchor="middle" x="412.69" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">TraCIBridge / MockBridge</text>
+<text xml:space="preserve" text-anchor="middle" x="412.69" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：代码 / 本地实验</text>
+</g>
+<!-- s2&#45;&gt;s3 -->
+<g id="edge2" class="edge">
+<title>s2&#45;&gt;s3</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.45" d="M300.35,-126C300.35,-126 338.16,-126 338.16,-126"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.45" points="338.16,-128.52 345.36,-126 338.16,-123.48 338.16,-128.52"/>
+<rect x="303.92" y="-128.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="313.92" y="-118.8" font-family="Arial" font-size="8.00" fill="#41566b">G2</text>
+</g>
+<!-- s4 -->
+<g id="node4" class="node">
+<title>s4</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M623.36,-161.64C623.36,-161.64 537.41,-161.64 537.41,-161.64 531.41,-161.64 525.41,-155.64 525.41,-149.64 525.41,-149.64 525.41,-102.36 525.41,-102.36 525.41,-96.36 531.41,-90.36 537.41,-90.36 537.41,-90.36 623.36,-90.36 623.36,-90.36 629.36,-90.36 635.36,-96.36 635.36,-102.36 635.36,-102.36 635.36,-149.64 635.36,-149.64 635.36,-155.64 629.36,-161.64 623.36,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="580.39" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S4 · 矩阵</text>
+<text xml:space="preserve" text-anchor="middle" x="580.39" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">矩阵与图表重生成</text>
+<text xml:space="preserve" text-anchor="middle" x="580.39" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">20 × 3 × 2 × 3 = 360</text>
+<text xml:space="preserve" text-anchor="middle" x="580.39" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">run_id / metrics / 清单</text>
+<text xml:space="preserve" text-anchor="middle" x="580.39" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：需重生成</text>
+</g>
+<!-- s3&#45;&gt;s4 -->
+<g id="edge3" class="edge">
+<title>s3&#45;&gt;s4</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.45" d="M477.52,-126C477.52,-126 515.59,-126 515.59,-126"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.45" points="515.59,-128.52 522.79,-126 515.59,-123.48 515.59,-128.52"/>
+<rect x="481.22" y="-128.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="491.22" y="-118.8" font-family="Arial" font-size="8.00" fill="#41566b">G3</text>
+</g>
+<!-- boundary -->
+<g id="node7" class="node">
+<title>boundary</title>
+<polygon fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" points="1304.23,-65.84 1006.24,-65.84 1006.24,-16.16 1310.23,-16.16 1310.23,-59.84 1304.23,-65.84"/>
+<polyline fill="none" stroke="#a7b8c8" stroke-width="1.15" points="1304.23,-65.84 1304.23,-59.84"/>
+<polyline fill="none" stroke="#a7b8c8" stroke-width="1.15" points="1310.23,-59.84 1304.23,-59.84"/>
+<text xml:space="preserve" text-anchor="middle" x="1158.24" y="-49.1" font-family="Arial" font-size="9.00" fill="#17324d">S1–S3 · 可审计设施：路径、接口、本地 SUMO 入口，原始数据只读</text>
+<text xml:space="preserve" text-anchor="middle" x="1158.24" y="-38.3" font-family="Arial" font-size="9.00" fill="#17324d">S4–S5 · 矩阵复现：正式实验数据不得凭空补齐，Docker / 第二机器需独立核验</text>
+<text xml:space="preserve" text-anchor="middle" x="1158.24" y="-27.5" font-family="Arial" font-size="9.00" fill="#17324d">S6 · 独立交付：Word / PDF、PPT、视频与验收，缺证据时明确标记待核验</text>
+</g>
+<!-- s3&#45;&gt;boundary -->
+<!-- s5 -->
+<g id="node5" class="node">
+<title>s5</title>
+<path fill="#f7f9fb" stroke="#64748b" stroke-width="1.15" d="M787.81,-161.64C787.81,-161.64 695.36,-161.64 695.36,-161.64 689.36,-161.64 683.36,-155.64 683.36,-149.64 683.36,-149.64 683.36,-102.36 683.36,-102.36 683.36,-96.36 689.36,-90.36 695.36,-90.36 695.36,-90.36 787.81,-90.36 787.81,-90.36 793.81,-90.36 799.81,-96.36 799.81,-102.36 799.81,-102.36 799.81,-149.64 799.81,-149.64 799.81,-155.64 793.81,-161.64 787.81,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="741.58" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S5 · 复现</text>
+<text xml:space="preserve" text-anchor="middle" x="741.58" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">Docker 实机</text>
+<text xml:space="preserve" text-anchor="middle" x="741.58" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">/ 第二机器短复现</text>
+<text xml:space="preserve" text-anchor="middle" x="741.58" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">接口与路径核对</text>
+<text xml:space="preserve" text-anchor="middle" x="741.58" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：未运行（not_run）</text>
+</g>
+<!-- s4&#45;&gt;s5 -->
+<g id="edge4" class="edge">
+<title>s4&#45;&gt;s5</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.45" d="M635.86,-126C635.86,-126 673.59,-126 673.59,-126"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.45" points="673.59,-128.52 680.79,-126 673.59,-123.48 673.59,-128.52"/>
+<rect x="639.39" y="-128.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="649.39" y="-118.8" font-family="Arial" font-size="8.00" fill="#41566b">G4</text>
+</g>
+<!-- s4&#45;&gt;boundary -->
+<!-- s6 -->
+<g id="node6" class="node">
+<title>s6</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M946.24,-161.64C946.24,-161.64 859.81,-161.64 859.81,-161.64 853.81,-161.64 847.81,-155.64 847.81,-149.64 847.81,-149.64 847.81,-102.36 847.81,-102.36 847.81,-96.36 853.81,-90.36 859.81,-90.36 859.81,-90.36 946.24,-90.36 946.24,-90.36 952.24,-90.36 958.24,-96.36 958.24,-102.36 958.24,-102.36 958.24,-149.64 958.24,-149.64 958.24,-155.64 952.24,-161.64 946.24,-161.64"/>
+<text xml:space="preserve" text-anchor="middle" x="903.03" y="-144.9" font-family="Arial" font-size="9.00" fill="#17324d">S6 · 交付</text>
+<text xml:space="preserve" text-anchor="middle" x="903.03" y="-134.1" font-family="Arial" font-size="9.00" fill="#17324d">报告、PPT、视频</text>
+<text xml:space="preserve" text-anchor="middle" x="903.03" y="-123.3" font-family="Arial" font-size="9.00" fill="#17324d">与验收报告</text>
+<text xml:space="preserve" text-anchor="middle" x="903.03" y="-112.5" font-family="Arial" font-size="9.00" fill="#17324d">Word / PDF / 交付材料</text>
+<text xml:space="preserve" text-anchor="middle" x="903.03" y="-101.7" font-family="Arial" font-size="9.00" fill="#17324d">门控：未完成 / 待核验</text>
+</g>
+<!-- s5&#45;&gt;s6 -->
+<g id="edge5" class="edge">
+<title>s5&#45;&gt;s6</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.45" d="M800.33,-126C800.33,-126 837.9,-126 837.9,-126"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.45" points="837.9,-128.52 845.1,-126 837.9,-123.48 837.9,-128.52"/>
+<rect x="803.78" y="-128.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="813.78" y="-118.8" font-family="Arial" font-size="8.00" fill="#41566b">G5</text>
+</g>
+<!-- s6&#45;&gt;boundary -->
+</g>
 </svg>
