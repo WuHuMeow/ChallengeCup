@@ -1,56 +1,180 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" font-family="Microsoft YaHei, SimHei, sans-serif">
-  <defs><filter id="sd"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/></filter></defs>
-  <rect width="800" height="420" fill="#f8fafc"/>
-  <text x="400" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">团队组织结构（8 人）</text>
-  <!-- TL -->
-  <rect x="310" y="50" width="180" height="50" rx="10" fill="#667eea" filter="url(#sd)"/>
-  <text x="400" y="72" text-anchor="middle" font-size="13" font-weight="bold" fill="white">TL · Tech Lead</text>
-  <text x="400" y="90" text-anchor="middle" font-size="9" fill="#e2e8f0">架构设计 · 接口定义 · 集成协调</text>
-  <!-- Lines from TL -->
-  <path d="M350,100 L200,140" stroke="#a0aec0" stroke-width="1.5"/>
-  <path d="M400,100 L400,140" stroke="#a0aec0" stroke-width="1.5"/>
-  <path d="M450,100 L600,140" stroke="#a0aec0" stroke-width="1.5"/>
-  <!-- Infra group -->
-  <rect x="80" y="140" width="240" height="30" rx="6" fill="#edf2f7"/>
-  <text x="200" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">仿真基础设施组</text>
-  <rect x="80" y="180" width="115" height="65" rx="8" fill="white" stroke="#4facfe" stroke-width="2" filter="url(#sd)"/>
-  <text x="137" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">IA</text>
-  <text x="137" y="218" text-anchor="middle" font-size="8" fill="#718096">SUMO 版本统一</text>
-  <text x="137" y="232" text-anchor="middle" font-size="8" fill="#718096">20 路口迁移验证</text>
-  <rect x="205" y="180" width="115" height="65" rx="8" fill="white" stroke="#4facfe" stroke-width="2" filter="url(#sd)"/>
-  <text x="262" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">IB</text>
-  <text x="262" y="218" text-anchor="middle" font-size="8" fill="#718096">TraCI 封装</text>
-  <text x="262" y="232" text-anchor="middle" font-size="8" fill="#718096">云-边-端消息流</text>
-  <!-- Algo group -->
-  <rect x="340" y="140" width="120" height="30" rx="6" fill="#edf2f7"/>
-  <text x="400" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">算法组</text>
-  <rect x="340" y="180" width="115" height="65" rx="8" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#sd)"/>
-  <text x="397" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">AA</text>
-  <text x="397" y="218" text-anchor="middle" font-size="8" fill="#718096">FixedTime</text>
-  <text x="397" y="232" text-anchor="middle" font-size="8" fill="#718096">Actuated（基线）</text>
-  <rect x="465" y="180" width="115" height="65" rx="8" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#sd)"/>
-  <text x="522" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">AB</text>
-  <text x="522" y="218" text-anchor="middle" font-size="8" fill="#718096">CA-MP（核心）</text>
-  <text x="522" y="232" text-anchor="middle" font-size="8" fill="#718096">EWMA 预测</text>
-  <!-- Delivery group -->
-  <rect x="530" y="140" width="200" height="30" rx="6" fill="#edf2f7"/>
-  <text x="630" y="160" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">实验 + 交付组</text>
-  <rect x="600" y="180" width="80" height="65" rx="8" fill="white" stroke="#38a169" stroke-width="2" filter="url(#sd)"/>
-  <text x="640" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#276749">EX</text>
-  <text x="640" y="218" text-anchor="middle" font-size="8" fill="#718096">实验矩阵</text>
-  <text x="640" y="232" text-anchor="middle" font-size="8" fill="#718096">批量运行</text>
-  <rect x="690" y="180" width="80" height="65" rx="8" fill="white" stroke="#dd6b20" stroke-width="2" filter="url(#sd)"/>
-  <text x="730" y="200" text-anchor="middle" font-size="11" font-weight="bold" fill="#c05621">DA</text>
-  <text x="730" y="218" text-anchor="middle" font-size="8" fill="#718096">报告 · PPT</text>
-  <text x="730" y="232" text-anchor="middle" font-size="8" fill="#718096">文档排版</text>
-  <!-- DB below -->
-  <path d="M630,100 L630,140" stroke="#a0aec0" stroke-width="1.5"/>
-  <rect x="600" y="260" width="170" height="55" rx="8" fill="white" stroke="#805ad5" stroke-width="2" filter="url(#sd)"/>
-  <text x="685" y="282" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">DB</text>
-  <text x="685" y="300" text-anchor="middle" font-size="8" fill="#718096">可视化（Matplotlib + PyQt）· 视频录制剪辑</text>
-  <path d="M685,245 L685,260" stroke="#a0aec0" stroke-width="1"/>
-  <!-- Summary -->
-  <rect x="80" y="340" width="640" height="55" rx="8" fill="#edf2f7" stroke="#cbd5e0" stroke-width="1"/>
-  <text x="400" y="362" text-anchor="middle" font-size="10" fill="#4a5568">协作节奏：每日 21:00 群内同步（≤5行）| 每周六 21:00 全体会（30min）| 卡住 >4h 升级到 TL</text>
-  <text x="400" y="382" text-anchor="middle" font-size="10" fill="#4a5568">分支策略：main（稳定）/ dev（开发）/ feature/*（功能分支）| 接口冻结：7/23 后不改 types + base</text>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1280 780"
+     role="img"
+     aria-labelledby="team-title team-desc">
+  <title id="team-title">角色、模块与交付接口责任矩阵</title>
+  <desc id="team-desc">八个项目角色按契约与仿真、算法与实验、交付与表达分组，并连接到真实仓库目录和当前可验证或待外部核验的交付边界。</desc>
+
+  <defs>
+    <marker id="team-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
+    </marker>
+    <marker id="team-open" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="#64748b" stroke-width="1.4"/>
+    </marker>
+  </defs>
+
+  <style>
+    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 24px; font-weight: 700; fill: #17324d; }
+    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
+    .group-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 13px; font-weight: 700; fill: #17324d; }
+    .role { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 15px; font-weight: 700; fill: #17324d; }
+    .role-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; fill: #3c566d; }
+    .text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #52677d; }
+    .path { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #536b82; }
+    .status { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; font-weight: 700; fill: #6b4b22; }
+    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
+    .group-a { fill: #f7f9fb; stroke: #a9bbc9; stroke-width: 1.3; }
+    .group-b { fill: #f5faf9; stroke: #8fb9b0; stroke-width: 1.3; }
+    .group-c { fill: #fcf8f1; stroke: #c7a97a; stroke-width: 1.3; }
+    .role-box { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
+    .role-box-blue { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.4; }
+    .role-box-teal { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.4; }
+    .role-box-amber { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.4; }
+    .status-local { fill: #e9f4ee; stroke: #7ca88b; stroke-width: 1; }
+    .status-external { fill: #fff2df; stroke: #c49a63; stroke-width: 1; }
+    .flow { fill: none; stroke: #1f4e79; stroke-width: 1.5; marker-end: url(#team-blue); }
+    .link { fill: none; stroke: #64748b; stroke-width: 1.3; stroke-dasharray: 7 5; marker-end: url(#team-open); }
+    .rule { stroke: #c9d5df; stroke-width: 1; }
+  </style>
+
+  <rect width="1280" height="780" fill="#ffffff"/>
+  <text x="640" y="36" text-anchor="middle" class="title">角色、模块与交付接口责任矩阵</text>
+  <text x="640" y="59" text-anchor="middle" class="subtitle">仓库责任接口视图 · 代码存在、内部验证与外部提交材料分开表达</text>
+
+  <rect x="24" y="82" width="1232" height="624" rx="12" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.4"/>
+  <text x="44" y="108" class="tiny">角色代号沿用项目任务书；路径和状态来自当前仓库文档，不代表个人成员编号或比赛平台收件结果。</text>
+
+  <g id="contract-simulation">
+    <rect x="44" y="126" width="370" height="454" rx="10" class="group-a"/>
+    <text x="64" y="154" class="group-title">A · 契约与仿真</text>
+    <text x="64" y="174" class="tiny">核心类型、场景、运行时和部署边界</text>
+
+    <rect x="64" y="194" width="330" height="74" rx="8" class="role-box-blue"/>
+    <text x="82" y="218" class="role">TL</text>
+    <text x="132" y="215" class="role-title">技术契约与集成</text>
+    <text x="132" y="234" class="path">core/ · docs/architecture/</text>
+    <text x="132" y="252" class="text">类型、接口、集成审查、仓库整理</text>
+    <rect x="82" y="278" width="294" height="23" rx="5" class="status-local"/>
+    <text x="96" y="294" class="status">代码/本地验证 · 最终集成审查待确认</text>
+
+    <rect x="64" y="326" width="154" height="112" rx="8" class="role-box"/>
+    <text x="82" y="351" class="role">IA</text>
+    <text x="82" y="371" class="role-title">SUMO / 场景基础</text>
+    <text x="82" y="391" class="path">scenes/ · data/</text>
+    <text x="82" y="409" class="text">20 路口配置</text>
+    <text x="82" y="425" class="text">本地迁移验证</text>
+    <rect x="82" y="450" width="118" height="23" rx="5" class="status-local"/>
+    <text x="91" y="466" class="status">基础完成</text>
+
+    <rect x="240" y="326" width="154" height="112" rx="8" class="role-box"/>
+    <text x="258" y="351" class="role">IB</text>
+    <text x="258" y="371" class="role-title">运行时与接口</text>
+    <text x="258" y="391" class="path">engine/ · api/</text>
+    <text x="258" y="409" class="text">TraCI / Runner</text>
+    <text x="258" y="425" class="text">Docker / docs</text>
+    <rect x="258" y="450" width="118" height="23" rx="5" class="status-local"/>
+    <text x="267" y="466" class="status">基础完成</text>
+
+    <path d="M229,268 V300 H141 V326" class="flow"/>
+    <path d="M229,300 H317 V326" class="flow"/>
+    <text x="229" y="316" text-anchor="middle" class="tiny">契约 / 场景</text>
+  </g>
+
+  <g id="algorithm-experiment">
+    <rect x="454" y="126" width="370" height="454" rx="10" class="group-b"/>
+    <text x="474" y="154" class="group-title">B · 算法与实验</text>
+    <text x="474" y="174" class="tiny">策略实现、云端参数、矩阵和指标来源</text>
+
+    <rect x="474" y="194" width="154" height="112" rx="8" class="role-box-teal"/>
+    <text x="492" y="219" class="role">AA</text>
+    <text x="492" y="239" class="role-title">基线算法</text>
+    <text x="492" y="259" class="path">algorithms/</text>
+    <text x="492" y="277" class="text">FixedTime</text>
+    <text x="492" y="293" class="text">Actuated</text>
+    <rect x="492" y="316" width="118" height="23" rx="5" class="status-local"/>
+    <text x="501" y="332" class="status">部分完成</text>
+
+    <rect x="646" y="194" width="154" height="112" rx="8" class="role-box-teal"/>
+    <text x="664" y="219" class="role">AB</text>
+    <text x="664" y="239" class="role-title">CA-MP 核心</text>
+    <text x="664" y="259" class="path">algorithms/ca_max_pressure.py</text>
+    <text x="664" y="277" class="text">CloudPolicy / EWMA</text>
+    <text x="664" y="293" class="text">合法相位 / 溢出门控</text>
+    <rect x="664" y="316" width="118" height="23" rx="5" class="status-local"/>
+    <text x="673" y="332" class="status">实现完成</text>
+
+    <rect x="474" y="364" width="326" height="112" rx="8" class="role-box-teal"/>
+    <text x="492" y="389" class="role">EX</text>
+    <text x="542" y="386" class="role-title">实验矩阵、指标和图表来源链</text>
+    <text x="492" y="409" class="path">experiments/ · visualization/</text>
+    <text x="492" y="429" class="text">20 路口 · 算法 · 流量 · 种子</text>
+    <text x="492" y="447" class="text">summary.json → figures / manifest</text>
+    <rect x="492" y="488" width="294" height="23" rx="5" class="status-external"/>
+    <text x="506" y="504" class="status">基础完成 · 正式数值需重生成</text>
+
+    <path d="M551,306 V350 H637 V364" class="flow"/>
+    <path d="M723,306 V350 H637 V364" class="flow"/>
+    <text x="637" y="344" text-anchor="middle" class="tiny">ControlAction / metrics</text>
+  </g>
+
+  <g id="delivery">
+    <rect x="864" y="126" width="370" height="454" rx="10" class="group-c"/>
+    <text x="884" y="154" class="group-title">C · 交付与表达</text>
+    <text x="884" y="174" class="tiny">报告、图表、演示素材和最终提交边界</text>
+
+    <rect x="884" y="194" width="154" height="112" rx="8" class="role-box-amber"/>
+    <text x="902" y="219" class="role">DA</text>
+    <text x="902" y="239" class="role-title">报告 / PPT</text>
+    <text x="902" y="259" class="path">report/ · deliverables</text>
+    <text x="902" y="277" class="text">图注 / 结果对齐</text>
+    <text x="902" y="293" class="text">排版 / 提交包</text>
+    <rect x="902" y="316" width="118" height="23" rx="5" class="status-external"/>
+    <text x="911" y="332" class="status">未完成</text>
+
+    <rect x="1056" y="194" width="154" height="112" rx="8" class="role-box-amber"/>
+    <text x="1074" y="219" class="role">DB</text>
+    <text x="1074" y="239" class="role-title">可视化 / 视频</text>
+    <text x="1074" y="259" class="path">visualization/ · demo</text>
+    <text x="1074" y="277" class="text">Matplotlib 图表</text>
+    <text x="1074" y="293" class="text">演示素材 / 剪辑</text>
+    <rect x="1074" y="316" width="118" height="23" rx="5" class="status-external"/>
+    <text x="1083" y="332" class="status">部分完成</text>
+
+    <rect x="884" y="364" width="326" height="112" rx="8" class="role-box-amber"/>
+    <text x="902" y="389" class="role-title">外部交付证据边界</text>
+    <text x="902" y="412" class="text">Docker live · 第二机器复现</text>
+    <text x="902" y="431" class="text">Word/PDF · PPT · 视频 · 提交包</text>
+    <rect x="902" y="488" width="294" height="23" rx="5" class="status-external"/>
+    <text x="916" y="504" class="status">待外部核验 / 未发现独立成品</text>
+
+    <path d="M800,420 H842 V250 H884" class="link"/>
+    <text x="842" y="241" text-anchor="middle" class="tiny">数字 / 图表</text>
+  </g>
+
+  <g id="interfaces">
+    <path d="M414,520 H454" class="flow"/>
+    <text x="434" y="510" text-anchor="middle" class="tiny">contracts</text>
+    <path d="M824,420 H864" class="flow"/>
+    <text x="844" y="410" text-anchor="middle" class="tiny">figures</text>
+    <path d="M1038,306 V350 H637 V364" class="link"/>
+    <text x="1048" y="342" class="tiny">报告数字回溯</text>
+
+    <rect x="44" y="606" width="1190" height="72" rx="8" fill="#f7f9fb" stroke="#c3d0dc" stroke-width="1"/>
+    <text x="64" y="631" class="group-title">接口节奏</text>
+    <text x="64" y="653" class="text">契约冻结 → 算法接入 → 本地/矩阵验证 → 图表与报告数字对齐 → 外部环境和提交材料核验</text>
+    <text x="64" y="670" class="tiny">图中“基础完成/实现完成”只描述仓库可验证路径；not_run 不等于 pass，外部材料不能由代码存在自动推导。</text>
+  </g>
+
+  <g id="legend">
+    <line x1="52" y1="736" x2="92" y2="736" class="flow"/>
+    <text x="102" y="740" class="tiny">责任/交付接口</text>
+    <line x1="246" y1="736" x2="286" y2="736" class="link"/>
+    <text x="296" y="740" class="tiny">来源/回溯关系</text>
+    <rect x="452" y="726" width="18" height="18" rx="4" class="status-local"/>
+    <text x="480" y="740" class="tiny">代码/本地验证</text>
+    <rect x="632" y="726" width="18" height="18" rx="4" class="status-external"/>
+    <text x="660" y="740" class="tiny">待外部核验/交付</text>
+    <text x="1228" y="740" text-anchor="end" class="tiny">Source: docs/tasks/current-status.md · status vocabulary is evidence-scoped</text>
+  </g>
 </svg>

@@ -1,78 +1,219 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" font-family="Microsoft YaHei, SimHei, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1440 820"
+     role="img"
+     aria-labelledby="architecture-title architecture-desc">
+  <title id="architecture-title">统一运行容器架构与 Cloud Edge End 映射</title>
+  <desc id="architecture-desc">CLI、REST API 和 PDF 矩阵入口统一进入 RunService，经过场景变体与仿真运行器，由 CloudPolicy、控制算法和桥接层驱动 SUMO 或 Mock，并生成按 run_id 隔离的实验证据。</desc>
+
   <defs>
-    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea"/><stop offset="100%" style="stop-color:#764ba2"/>
-    </linearGradient>
-    <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#f093fb"/><stop offset="100%" style="stop-color:#f5576c"/>
-    </linearGradient>
-    <linearGradient id="vehicleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#4facfe"/><stop offset="100%" style="stop-color:#00f2fe"/>
-    </linearGradient>
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-opacity="0.15"/>
-    </filter>
-    <marker id="arrP" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#667eea"/></marker>
-    <marker id="arrR" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#f5576c"/></marker>
-    <marker id="arrB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#4facfe"/></marker>
+    <marker id="arch-solid-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
+    </marker>
+    <marker id="arch-solid-teal" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#0f766e"/>
+    </marker>
+    <marker id="arch-open-slate" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="#475569" stroke-width="1.4"/>
+    </marker>
+    <marker id="arch-evidence" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#a8661d"/>
+    </marker>
   </defs>
-  <rect width="800" height="600" fill="#f8fafc"/>
-  <text x="400" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a202c">CA-MP 云-边-端三层协同架构</text>
-  <!-- Cloud -->
-  <rect x="100" y="55" width="600" height="140" rx="12" fill="url(#cloudGrad)" opacity="0.12" filter="url(#shadow)"/>
-  <rect x="100" y="55" width="600" height="140" rx="12" fill="none" stroke="#667eea" stroke-width="2"/>
-  <text x="120" y="80" font-size="14" font-weight="bold" fill="#667eea">Cloud Layer（云端）</text>
-  <rect x="130" y="92" width="250" height="85" rx="8" fill="white" stroke="#667eea" stroke-width="1.5"/>
-  <text x="255" y="115" text-anchor="middle" font-size="12" font-weight="bold" fill="#4a5568">CloudCoordinator</text>
-  <text x="255" y="135" text-anchor="middle" font-size="10" fill="#718096">全局压力评估 → 周期性下发参数</text>
-  <text x="255" y="152" text-anchor="middle" font-size="10" fill="#718096">min_green / max_green / base_green</text>
-  <text x="255" y="169" text-anchor="middle" font-size="10" fill="#718096">EWMA 流量预测 → 修正压力值</text>
-  <rect x="420" y="92" width="250" height="85" rx="8" fill="white" stroke="#667eea" stroke-width="1.5"/>
-  <text x="545" y="115" text-anchor="middle" font-size="12" font-weight="bold" fill="#4a5568">EWMA Predictor</text>
-  <text x="545" y="135" text-anchor="middle" font-size="10" fill="#718096">指数加权移动平均（α=0.3）</text>
-  <text x="545" y="152" text-anchor="middle" font-size="10" fill="#718096">短期流量趋势预测</text>
-  <text x="545" y="169" text-anchor="middle" font-size="10" fill="#718096">轻量级，无需 GPU</text>
-  <!-- Arrow Cloud->Edge -->
-  <path d="M400,195 L400,225" stroke="#667eea" stroke-width="2.5" marker-end="url(#arrP)"/>
-  <text x="410" y="215" font-size="10" fill="#667eea">PredictionResult（周期性下发）</text>
-  <!-- Edge -->
-  <rect x="100" y="230" width="600" height="170" rx="12" fill="url(#edgeGrad)" opacity="0.10" filter="url(#shadow)"/>
-  <rect x="100" y="230" width="600" height="170" rx="12" fill="none" stroke="#f5576c" stroke-width="2"/>
-  <text x="120" y="255" font-size="14" font-weight="bold" fill="#f5576c">Edge Layer（边缘 / RSU）</text>
-  <rect x="130" y="267" width="170" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="215" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">EdgeNode</text>
-  <text x="215" y="310" text-anchor="middle" font-size="10" fill="#718096">接收 V2X 消息</text>
-  <text x="215" y="327" text-anchor="middle" font-size="10" fill="#718096">汇聚排队状态</text>
-  <text x="215" y="344" text-anchor="middle" font-size="10" fill="#718096">调用算法决策</text>
-  <text x="215" y="361" text-anchor="middle" font-size="10" fill="#718096">输出 ControlAction</text>
-  <rect x="320" y="267" width="180" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="410" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">CA-MP Controller</text>
-  <text x="410" y="310" text-anchor="middle" font-size="10" fill="#718096">1. 溢出门控: occ>90%→强制放行</text>
-  <text x="410" y="327" text-anchor="middle" font-size="10" fill="#718096">2. pressure = queue / capacity</text>
-  <text x="410" y="344" text-anchor="middle" font-size="10" fill="#718096">3. 选最大压力相位</text>
-  <text x="410" y="361" text-anchor="middle" font-size="10" fill="#718096">4. 动态绿灯时长</text>
-  <rect x="520" y="267" width="160" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="600" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">Baselines</text>
-  <text x="600" y="315" text-anchor="middle" font-size="10" fill="#718096">FixedTime（固定配时）</text>
-  <text x="600" y="335" text-anchor="middle" font-size="10" fill="#718096">Actuated（感应控制）</text>
-  <text x="600" y="360" text-anchor="middle" font-size="10" fill="#718096">（对照组）</text>
-  <!-- Arrow Edge->Vehicle -->
-  <path d="M400,400 L400,430" stroke="#f5576c" stroke-width="2.5" marker-end="url(#arrR)"/>
-  <text x="410" y="420" font-size="10" fill="#f5576c">ControlAction（相位+时长）</text>
-  <!-- Vehicle -->
-  <rect x="100" y="435" width="600" height="130" rx="12" fill="url(#vehicleGrad)" opacity="0.10" filter="url(#shadow)"/>
-  <rect x="100" y="435" width="600" height="130" rx="12" fill="none" stroke="#4facfe" stroke-width="2"/>
-  <text x="120" y="460" font-size="14" font-weight="bold" fill="#4facfe">Vehicle Layer（车端 / SUMO）</text>
-  <rect x="130" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
-  <text x="255" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">SUMO 仿真车辆</text>
-  <text x="255" y="515" text-anchor="middle" font-size="10" fill="#718096">位置、速度、车道 → JointState</text>
-  <text x="255" y="532" text-anchor="middle" font-size="10" fill="#718096">TraCI 实时状态读取</text>
-  <rect x="420" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
-  <text x="545" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">信号灯执行</text>
-  <text x="545" y="515" text-anchor="middle" font-size="10" fill="#718096">setPhase / setPhaseDuration</text>
-  <text x="545" y="532" text-anchor="middle" font-size="10" fill="#718096">setProgram</text>
-  <!-- Feedback -->
-  <path d="M250,435 L250,400" stroke="#4facfe" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrB)"/>
-  <text x="140" y="420" font-size="10" fill="#4facfe">JointState（上报）</text>
-  <text x="400" y="590" text-anchor="middle" font-size="10" fill="#a0aec0">XH-202613 | CA-MP Capacity-Aware MaxPressure | 赛道 B（算法调优型）</text>
+
+  <style>
+    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 24px; font-weight: 700; fill: #17324d; }
+    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
+    .panel-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; fill: #17324d; }
+    .section-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 1px; fill: #456277; }
+    .box-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 13px; font-weight: 700; fill: #17324d; }
+    .box-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; fill: #41566b; }
+    .path-text { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10px; fill: #536b82; }
+    .small { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #536b82; }
+    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
+    .line-label { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 700; fill: #41566b; }
+    .boundary { fill: #fbfdff; stroke: #7a96ae; stroke-width: 1.5; }
+    .box { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
+    .box-blue { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.5; }
+    .box-teal { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.5; }
+    .box-amber { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.5; }
+    .band-cloud { fill: #f3f7fb; stroke: #8aa5bc; stroke-width: 1.1; }
+    .band-edge { fill: #f0f8f6; stroke: #73aa9f; stroke-width: 1.1; }
+    .band-end { fill: #fcf7ee; stroke: #c09b68; stroke-width: 1.1; }
+    .flow-blue { fill: none; stroke: #1f4e79; stroke-width: 1.8; marker-end: url(#arch-solid-blue); }
+    .flow-teal { fill: none; stroke: #0f766e; stroke-width: 1.8; marker-end: url(#arch-solid-teal); }
+    .flow-open { fill: none; stroke: #475569; stroke-width: 1.5; marker-end: url(#arch-open-slate); }
+    .flow-optional { fill: none; stroke: #0f766e; stroke-width: 1.4; stroke-dasharray: 7 5; marker-end: url(#arch-solid-teal); }
+    .flow-evidence { fill: none; stroke: #a8661d; stroke-width: 1.5; stroke-dasharray: 9 5 2 5; marker-end: url(#arch-evidence); }
+    .rule { stroke: #c8d4df; stroke-width: 1; }
+  </style>
+
+  <rect width="1440" height="820" fill="#ffffff"/>
+  <text x="720" y="36" text-anchor="middle" class="title">统一运行容器架构与 Cloud / Edge / End 映射</text>
+  <text x="720" y="59" text-anchor="middle" class="subtitle">XH-202613 · 真实代码边界、运行时桥接与可追溯证据链 · C4-inspired system / container view</text>
+
+  <rect x="24" y="82" width="1392" height="676" rx="12" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.4"/>
+
+  <g id="inputs">
+    <rect x="44" y="106" width="238" height="624" rx="10" fill="#f7f9fb" stroke="#b5c4d1" stroke-width="1.2"/>
+    <text x="64" y="135" class="panel-title">A · 输入与调用入口</text>
+    <text x="64" y="154" class="small">同一 RunRequest 契约，不同启动方式</text>
+
+    <rect x="64" y="178" width="198" height="86" rx="7" class="box-blue"/>
+    <text x="80" y="201" class="box-title">CLI 单次运行</text>
+    <text x="80" y="221" class="box-text">路口 / 算法 / 流量 / 种子 / 步数</text>
+    <text x="80" y="246" class="path-text">experiments/runner.py</text>
+
+    <rect x="64" y="288" width="198" height="86" rx="7" class="box-blue"/>
+    <text x="80" y="311" class="box-title">REST API</text>
+    <text x="80" y="331" class="box-text">POST /api/runs · 查询 · 停止</text>
+    <text x="80" y="356" class="path-text">api/server.py</text>
+
+    <rect x="64" y="398" width="198" height="86" rx="7" class="box-blue"/>
+    <text x="80" y="421" class="box-title">PDF 矩阵 / 验收</text>
+    <text x="80" y="441" class="box-text">批量组合 · 恢复 · 完整性检查</text>
+    <text x="80" y="466" class="path-text">scripts/run_pdf_matrix.py</text>
+
+    <rect x="64" y="528" width="198" height="84" rx="7" class="box-amber"/>
+    <text x="80" y="552" class="box-title">只读场景输入</text>
+    <text x="80" y="572" class="box-text">20 个路口 · SUMO 原始配置</text>
+    <text x="80" y="596" class="path-text">data/intersection_data/</text>
+
+    <path d="M163,264 L163,288" class="flow-blue"/>
+    <path d="M163,374 L163,398" class="flow-blue"/>
+    <path d="M163,484 L163,528" class="flow-open"/>
+    <text x="163" y="693" text-anchor="middle" class="tiny">原始数据不在原目录原地修改</text>
+  </g>
+
+  <g id="run-service-boundary">
+    <rect x="304" y="106" width="606" height="624" rx="10" class="boundary"/>
+    <text x="326" y="135" class="panel-title">B · 应用编排与控制边界</text>
+    <text x="326" y="154" class="small">统一生命周期；TraCI 客户端由单 worker 串行保护</text>
+
+    <rect x="324" y="170" width="566" height="132" rx="8" class="band-cloud"/>
+    <text x="344" y="193" class="section-title">CLOUD / ORCHESTRATION</text>
+    <rect x="344" y="210" width="254" height="70" rx="7" class="box-blue"/>
+    <text x="360" y="234" class="box-title">RunService · max_workers = 1</text>
+    <text x="360" y="253" class="box-text">RunRequest → RunResult / run_id</text>
+    <text x="360" y="272" class="path-text">engine/run_service.py</text>
+
+    <rect x="622" y="210" width="248" height="70" rx="7" class="box-blue"/>
+    <text x="638" y="234" class="box-title">CloudPolicy</text>
+    <text x="638" y="253" class="box-text">EWMA 预测 · 压力分档 · 参数下发</text>
+    <text x="638" y="272" class="path-text">cloud/cloud_policy.py</text>
+
+    <rect x="324" y="318" width="566" height="148" rx="8" class="band-edge"/>
+    <text x="344" y="341" class="section-title">EDGE / DECISION</text>
+    <rect x="344" y="357" width="174" height="88" rx="7" class="box-teal"/>
+    <text x="360" y="381" class="box-title">场景与变体</text>
+    <text x="360" y="400" class="box-text">查找路口、生成附加文件</text>
+    <text x="360" y="427" class="path-text">scenes/registry.py</text>
+    <text x="360" y="440" class="path-text">scenes/variant.py</text>
+
+    <rect x="538" y="357" width="178" height="88" rx="7" class="box-teal"/>
+    <text x="554" y="381" class="box-title">SimulationRunner</text>
+    <text x="554" y="400" class="box-text">Observe · Decide · Act</text>
+    <text x="554" y="427" class="path-text">engine/runner.py</text>
+
+    <rect x="736" y="357" width="134" height="88" rx="7" class="box-teal"/>
+    <text x="752" y="381" class="box-title">EdgeChannel</text>
+    <text x="752" y="400" class="box-text">可选延迟 / 方向过滤</text>
+    <text x="752" y="427" class="path-text">engine/edge_channel.py</text>
+
+    <rect x="324" y="482" width="566" height="204" rx="8" class="band-end"/>
+    <text x="344" y="505" class="section-title">END / SIMULATION ADAPTER</text>
+    <rect x="344" y="522" width="178" height="98" rx="7" class="box-amber"/>
+    <text x="360" y="546" class="box-title">控制算法工厂</text>
+    <text x="360" y="566" class="box-text">fixed_time</text>
+    <text x="360" y="584" class="box-text">actuated · ca_maxpressure</text>
+    <text x="360" y="608" class="path-text">algorithms/</text>
+
+    <rect x="544" y="522" width="164" height="98" rx="7" class="box-amber"/>
+    <text x="560" y="546" class="box-title">TraCIBridge</text>
+    <text x="560" y="566" class="box-text">JointState / ActionResult</text>
+    <text x="560" y="590" class="path-text">engine/traci_bridge.py</text>
+
+    <rect x="730" y="522" width="140" height="98" rx="7" class="box"/>
+    <text x="746" y="546" class="box-title">MockBridge</text>
+    <text x="746" y="566" class="box-text">测试替身</text>
+    <text x="746" y="590" class="path-text">engine/mock_bridge.py</text>
+
+    <text x="344" y="658" class="tiny">ControlAction → 合法相位 / 时长；原始 SUMO tlLogic 由桥接层读取</text>
+
+    <path d="M471,280 L471,318" class="flow-blue"/>
+    <path d="M598,280 L598,357" class="flow-optional"/>
+    <path d="M431,445 L431,482" class="flow-teal"/>
+    <path d="M627,445 L627,522" class="flow-teal"/>
+    <path d="M803,445 L803,522" class="flow-optional"/>
+    <path d="M518,571 L544,571" class="flow-teal"/>
+    <text x="522" y="560" text-anchor="middle" class="line-label">ControlAction</text>
+    <path d="M598,522 L598,482" class="flow-open"/>
+    <text x="612" y="510" class="line-label">JointState</text>
+    <path d="M730,571 L708,571" class="flow-open"/>
+  </g>
+
+  <g id="simulation-and-bridges">
+    <path d="M262,221 H298" class="flow-blue"/>
+    <path d="M262,331 H298" class="flow-blue"/>
+    <path d="M262,441 H298" class="flow-blue"/>
+    <text x="276" y="213" text-anchor="middle" class="line-label">RunRequest</text>
+    <path d="M262,570 H298 V250 H344" class="flow-open"/>
+    <text x="282" y="558" text-anchor="middle" class="line-label">Scene</text>
+    <path d="M890,571 H938" class="flow-teal"/>
+    <path d="M890,571 H938 V183 H984" class="flow-teal"/>
+    <text x="914" y="561" text-anchor="middle" class="line-label">TraCI</text>
+    <path d="M870,246 H938 V183 H984" class="flow-optional"/>
+    <text x="930" y="235" text-anchor="end" class="line-label">PredictionResult</text>
+  </g>
+
+  <g id="evidence-outputs">
+    <rect x="944" y="106" width="448" height="624" rx="10" fill="#fffdfa" stroke="#c09b68" stroke-width="1.3"/>
+    <text x="968" y="135" class="panel-title">C · 外部运行时与证据产物</text>
+    <text x="968" y="154" class="small">运行时生成；每次运行使用独立 run_id 目录</text>
+
+    <rect x="968" y="178" width="400" height="72" rx="7" class="box-amber"/>
+    <text x="988" y="203" class="box-title">SUMO / TraCI runtime</text>
+    <text x="988" y="223" class="box-text">信号相位、车道状态、车辆与仿真时钟</text>
+    <text x="988" y="242" class="path-text">SUMO 1.27.1 · engine/configs/demo_N.sumocfg</text>
+
+    <rect x="968" y="278" width="400" height="82" rx="7" class="box"/>
+    <text x="988" y="304" class="box-title">RunArtifacts</text>
+    <text x="988" y="324" class="box-text">metrics.csv · simulation_log.csv · events.csv</text>
+    <text x="988" y="345" class="path-text">engine/artifacts.py</text>
+
+    <rect x="968" y="388" width="400" height="102" rx="7" class="box"/>
+    <text x="988" y="414" class="box-title">SUMO 原始输出</text>
+    <text x="988" y="434" class="box-text">tripinfo.xml · stats.xml · traj.xml · queues.xml</text>
+    <text x="988" y="458" class="box-text">精确行程指标以 tripinfo.xml 为来源</text>
+    <text x="988" y="477" class="path-text">experiments/summary.py</text>
+
+    <rect x="968" y="518" width="400" height="92" rx="7" class="box-amber"/>
+    <text x="988" y="544" class="box-title">summary.json + run_metadata.json</text>
+    <text x="988" y="564" class="box-text">指标、来源文件、状态、原因、版本、时间</text>
+    <text x="988" y="590" class="path-text">output/.../i{id}/.../s{seed}/{run_id}/</text>
+
+    <rect x="968" y="638" width="400" height="62" rx="7" class="box"/>
+    <text x="988" y="663" class="box-title">visualization / manifest</text>
+    <text x="988" y="683" class="path-text">visualization/report.py · scripts/package_offline.py</text>
+
+    <path d="M1168,250 L1168,278" class="flow-open"/>
+    <path d="M1168,360 L1168,388" class="flow-evidence"/>
+    <path d="M1168,490 L1168,518" class="flow-evidence"/>
+    <path d="M1168,610 L1168,638" class="flow-evidence"/>
+    <text x="1178" y="272" class="tiny">采集</text>
+    <text x="1178" y="382" class="tiny">来源</text>
+    <text x="1178" y="512" class="tiny">汇总</text>
+    <text x="1178" y="632" class="tiny">绘图 / 离线包</text>
+  </g>
+
+  <g id="legend">
+    <line x1="52" y1="784" x2="92" y2="784" class="flow-blue"/>
+    <text x="101" y="788" class="tiny">同步调用 / 控制流</text>
+    <line x1="238" y1="784" x2="278" y2="784" class="flow-open"/>
+    <text x="287" y="788" class="tiny">状态读取 / 返回</text>
+    <line x1="404" y1="784" x2="444" y2="784" class="flow-optional"/>
+    <text x="453" y="788" class="tiny">可选 / 周期性 / 延迟</text>
+    <line x1="636" y1="784" x2="676" y2="784" class="flow-evidence"/>
+    <text x="685" y="788" class="tiny">证据来源 / 生成</text>
+    <text x="1388" y="788" text-anchor="end" class="tiny">Source: engine/ · algorithms/ · cloud/ · api/ · experiments/ · docs/interface.md</text>
+  </g>
 </svg>

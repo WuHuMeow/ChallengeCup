@@ -17,7 +17,9 @@
 
 同步更新仍在使用这些图的活跃 Markdown 说明和替代文本：
 
+- README.md
 - docs/architecture/README.md
+- docs/guides/citation-guide.md
 - docs/guides/markdown-guide.md
 - docs/总路线.md
 - docs/tasks/roadmap.md
@@ -105,7 +107,9 @@ F04-F09 用一条明确回边表示 next simulation step，不能写死为 3600 
 ## 5. Markdown 同步
 
 - 保留 5 个 SVG 文件名和相对路径，避免破坏链接。
-- docs/architecture/README.md 只描述实际存在的 SVG，不把不存在的 PNG 备份写成已交付文件。
+- README.md 的公共架构、数据流、责任矩阵和阶段图入口统一引用 SVG，并将旧的 `CloudCoordinator` 标签修正为实际的 `CloudPolicy`。
+- docs/architecture/README.md 只把 SVG 作为本次规范发布源；目录中若保留 PNG，不把它们写成已同步的本次重绘版本。
+- docs/guides/citation-guide.md 的图片引用示例统一使用 SVG。
 - docs/guides/markdown-guide.md 的图表目录、示例和说明与新的五张图一致。
 - docs/总路线.md 和 docs/tasks/roadmap.md 的架构/循环图 alt text 改为真实主题，并只写当前可验证的运行契约。
 - 历史设计/计划内容中的历史图表说明不重写为当前状态。

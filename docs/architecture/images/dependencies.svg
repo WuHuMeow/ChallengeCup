@@ -1,36 +1,203 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 160" font-family="'Microsoft YaHei', 'PingFang SC', sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1280 780"
+     role="img"
+     aria-labelledby="dependencies-title dependencies-desc">
+  <title id="dependencies-title">模块依赖与只读数据边界</title>
+  <desc id="dependencies-desc">图示 ChallengeCup 从入口、执行模块、核心契约、原始输入到运行证据的分层依赖关系，并区分代码依赖与运行时文件流。</desc>
+
   <defs>
-    <marker id="m1" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#e74c3c"/></marker>
-    <marker id="m2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#3498db"/></marker>
-    <marker id="m3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#27ae60"/></marker>
+    <marker id="dep-code" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
+    </marker>
+    <marker id="dep-runtime" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="#0f766e" stroke-width="1.4"/>
+    </marker>
+    <marker id="dep-evidence" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#a8661d"/>
+    </marker>
+    <marker id="dep-optional" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#64748b"/>
+    </marker>
   </defs>
 
-  <rect x="10" y="20" width="160" height="55" rx="8" fill="#fce4ec"/>
-  <text x="90" y="44" text-anchor="middle" fill="#c0392b" font-size="12" font-weight="bold">🚦 仿真场景组</text>
-  <text x="90" y="62" text-anchor="middle" fill="#888" font-size="9">成员1 + 成员2</text>
+  <style>
+    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 24px; font-weight: 700; fill: #17324d; }
+    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
+    .layer { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; fill: #49647b; }
+    .node-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; font-weight: 700; fill: #17324d; }
+    .node-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #41566b; }
+    .code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #536b82; }
+    .small { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #60758a; }
+    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
+    .layer-bg-a { fill: #f7f9fb; stroke: #d2dce5; stroke-width: 1; }
+    .layer-bg-b { fill: #f5faf9; stroke: #c7ded8; stroke-width: 1; }
+    .layer-bg-c { fill: #fcf8f1; stroke: #e1cfb1; stroke-width: 1; }
+    .node { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
+    .node-blue { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.4; }
+    .node-teal { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.4; }
+    .node-amber { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.4; }
+    .code-line { fill: none; stroke: #1f4e79; stroke-width: 1.5; marker-end: url(#dep-code); }
+    .runtime-line { fill: none; stroke: #0f766e; stroke-width: 1.4; stroke-dasharray: 7 5; marker-end: url(#dep-runtime); }
+    .evidence-line { fill: none; stroke: #a8661d; stroke-width: 1.4; stroke-dasharray: 9 5 2 5; marker-end: url(#dep-evidence); }
+    .optional-line { fill: none; stroke: #64748b; stroke-width: 1.2; stroke-dasharray: 3 4; marker-end: url(#dep-optional); }
+    .label { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; font-weight: 700; fill: #52677d; }
+  </style>
 
-  <rect x="200" y="20" width="160" height="55" rx="8" fill="#e8f4fd"/>
-  <text x="280" y="44" text-anchor="middle" fill="#2471a3" font-size="12" font-weight="bold">🧠 算法ML组</text>
-  <text x="280" y="62" text-anchor="middle" fill="#888" font-size="9">成员3 + 成员4</text>
+  <rect width="1280" height="780" fill="#ffffff"/>
+  <text x="640" y="36" text-anchor="middle" class="title">模块依赖与只读数据边界</text>
+  <text x="640" y="59" text-anchor="middle" class="subtitle">代码依赖、运行时输入和证据产物分层展示 · ml 是可选扩展，不是 CloudPolicy 的必经在线链路</text>
 
-  <rect x="390" y="20" width="160" height="55" rx="8" fill="#e8f8f0"/>
-  <text x="470" y="44" text-anchor="middle" fill="#27ae60" font-size="12" font-weight="bold">📊 实验分析组</text>
-  <text x="470" y="62" text-anchor="middle" fill="#888" font-size="9">成员5 + 成员8</text>
+  <rect x="24" y="82" width="1232" height="628" rx="12" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.4"/>
 
-  <rect x="580" y="20" width="130" height="55" rx="8" fill="#e8eaf6"/>
-  <text x="645" y="44" text-anchor="middle" fill="#3f51b5" font-size="12" font-weight="bold">📦 交付组</text>
-  <text x="645" y="62" text-anchor="middle" fill="#888" font-size="9">成员6 + 成员7</text>
+  <g id="entrypoints">
+    <rect x="42" y="104" width="1196" height="106" rx="8" class="layer-bg-a"/>
+    <text x="60" y="128" class="layer">D · ENTRYPOINTS</text>
 
-  <path d="M170,47 L190,47" stroke="#e74c3c" stroke-width="2" marker-end="url(#m1)"/>
-  <text x="180" y="40" fill="#e74c3c" font-size="8">CSV</text>
+    <rect x="70" y="145" width="236" height="48" rx="7" class="node-blue"/>
+    <text x="86" y="165" class="node-title">experiments</text>
+    <text x="86" y="183" class="code">experiments/runner.py</text>
 
-  <path d="M360,47 L380,47" stroke="#3498db" stroke-width="2" marker-end="url(#m2)"/>
-  <text x="370" y="40" fill="#3498db" font-size="8">model.pkl</text>
+    <rect x="360" y="145" width="236" height="48" rx="7" class="node-blue"/>
+    <text x="376" y="165" class="node-title">api</text>
+    <text x="376" y="183" class="code">api/server.py</text>
 
-  <path d="M550,47 L570,47" stroke="#27ae60" stroke-width="2" marker-end="url(#m3)"/>
-  <text x="560" y="40" fill="#27ae60" font-size="8">报告</text>
+    <rect x="650" y="145" width="236" height="48" rx="7" class="node-blue"/>
+    <text x="666" y="165" class="node-title">scripts</text>
+    <text x="666" y="183" class="code">run_pdf_matrix.py · validate_all.py</text>
 
-  <!-- Bottom description -->
-  <rect x="80" y="100" width="560" height="26" rx="5" fill="#dfe6e9"/>
-  <text x="360" y="118" text-anchor="middle" fill="#636e72" font-size="10">唯一串行链：仿真 → CSV → ML → 算法 → 实验 → 报告。其余并行。</text>
+    <rect x="940" y="145" width="236" height="48" rx="7" class="node"/>
+    <text x="956" y="165" class="node-title">调用契约</text>
+    <text x="956" y="183" class="code">RunRequest / RunResult</text>
+  </g>
+
+  <g id="execution">
+    <rect x="42" y="226" width="1196" height="130" rx="8" class="layer-bg-b"/>
+    <text x="60" y="250" class="layer">C · EXECUTION MODULES</text>
+
+    <rect x="70" y="270" width="190" height="70" rx="7" class="node-teal"/>
+    <text x="86" y="292" class="node-title">scenes</text>
+    <text x="86" y="312" class="node-text">registry + variant</text>
+    <text x="86" y="329" class="code">scenes/</text>
+
+    <rect x="292" y="270" width="210" height="70" rx="7" class="node-teal"/>
+    <text x="308" y="292" class="node-title">engine</text>
+    <text x="308" y="312" class="node-text">runner · bridge · artifacts</text>
+    <text x="308" y="329" class="code">engine/</text>
+
+    <rect x="534" y="270" width="190" height="70" rx="7" class="node-teal"/>
+    <text x="550" y="292" class="node-title">algorithms</text>
+    <text x="550" y="312" class="node-text">fixed / actuated / CA-MP</text>
+    <text x="550" y="329" class="code">algorithms/</text>
+
+    <rect x="756" y="270" width="190" height="70" rx="7" class="node-teal"/>
+    <text x="772" y="292" class="node-title">cloud</text>
+    <text x="772" y="312" class="node-text">EWMA + parameter policy</text>
+    <text x="772" y="329" class="code">cloud/</text>
+
+    <rect x="978" y="270" width="198" height="70" rx="7" class="node"/>
+    <text x="994" y="292" class="node-title">ml · optional</text>
+    <text x="994" y="312" class="node-text">features / train / evaluate</text>
+    <text x="994" y="329" class="code">ml/</text>
+  </g>
+
+  <g id="contracts">
+    <rect x="42" y="372" width="1196" height="104" rx="8" class="layer-bg-a"/>
+    <text x="60" y="396" class="layer">B · CONTRACTS</text>
+
+    <rect x="220" y="416" width="270" height="42" rx="7" class="node-blue"/>
+    <text x="236" y="433" class="node-title">core.types</text>
+    <text x="236" y="450" class="code">JointState · ControlAction · Metrics</text>
+
+    <rect x="530" y="416" width="270" height="42" rx="7" class="node-blue"/>
+    <text x="546" y="433" class="node-title">core.run_models</text>
+    <text x="546" y="450" class="code">RunRequest · RunResult · VariantBundle</text>
+
+    <rect x="840" y="416" width="270" height="42" rx="7" class="node-blue"/>
+    <text x="856" y="433" class="node-title">core.config</text>
+    <text x="856" y="450" class="code">Config · paths · algorithms</text>
+  </g>
+
+  <g id="input-boundary">
+    <rect x="42" y="492" width="1196" height="112" rx="8" class="layer-bg-c"/>
+    <text x="60" y="516" class="layer">A · INPUTS / RUNTIME</text>
+
+    <rect x="70" y="536" width="330" height="48" rx="7" class="node-amber"/>
+    <text x="86" y="556" class="node-title">data/intersection_data/</text>
+    <text x="86" y="574" class="node-text">20 个路口 · read-only source</text>
+
+    <rect x="470" y="536" width="260" height="48" rx="7" class="node-amber"/>
+    <text x="486" y="556" class="node-title">config/default.yaml</text>
+    <text x="486" y="574" class="node-text">paths · limits · algorithm params</text>
+
+    <rect x="800" y="536" width="260" height="48" rx="7" class="node-amber"/>
+    <text x="816" y="556" class="node-title">SUMO / TraCI</text>
+    <text x="816" y="574" class="node-text">external simulation runtime</text>
+
+    <rect x="1090" y="536" width="128" height="48" rx="7" class="node"/>
+    <text x="1106" y="556" class="node-title">seed</text>
+    <text x="1106" y="574" class="node-text">reproducible</text>
+  </g>
+
+  <g id="evidence">
+    <rect x="42" y="620" width="1196" height="72" rx="8" fill="#fffdfa" stroke="#e1cfb1" stroke-width="1"/>
+    <text x="60" y="645" class="layer">E · EVIDENCE / OUTPUT CONTRACT</text>
+
+    <rect x="260" y="634" width="224" height="40" rx="6" class="node-amber"/>
+    <text x="276" y="651" class="node-title">run_id directory</text>
+    <text x="276" y="667" class="code">output/.../i{id}/.../s{seed}/</text>
+
+    <rect x="520" y="634" width="224" height="40" rx="6" class="node"/>
+    <text x="536" y="651" class="node-title">metrics.csv + tripinfo.xml</text>
+    <text x="536" y="667" class="code">runtime + exact sources</text>
+
+    <rect x="780" y="634" width="224" height="40" rx="6" class="node-amber"/>
+    <text x="796" y="651" class="node-title">summary.json</text>
+    <text x="796" y="667" class="code">metrics + source files + status</text>
+
+    <rect x="1040" y="634" width="160" height="40" rx="6" class="node"/>
+    <text x="1056" y="651" class="node-title">visualization</text>
+    <text x="1056" y="667" class="code">manifest / figures</text>
+  </g>
+
+  <g id="dependency-lines">
+    <path d="M188,193 V250 H397 V270" class="code-line"/>
+    <path d="M478,193 V250 H397 V270" class="code-line"/>
+    <path d="M768,193 V230 H164 V270" class="code-line"/>
+    <path d="M768,193 V250 H397 V270" class="code-line"/>
+    <path d="M768,193 V250 H629 V270" class="code-line"/>
+    <path d="M1058,193 V220 H478 V416" class="code-line"/>
+
+    <path d="M165,340 V390 H355 V416" class="code-line"/>
+    <path d="M397,340 V390 H355 V416" class="code-line"/>
+    <path d="M629,340 V390 H355 V416" class="code-line"/>
+    <path d="M851,340 V390 H355 V416" class="code-line"/>
+    <path d="M1077,340 V390 H665 V416" class="optional-line"/>
+
+    <path d="M355,458 V510 H235 V536" class="runtime-line"/>
+    <path d="M665,458 V510 H600 V536" class="runtime-line"/>
+    <path d="M975,458 V510 H600 V536" class="runtime-line"/>
+    <path d="M397,340 V510 H930 V536" class="runtime-line"/>
+    <path d="M1110,584 V620 H372 V634" class="evidence-line"/>
+    <path d="M397,340 V620 H372 V634" class="evidence-line"/>
+    <path d="M372,674 H632" class="evidence-line"/>
+    <path d="M744,654 H792" class="evidence-line"/>
+    <path d="M1004,654 H1040" class="evidence-line"/>
+    <path d="M851,340 V620 H892 V634" class="evidence-line"/>
+    <text x="280" y="386" class="label">shared types</text>
+    <text x="816" y="504" class="label">runtime config</text>
+    <text x="455" y="614" class="label">generated at run time</text>
+    <text x="748" y="646" class="label">source</text>
+  </g>
+
+  <g id="legend">
+    <line x1="60" y1="735" x2="100" y2="735" class="code-line"/>
+    <text x="110" y="739" class="tiny">代码 / 模块依赖</text>
+    <line x1="250" y1="735" x2="290" y2="735" class="runtime-line"/>
+    <text x="300" y="739" class="tiny">运行时输入 / 文件流</text>
+    <line x1="480" y1="735" x2="520" y2="735" class="optional-line"/>
+    <text x="530" y="739" class="tiny">可选扩展</text>
+    <line x1="660" y1="735" x2="700" y2="735" class="evidence-line"/>
+    <text x="710" y="739" class="tiny">证据生成 / 来源</text>
+    <text x="1220" y="739" text-anchor="end" class="tiny">读图顺序：入口 → 执行 → 契约/输入 → 运行证据；Input 与 Evidence 不是 Python 包</text>
+  </g>
 </svg>

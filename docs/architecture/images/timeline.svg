@@ -1,66 +1,211 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 340" font-family="Microsoft YaHei, SimHei, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1440 920"
+     role="img"
+     aria-labelledby="timeline-title timeline-desc">
+  <title id="timeline-title">工程复现与交付阶段门控图</title>
+  <desc id="timeline-desc">图示 ChallengeCup 从赛题约束和只读场景，经统一运行契约、本地 SUMO 或 Mock 验证、实验矩阵重生成、Docker 与第二机器复现，直到报告、PPT、视频和提交包的当前证据边界；not_run 不等于 pass。</desc>
+
   <defs>
-    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#a29bfe"/><stop offset="100%" stop-color="#6c5ce7"/></linearGradient>
-    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#74b9ff"/><stop offset="100%" stop-color="#0984e3"/></linearGradient>
-    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#55efc4"/><stop offset="100%" stop-color="#00b894"/></linearGradient>
-    <linearGradient id="g4" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#ffeaa7"/><stop offset="100%" stop-color="#fdcb6e"/></linearGradient>
-    <linearGradient id="g5" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fab1a0"/><stop offset="100%" stop-color="#e17055"/></linearGradient>
-    <linearGradient id="g6" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#fd79a8"/><stop offset="100%" stop-color="#e84393"/></linearGradient>
+    <marker id="timeline-flow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+      <path d="M0,0 L10,4 L0,8 Z" fill="#1f4e79"/>
+    </marker>
   </defs>
-  <rect width="820" height="340" fill="#f8fafc"/>
-  <text x="410" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">六周里程碑（7/20 - 8/31）</text>
-  <!-- Timeline axis -->
-  <line x1="60" y1="60" x2="780" y2="60" stroke="#cbd5e0" stroke-width="2"/>
-  <!-- Week markers -->
-  <circle cx="120" cy="60" r="5" fill="#6c5ce7"/><text x="120" y="50" text-anchor="middle" font-size="9" fill="#6c5ce7">7/20</text>
-  <circle cx="240" cy="60" r="5" fill="#0984e3"/><text x="240" y="50" text-anchor="middle" font-size="9" fill="#0984e3">7/27</text>
-  <circle cx="360" cy="60" r="5" fill="#00b894"/><text x="360" y="50" text-anchor="middle" font-size="9" fill="#00b894">8/3</text>
-  <circle cx="480" cy="60" r="5" fill="#fdcb6e"/><text x="480" y="50" text-anchor="middle" font-size="9" fill="#b7791f">8/10</text>
-  <circle cx="600" cy="60" r="5" fill="#e17055"/><text x="600" y="50" text-anchor="middle" font-size="9" fill="#e17055">8/17</text>
-  <circle cx="720" cy="60" r="5" fill="#e84393"/><text x="720" y="50" text-anchor="middle" font-size="9" fill="#e84393">8/24</text>
-  <text x="780" y="50" text-anchor="middle" font-size="9" fill="#e53e3e">8/31</text>
-  <!-- W1 -->
-  <rect x="60" y="80" width="120" height="70" rx="8" fill="url(#g1)" opacity="0.9"/>
-  <text x="120" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W1 框架搭建</text>
-  <text x="120" y="117" text-anchor="middle" font-size="8" fill="#e2e8f0">接口冻结</text>
-  <text x="120" y="131" text-anchor="middle" font-size="8" fill="#e2e8f0">路口1 跑通</text>
-  <text x="120" y="145" text-anchor="middle" font-size="8" fill="#e2e8f0">FixedTime+CA-MP</text>
-  <!-- W2 -->
-  <rect x="185" y="80" width="120" height="70" rx="8" fill="url(#g2)" opacity="0.9"/>
-  <text x="245" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W2 算法联调</text>
-  <text x="245" y="117" text-anchor="middle" font-size="8" fill="#e2e8f0">云-边-端贯通</text>
-  <text x="245" y="131" text-anchor="middle" font-size="8" fill="#e2e8f0">CA-MP 对比数据</text>
-  <text x="245" y="145" text-anchor="middle" font-size="8" fill="#e2e8f0">Actuated 完成</text>
-  <!-- W3 -->
-  <rect x="310" y="80" width="120" height="70" rx="8" fill="url(#g3)" opacity="0.9"/>
-  <text x="370" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W3 全量实验</text>
-  <text x="370" y="117" text-anchor="middle" font-size="8" fill="#1a202c">20路口×3算法</text>
-  <text x="370" y="131" text-anchor="middle" font-size="8" fill="#1a202c">原始流量跑完</text>
-  <text x="370" y="145" text-anchor="middle" font-size="8" fill="#1a202c">图表产出</text>
-  <!-- W4 -->
-  <rect x="435" y="80" width="120" height="70" rx="8" fill="url(#g4)" opacity="0.9"/>
-  <text x="495" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="#1a202c">W4 压力测试</text>
-  <text x="495" y="117" text-anchor="middle" font-size="8" fill="#1a202c">1.5倍流量</text>
-  <text x="495" y="131" text-anchor="middle" font-size="8" fill="#1a202c">EWMA 接入</text>
-  <text x="495" y="145" text-anchor="middle" font-size="8" fill="#1a202c">Docker 打包</text>
-  <!-- W5 -->
-  <rect x="560" y="80" width="120" height="70" rx="8" fill="url(#g5)" opacity="0.9"/>
-  <text x="620" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W5 交付制作</text>
-  <text x="620" y="117" text-anchor="middle" font-size="8" fill="#fff5f5">报告初稿</text>
-  <text x="620" y="131" text-anchor="middle" font-size="8" fill="#fff5f5">PPT 初稿</text>
-  <text x="620" y="145" text-anchor="middle" font-size="8" fill="#fff5f5">视频录制</text>
-  <!-- W6 -->
-  <rect x="685" y="80" width="95" height="70" rx="8" fill="url(#g6)" opacity="0.9"/>
-  <text x="732" y="100" text-anchor="middle" font-size="11" font-weight="bold" fill="white">W6 打磨</text>
-  <text x="732" y="117" text-anchor="middle" font-size="8" fill="#fff5f5">全员review</text>
-  <text x="732" y="131" text-anchor="middle" font-size="8" fill="#fff5f5">视频定稿</text>
-  <text x="732" y="145" text-anchor="middle" font-size="8" fill="#fff5f5">8/31 提交</text>
-  <!-- Key milestones -->
-  <text x="60" y="185" font-size="11" font-weight="bold" fill="#4a5568">关键验收节点：</text>
-  <rect x="60" y="195" width="700" height="120" rx="8" fill="white" stroke="#e2e8f0" stroke-width="1.5"/>
-  <text x="80" y="218" font-size="10" fill="#4a5568">M1（7/23）：接口冻结 — core/types.py + algorithms/base.py 不再修改</text>
-  <text x="80" y="238" font-size="10" fill="#4a5568">M2（7/26）：路口 1 两种算法跑通 3600 步，tag v0.1-w1-complete</text>
-  <text x="80" y="258" font-size="10" fill="#4a5568">M3（8/9）：20 路口 × 3 算法 × 原始流量 = 180 次仿真完成</text>
-  <text x="80" y="278" font-size="10" fill="#4a5568">M4（8/16）：1.5 倍流量实验完成，EWMA 接入，360 次全量数据就绪</text>
-  <text x="80" y="298" font-size="10" fill="#4a5568">M5（8/31）：最终提交 — 报告 + PPT + 视频 + 可运行代码 + Docker</text>
+
+  <style>
+    .title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 25px; font-weight: 700; fill: #17324d; }
+    .subtitle { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 12px; fill: #52677d; }
+    .section-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; fill: #17324d; }
+    .stage-index { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; fill: #49647b; }
+    .stage-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; fill: #17324d; }
+    .stage-path { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #52677d; }
+    .stage-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #41566b; }
+    .stage-note { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #6b4b22; }
+    .status-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 700; fill: #17324d; }
+    .body-title { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; fill: #3c566d; }
+    .body-text { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 10px; fill: #52677d; }
+    .mono-text { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; fill: #536b82; }
+    .tiny { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; fill: #60758a; }
+    .card { fill: #ffffff; stroke: #a7b8c8; stroke-width: 1.2; }
+    .card-code { fill: #f3f7fb; stroke: #3d6f9e; stroke-width: 1.4; }
+    .card-local { fill: #f1faf8; stroke: #4f9a8c; stroke-width: 1.4; }
+    .card-refresh { fill: #fffaf2; stroke: #b5874a; stroke-width: 1.4; }
+    .card-external { fill: #f7f8fa; stroke: #8293a3; stroke-width: 1.4; }
+    .card-delivery { fill: #fcf8f1; stroke: #b5874a; stroke-width: 1.4; }
+    .accent-code { stroke: #3d6f9e; stroke-width: 4; }
+    .accent-local { stroke: #4f9a8c; stroke-width: 4; }
+    .accent-refresh { stroke: #b5874a; stroke-width: 4; }
+    .accent-external { stroke: #8293a3; stroke-width: 4; }
+    .accent-delivery { stroke: #b5874a; stroke-width: 4; }
+    .status-code { fill: #eaf2fa; stroke: #7fa1bf; stroke-width: 1; }
+    .status-local { fill: #e7f4ef; stroke: #7ca88b; stroke-width: 1; }
+    .status-refresh { fill: #fff1da; stroke: #c49a63; stroke-width: 1; }
+    .status-external { fill: #eef0f3; stroke: #9aa8b5; stroke-width: 1; }
+    .status-delivery { fill: #fff1da; stroke: #c49a63; stroke-width: 1; }
+    .flow { fill: none; stroke: #1f4e79; stroke-width: 1.6; marker-end: url(#timeline-flow); }
+    .rule { stroke: #c9d5df; stroke-width: 1; }
+    .separator { stroke: #d7e0e7; stroke-width: 1; }
+  </style>
+
+  <rect width="1440" height="920" fill="#ffffff"/>
+
+  <g id="title-block">
+    <text x="720" y="37" text-anchor="middle" class="title">工程复现与交付阶段门控图</text>
+    <text x="720" y="61" text-anchor="middle" class="subtitle">以仓库证据和赛题 PDF 要求为边界 · 代码存在、实验重生成、外部核验与最终材料分开记录</text>
+    <rect x="28" y="82" width="1384" height="48" rx="8" fill="#f7f9fb" stroke="#c9d5df" stroke-width="1"/>
+    <text x="52" y="111" class="body-text">实验设计规模：</text>
+    <text x="140" y="111" class="mono-text">20 × 3 × 2 × 3 = 360</text>
+    <text x="310" y="111" class="body-text">组；该数字表示矩阵设计入口，不表示当前证据已经完成 360 次运行。</text>
+    <text x="1112" y="111" class="status-text">状态优先于颜色</text>
+  </g>
+
+  <g id="stage-flow" aria-label="六个阶段依次通过门控">
+    <path d="M231 328 H250" class="flow"/>
+    <path d="M464 328 H483" class="flow"/>
+    <path d="M697 328 H716" class="flow"/>
+    <path d="M930 328 H949" class="flow"/>
+    <path d="M1163 328 H1182" class="flow"/>
+    <text x="241" y="315" text-anchor="middle" class="tiny">G1</text>
+    <text x="474" y="315" text-anchor="middle" class="tiny">G2</text>
+    <text x="707" y="315" text-anchor="middle" class="tiny">G3</text>
+    <text x="940" y="315" text-anchor="middle" class="tiny">G4</text>
+    <text x="1173" y="315" text-anchor="middle" class="tiny">G5</text>
+  </g>
+
+  <g id="stages" aria-label="工程阶段">
+    <g id="stage-01">
+      <rect x="26" y="150" width="205" height="350" rx="10" class="card-code"/>
+      <line x1="26" y1="150" x2="231" y2="150" class="accent-code"/>
+      <text x="44" y="181" class="stage-index">S1 · INPUT</text>
+      <text x="44" y="207" class="stage-title">赛题约束</text>
+      <text x="44" y="227" class="stage-title">与只读场景</text>
+      <text x="44" y="258" class="stage-path">docs/pdf/</text>
+      <text x="44" y="273" class="stage-path">data/intersection_data/</text>
+      <text x="44" y="311" class="stage-text">PDF：20 个路口</text>
+      <text x="44" y="330" class="stage-text">可运行源代码</text>
+      <text x="44" y="349" class="stage-text">对比实验与可追溯材料</text>
+      <text x="44" y="386" class="stage-note">原始场景保持只读</text>
+      <line x1="44" y1="414" x2="213" y2="414" class="separator"/>
+      <rect x="44" y="437" width="169" height="31" rx="6" class="status-code"/>
+      <text x="128" y="457" text-anchor="middle" class="status-text">代码 / 文档</text>
+    </g>
+
+    <g id="stage-02">
+      <rect x="259" y="150" width="205" height="350" rx="10" class="card-local"/>
+      <line x1="259" y1="150" x2="464" y2="150" class="accent-local"/>
+      <text x="277" y="181" class="stage-index">S2 · CONTRACT</text>
+      <text x="277" y="207" class="stage-title">契约与</text>
+      <text x="277" y="227" class="stage-title">统一入口</text>
+      <text x="277" y="258" class="stage-path">core/ · engine/ · api/</text>
+      <text x="277" y="311" class="stage-text">RunRequest → RunService</text>
+      <text x="277" y="330" class="stage-text">SceneRegistry</text>
+      <text x="277" y="349" class="stage-text">VariantGenerator</text>
+      <text x="277" y="368" class="stage-text">按 run_id 隔离产物</text>
+      <line x1="277" y1="414" x2="446" y2="414" class="separator"/>
+      <rect x="277" y="437" width="169" height="31" rx="6" class="status-local"/>
+      <text x="361" y="457" text-anchor="middle" class="status-text">代码 / 本地验证</text>
+    </g>
+
+    <g id="stage-03">
+      <rect x="492" y="150" width="205" height="350" rx="10" class="card-local"/>
+      <line x1="492" y1="150" x2="697" y2="150" class="accent-local"/>
+      <text x="510" y="181" class="stage-index">S3 · RUNTIME</text>
+      <text x="510" y="207" class="stage-title">本地 SUMO / Mock</text>
+      <text x="510" y="227" class="stage-title">与算法验证</text>
+      <text x="510" y="258" class="stage-path">engine/ · algorithms/ · cloud/</text>
+      <text x="510" y="311" class="stage-text">TraCIBridge / MockBridge</text>
+      <text x="510" y="330" class="stage-text">fixed_time · actuated</text>
+      <text x="510" y="349" class="stage-text">ca_maxpressure · EdgeChannel</text>
+      <text x="510" y="386" class="stage-note">本地证据不替代外部复现</text>
+      <line x1="510" y1="414" x2="679" y2="414" class="separator"/>
+      <rect x="510" y="437" width="169" height="31" rx="6" class="status-local"/>
+      <text x="594" y="457" text-anchor="middle" class="status-text">代码 / 本地证据</text>
+    </g>
+
+    <g id="stage-04">
+      <rect x="725" y="150" width="205" height="350" rx="10" class="card-refresh"/>
+      <line x1="725" y1="150" x2="930" y2="150" class="accent-refresh"/>
+      <text x="743" y="181" class="stage-index">S4 · MATRIX</text>
+      <text x="743" y="207" class="stage-title">矩阵与图表</text>
+      <text x="743" y="227" class="stage-title">重生成</text>
+      <text x="743" y="258" class="stage-path">scripts/run_pdf_matrix.py</text>
+      <text x="743" y="311" class="stage-text">20 × 3 × 2 × 3 = 360</text>
+      <text x="743" y="330" class="stage-text">逐 run_id 产物与 manifest</text>
+      <text x="743" y="349" class="stage-text">metrics / tripinfo / summary</text>
+      <text x="743" y="368" class="stage-text">visualization 图表链路</text>
+      <line x1="743" y1="414" x2="912" y2="414" class="separator"/>
+      <rect x="743" y="437" width="169" height="31" rx="6" class="status-refresh"/>
+      <text x="827" y="457" text-anchor="middle" class="status-text">需重生成</text>
+    </g>
+
+    <g id="stage-05">
+      <rect x="958" y="150" width="205" height="350" rx="10" class="card-external"/>
+      <line x1="958" y1="150" x2="1163" y2="150" class="accent-external"/>
+      <text x="976" y="181" class="stage-index">S5 · REPRODUCE</text>
+      <text x="976" y="207" class="stage-title">Docker live</text>
+      <text x="976" y="227" class="stage-title">/ 第二机器复现</text>
+      <text x="976" y="258" class="stage-path">docker/ · docs/deployment.md</text>
+      <text x="976" y="311" class="stage-text">镜像构建与真实运行</text>
+      <text x="976" y="330" class="stage-text">第二环境复现</text>
+      <text x="976" y="349" class="stage-text">独立证据与环境记录</text>
+      <text x="976" y="386" class="stage-note">not_run ≠ pass</text>
+      <line x1="976" y1="414" x2="1145" y2="414" class="separator"/>
+      <rect x="976" y="437" width="169" height="31" rx="6" class="status-external"/>
+      <text x="1060" y="457" text-anchor="middle" class="status-text">not_run</text>
+    </g>
+
+    <g id="stage-06">
+      <rect x="1191" y="150" width="205" height="350" rx="10" class="card-delivery"/>
+      <line x1="1191" y1="150" x2="1396" y2="150" class="accent-delivery"/>
+      <text x="1209" y="181" class="stage-index">S6 · DELIVERY</text>
+      <text x="1209" y="207" class="stage-title">报告、PPT、视频</text>
+      <text x="1209" y="227" class="stage-title">与提交包</text>
+      <text x="1209" y="258" class="stage-path">report/ · 外部交付</text>
+      <text x="1209" y="311" class="stage-text">Word / PDF 实验报告</text>
+      <text x="1209" y="330" class="stage-text">PPT 与 5–8 分钟视频</text>
+      <text x="1209" y="349" class="stage-text">实际场景方案与提交包</text>
+      <text x="1209" y="386" class="stage-note">独立于代码验收</text>
+      <line x1="1209" y1="414" x2="1378" y2="414" class="separator"/>
+      <rect x="1209" y="437" width="169" height="31" rx="6" class="status-delivery"/>
+      <text x="1293" y="457" text-anchor="middle" class="status-text">未发现 / 待交付</text>
+    </g>
+  </g>
+
+  <g id="evidence-boundary" aria-label="阶段证据边界">
+    <rect x="28" y="535" width="1384" height="210" rx="10" fill="#ffffff" stroke="#c3d0dc" stroke-width="1.2"/>
+    <text x="52" y="568" class="section-title">阶段门控与证据边界</text>
+    <line x1="52" y1="584" x2="1388" y2="584" class="rule"/>
+    <line x1="480" y1="602" x2="480" y2="718" class="separator"/>
+    <line x1="930" y1="602" x2="930" y2="718" class="separator"/>
+
+    <text x="52" y="612" class="body-title">S1–S3 · 可直接复核</text>
+    <text x="52" y="637" class="body-text">源码、契约、Mock / 本地 SUMO 运行入口</text>
+    <text x="52" y="657" class="body-text">支持 compileall、接口检查与本地验证</text>
+    <text x="52" y="677" class="body-text">对应架构图和仿真循环中的真实模块</text>
+
+    <text x="518" y="612" class="body-title">S4–S5 · 需要重新执行</text>
+    <text x="518" y="637" class="body-text">正式矩阵产物和图表不随代码自动产生</text>
+    <text x="518" y="657" class="body-text">Docker live、第二机器复现需独立证据</text>
+    <text x="518" y="677" class="body-text">`not_run` 仅表示尚未执行或证据缺失</text>
+
+    <text x="968" y="612" class="body-title">S6 · 独立交付</text>
+    <text x="968" y="637" class="body-text">Word / PDF、PPT、视频和场景方案</text>
+    <text x="968" y="657" class="body-text">须与代码、实验数据和图表逐项对齐</text>
+    <text x="968" y="677" class="body-text">仓库存在实现不等于提交材料完成</text>
+  </g>
+
+  <g id="legend" aria-label="图例">
+    <rect x="28" y="775" width="1384" height="108" rx="10" fill="#f7f9fb" stroke="#c9d5df" stroke-width="1"/>
+    <text x="52" y="806" class="section-title">图例</text>
+    <line x1="146" y1="802" x2="222" y2="802" class="flow"/>
+    <text x="238" y="806" class="body-text">流程门控方向</text>
+    <rect x="356" y="788" width="112" height="27" rx="6" class="status-local"/>
+    <text x="412" y="806" text-anchor="middle" class="status-text">代码 / 本地证据</text>
+    <rect x="500" y="788" width="96" height="27" rx="6" class="status-refresh"/>
+    <text x="548" y="806" text-anchor="middle" class="status-text">需重生成</text>
+    <rect x="628" y="788" width="82" height="27" rx="6" class="status-external"/>
+    <text x="669" y="806" text-anchor="middle" class="status-text">not_run</text>
+    <rect x="742" y="788" width="112" height="27" rx="6" class="status-delivery"/>
+    <text x="798" y="806" text-anchor="middle" class="status-text">待交付</text>
+    <text x="52" y="850" class="tiny">颜色只作辅助；阶段编号、文字状态和证据边界共同表达含义，适合灰度打印与论文版式引用。</text>
+  </g>
 </svg>

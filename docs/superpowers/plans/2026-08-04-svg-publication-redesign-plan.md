@@ -16,7 +16,7 @@
 - 20 × 3 × 2 × 3 = 360 只表示实验设计规模，不表示当前证据已完成。
 - 实线表示运行时调用/控制，开放箭头表示读取/返回，虚线表示可选/周期性/延迟，点线或点划线表示来源/离线验证/交付证据；每张图画图例。
 - SVG 必须有 viewBox、role、aria-labelledby、title、desc、唯一 id/marker 和可检索 text；不使用外部图片、渐变、阴影、emoji。
-- 活跃 Markdown 保留 SVG 文件名和相对链接；历史计划不改写。
+- 活跃 Markdown（README、架构说明、引用/协作指南和路线文档）保留 SVG 文件名和相对链接；历史计划不改写。
 - 所有验证命令从 C:\Users\peng\Desktop\workplace\main\project 执行。
 
 ---
@@ -242,7 +242,9 @@ Expected: first command no output; second finds current stages and status terms.
 ### Task 7: 同步活跃 Markdown 图表说明
 
 **Files:**
+- Modify: README.md
 - Modify: docs/architecture/README.md
+- Modify: docs/guides/citation-guide.md
 - Modify: docs/guides/markdown-guide.md
 - Modify: docs/总路线.md
 - Modify: docs/tasks/roadmap.md
@@ -256,7 +258,7 @@ Expected: first command no output; second finds current stages and status terms.
 Run:
 
 ~~~powershell
-rg -n "architecture\.svg|simulation-loop\.svg|team-org\.svg|dependencies\.svg|timeline\.svg|\.png" docs/architecture/README.md docs/guides/markdown-guide.md
+rg -n "architecture\.svg|simulation-loop\.svg|team-org\.svg|dependencies\.svg|timeline\.svg|\.png" README.md docs/architecture/README.md docs/guides/citation-guide.md docs/guides/markdown-guide.md docs/总路线.md docs/tasks/roadmap.md
 ~~~
 
 Expected: all five SVGs point to docs/architecture/images/ and descriptions match their new topics. If a PNG is not present, documentation does not call it an existing backup.
@@ -376,7 +378,7 @@ Expected: github resolves exactly to the user-requested GitHub repository while 
 Run:
 
 ~~~powershell
-git add docs/architecture/images/architecture.svg docs/architecture/images/simulation-loop.svg docs/architecture/images/dependencies.svg docs/architecture/images/team-org.svg docs/architecture/images/timeline.svg docs/architecture/README.md docs/guides/markdown-guide.md docs/总路线.md docs/tasks/roadmap.md docs/notes/svg-publication-style-research.md docs/superpowers/specs/2026-08-04-svg-publication-redesign-design.md docs/superpowers/plans/2026-08-04-svg-publication-redesign-plan.md
+git add README.md docs/architecture/images/architecture.svg docs/architecture/images/simulation-loop.svg docs/architecture/images/dependencies.svg docs/architecture/images/team-org.svg docs/architecture/images/timeline.svg docs/architecture/README.md docs/guides/citation-guide.md docs/guides/markdown-guide.md docs/总路线.md docs/tasks/roadmap.md docs/notes/svg-publication-style-research.md docs/superpowers/specs/2026-08-04-svg-publication-redesign-design.md docs/superpowers/plans/2026-08-04-svg-publication-redesign-plan.md
 git diff --cached --check
 git commit -m "docs: redesign architecture flowcharts as publication figures"
 git status --short --branch

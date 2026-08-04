@@ -91,7 +91,7 @@
 |---|------|------------------------|--------------|
 | 1 | 容量归一化压力 | 绝对排队数偏向长车道，短车道（雄安 24m 短边）被忽视 | `pressure = queue / capacity`，短车道自动获得高优先级 |
 | 2 | 溢出门控 | 窄路排队回溢堵死上游路口 | 进口道占用率 > 90% 时强制放行，防止死锁 |
-| 3 | 云端动态绿灯 | 固定绿灯时长无法适应流量波动 | CloudCoordinator 根据全局压力周期性下发 `base_green`，边缘按压力比例动态分配 |
+| 3 | 云端动态绿灯 | 固定绿灯时长无法适应流量波动 | `CloudPolicy` 根据全局压力周期性下发 `base_green`，边缘按压力比例动态分配 |
 
 <a id="当前状态"></a>
 
@@ -333,7 +333,7 @@ ChallengeCup/
 │   │   ├── rule_adaptive.py    # 感应控制 Actuated
 │   │   └── ca_max_pressure.py  # CA-MP 容量感知最大压力
 │   ├── cloud/                  # 云端策略层
-│   │   └── cloud_policy.py     # CloudCoordinator 全局参数下发 + EWMA 预测
+│   │   └── cloud_policy.py     # CloudPolicy 全局参数下发 + EWMA 预测
 │   ├── ml/                     # ML 模型模块
 │   │   ├── train.py            # EWMA 参数校准
 │   │   ├── features.py         # 特征工程
@@ -449,7 +449,7 @@ intersection_data/{id}/
 
 ## 系统架构
 
-![系统架构](docs/architecture/images/architecture.png)
+![统一运行容器架构与 Cloud/Edge/End 映射](docs/architecture/images/architecture.svg)
 
 <a id="云-边-端协同框架"></a>
 
@@ -467,14 +467,14 @@ intersection_data/{id}/
 
 ### 仿真数据流
 
-![仿真数据流](docs/architecture/images/simulation-loop.png)
+![单次仿真控制循环与证据生成](docs/architecture/images/simulation-loop.svg)
 
 每个仿真步的完整循环：
 
 ```text
 SUMO step -> TraCI 读取 -> JointState -> CA-MP 决策 -> ControlAction -> 写入 SUMO -> 下一步
                                               ^
-                                    CloudCoordinator（EWMA 修正）
+                                      CloudPolicy（EWMA 修正）
 ```
 
 ---
@@ -571,7 +571,7 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 团队分工
 
-![团队组织](docs/architecture/images/team-org.png)
+![角色、模块与交付接口责任矩阵](docs/architecture/images/team-org.svg)
 
 | 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-28） |
 |------|------|------|----------|----------|--------------------|
@@ -605,7 +605,9 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 开发计划
 
-![时间线](docs/architecture/images/timeline.png)
+![工程复现与交付阶段门控](docs/architecture/images/timeline.svg)
+
+> 上图按当前仓库证据表达阶段门控；下表保留原始六周计划，日期和历史里程碑不替代当前完成状态。
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|
