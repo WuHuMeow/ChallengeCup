@@ -44,6 +44,7 @@
     .return { fill: none; stroke: #475569; stroke-width: 1.4; marker-end: url(#loop-open); }
     .evidence { fill: none; stroke: #a8661d; stroke-width: 1.5; stroke-dasharray: 9 5 2 5; marker-end: url(#loop-amber); }
     .loopline { fill: none; stroke: #52677d; stroke-width: 1.5; stroke-dasharray: 8 5; marker-end: url(#loop-open); }
+    .label-bg { fill: #ffffff; stroke: #d7e0e7; stroke-width: 0.8; }
   </style>
 
   <rect width="1440" height="860" fill="#ffffff"/>
@@ -114,25 +115,32 @@
   <text x="590" y="810" text-anchor="middle" class="tiny">configured_end / stop / error</text>
 
   <path d="M260,180 H310" class="flow"/>
-  <text x="285" y="171" text-anchor="middle" class="label">RunRequest</text>
+  <rect x="246" y="166" width="78" height="27" rx="4" class="label-bg"/>
+  <text x="285" y="184" text-anchor="middle" class="label">RunRequest</text>
   <path d="M415,207 V240 H165 V268" class="flow"/>
   <path d="M260,295 H310" class="flow"/>
   <path d="M415,322 V355 H165 V382" class="flow"/>
   <path d="M260,412 H310" class="optional"/>
-  <text x="285" y="403" text-anchor="middle" class="label">state</text>
+  <rect x="270" y="398" width="30" height="27" rx="4" class="label-bg"/>
+  <text x="285" y="416" text-anchor="middle" class="label">state</text>
   <path d="M415,442 V485 H165 V512" class="control"/>
   <path d="M260,540 H310" class="control"/>
-  <text x="285" y="531" text-anchor="middle" class="label">ControlAction[]</text>
+  <rect x="249" y="526" width="72" height="27" rx="4" class="label-bg"/>
+  <text x="285" y="544" text-anchor="middle" class="label">ControlAction[]</text>
   <path d="M415,568 V612 H165 V632" class="control"/>
   <path d="M260,660 H310" class="control"/>
-  <text x="285" y="651" text-anchor="middle" class="label">ActionResult[]</text>
+  <rect x="249" y="646" width="72" height="27" rx="4" class="label-bg"/>
+  <text x="285" y="664" text-anchor="middle" class="label">ActionResult[]</text>
   <path d="M415,688 V732 H165 V752" class="evidence"/>
   <path d="M520,660 H562" class="evidence"/>
-  <text x="540" y="650" text-anchor="middle" class="label">status</text>
+  <rect x="524" y="646" width="32" height="27" rx="4" class="label-bg"/>
+  <text x="540" y="664" text-anchor="middle" class="label">status</text>
   <path d="M618,766 H680" class="evidence"/>
-  <text x="650" y="756" text-anchor="middle" class="label">completed</text>
+  <rect x="612" y="750" width="76" height="27" rx="4" class="label-bg"/>
+  <text x="650" y="768" text-anchor="middle" class="label">completed</text>
   <path d="M590,794 V825 H42 V322 H310" class="loopline"/>
-  <text x="74" y="817" class="tiny">not terminal → next simulation step → F04</text>
+  <rect x="280" y="788" width="242" height="26" rx="4" class="label-bg"/>
+  <text x="292" y="805" class="tiny">not terminal → next simulation step → F04</text>
 
   <g id="ca-mp-decision">
     <rect x="950" y="82" width="440" height="438" rx="12" fill="#f8fbfb" stroke="#7baaa2" stroke-width="1.4"/>
@@ -174,7 +182,8 @@
     <path d="M1170,403 V413" class="control"/>
     <path d="M1170,455 V465" class="control"/>
     <path d="M520,412 H900 V174 H974" class="optional"/>
-    <text x="886" y="164" text-anchor="end" class="label">CA-MP uses CloudPolicy</text>
+    <rect x="740" y="150" width="158" height="28" rx="4" class="label-bg"/>
+    <text x="886" y="168" text-anchor="end" class="label">CA-MP uses CloudPolicy</text>
   </g>
 
   <g id="terminal-status">

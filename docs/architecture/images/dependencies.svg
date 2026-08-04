@@ -41,6 +41,7 @@
     .evidence-line { fill: none; stroke: #a8661d; stroke-width: 1.4; stroke-dasharray: 9 5 2 5; marker-end: url(#dep-evidence); }
     .optional-line { fill: none; stroke: #64748b; stroke-width: 1.2; stroke-dasharray: 3 4; marker-end: url(#dep-optional); }
     .label { font-family: Arial, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; font-size: 9px; font-weight: 700; fill: #52677d; }
+    .label-bg { fill: #ffffff; stroke: #d7e0e7; stroke-width: 0.8; }
   </style>
 
   <rect width="1280" height="780" fill="#ffffff"/>
@@ -183,10 +184,14 @@
     <path d="M744,654 H792" class="evidence-line"/>
     <path d="M1004,654 H1040" class="evidence-line"/>
     <path d="M851,340 V620 H892 V634" class="evidence-line"/>
-    <text x="280" y="386" class="label">shared types</text>
-    <text x="816" y="504" class="label">runtime config</text>
-    <text x="455" y="614" class="label">generated at run time</text>
-    <text x="748" y="646" class="label">source</text>
+    <rect x="244" y="375" width="92" height="24" rx="4" class="label-bg"/>
+    <text x="280" y="391" class="label">shared types</text>
+    <rect x="770" y="495" width="92" height="24" rx="4" class="label-bg"/>
+    <text x="816" y="511" class="label">runtime config</text>
+    <rect x="420" y="603" width="150" height="24" rx="4" class="label-bg"/>
+    <text x="455" y="619" class="label">generated at run time</text>
+    <rect x="728" y="638" width="44" height="24" rx="4" class="label-bg"/>
+    <text x="748" y="654" class="label">source</text>
   </g>
 
   <g id="legend">
