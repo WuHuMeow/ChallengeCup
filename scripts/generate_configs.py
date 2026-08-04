@@ -46,7 +46,12 @@ TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def relative_input_path(source: Path, output_dir: Path) -> str:
-    return Path(os.path.relpath(source, output_dir)).as_posix()
+    source = Path(source).resolve()
+    output_dir = Path(output_dir).resolve()
+    try:
+        return Path(os.path.relpath(source, output_dir)).as_posix()
+    except ValueError:
+        return source.as_posix()
 
 
 def generate_configs(

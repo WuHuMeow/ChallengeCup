@@ -30,7 +30,7 @@
 
 当前 IA/IB 状态见 [`docs/ia-ib-final-verification.md`](docs/ia-ib-final-verification.md)，仿真产物清理与重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](docs/ia-ib-simulation-artifact-cleanup.md)。
 
-`main` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
+`master` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
 
 ---
 
@@ -296,8 +296,8 @@ bash scripts/quality/lint_check.sh
 
 | 分支 | 用途 | 规则 |
 |------|------|------|
-| `main` | 稳定版本 | 只接受 PR merge，不直接 push |
-| `dev` | 开发分支 | 每周日从 main 拉新分支 |
+| `master` | 稳定版本 | 只接受 PR merge，不直接 push |
+| `dev` | 开发分支 | 每周日从 master 拉新分支 |
 | `feature/<name>` | 功能分支 | 每人一个（如 `feature/algo-ca-mp`、`feature/infra-traci`） |
 
 ### 同步节奏
