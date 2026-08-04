@@ -1,6 +1,7 @@
 # Tech Lead W1 任务书
 
 > 周期：7/20–7/26 | 核心目标：冻结核心接口，路口 1 固定配时 + CA-MP 跑通 3600 步
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 本周背景
 
@@ -10,10 +11,10 @@
 
 ### Day 1（7/20）
 
-- [ ] 初始化仓库：创建 `.gitignore`（排除 `__pycache__/`、`*.pyc`、`.env`、`experiments/results/`、`.venv/`）
-- [ ] 创建 `requirements.txt`（traci, sumolib, pandas, numpy, matplotlib, pyyaml, openpyxl）
-- [ ] 编写 `core/types.py`：定义全部数据类，全部带类型注解
-- [ ] 编写 `algorithms/base.py`：BaseControlAlgorithm ABC
+- [x] 初始化仓库：创建 `.gitignore`（排除 `__pycache__/`、`*.pyc`、`.env`、`experiments/results/`、`.venv/`）
+- [x] 创建 `requirements.txt`（traci, sumolib, pandas, numpy, matplotlib, pyyaml, openpyxl）
+- [x] 编写 `core/types.py`：定义全部数据类，全部带类型注解
+- [x] 编写 `algorithms/base.py`：BaseControlAlgorithm ABC
 - [ ] 首次 commit 并将接口文件通知全员
 
 `core/types.py` 需要定义的数据类（完整实现见仓库 `core/types.py`）：
@@ -132,7 +133,7 @@ class TraCIBridge:
 - [ ] Review IA 提交的迁移结果：抽查路口 1、11、16 能否被 SUMO 正常加载
 - [ ] Review IB 提交的 TraCIBridge 初版：确认 `get_state()` 返回的 JointState 字段完整
 - [ ] 如发现接口设计缺陷，今天内修改并通知全员（唯一修改窗口）
-- [ ] 编写 `docs/interface.md`：每个数据类的字段含义和使用方式
+- [x] 编写 `docs/interface.md`：每个数据类的字段含义和使用方式
 
 Review 时确认 SceneRegistry 能发现全部路口：
 
@@ -149,7 +150,7 @@ for meta in scenes:
 
 ### Day 4（7/23）
 
-- [ ] 接口冻结：此后 `core/types.py` 和 `algorithms/base.py` 不再修改
+- [x] 接口冻结：此后 `core/types.py` 和 `algorithms/base.py` 不再修改
 - [ ] 集成 IB 的 TraCIBridge + AA 的 FixedTimeAlgorithm 到主分支
 - [ ] 在路口 1 上运行固定配时仿真 3600 步
 - [ ] 确认输出 CSV 包含 avg_queue_length、avg_delay、total_throughput 列

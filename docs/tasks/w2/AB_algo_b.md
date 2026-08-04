@@ -1,6 +1,7 @@
 # 算法 B（AB） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：完善 CA-MP 多路口适配、接入云-边-端消息流、验证创新点效果
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 每日任务
 
@@ -41,8 +42,8 @@ def step(self, state: JointState) -> List[ControlAction]:
 
 ### Day 3（7/29 周二）
 
-- [ ] 正式接入云-边-端消息流：确认 `__init__` 中通过 CloudPolicy 能正确接收云端预测参数
-- [ ] 验证云端 `CloudPolicy.predict()` 下发 `min_green/max_green/base_green` 后 CA-MP 行为变化
+- [x] 正式接入云-边-端消息流：确认 `__init__` 中通过 CloudPolicy 能正确接收云端预测参数
+- [x] 验证云端 `CloudPolicy.predict()` 下发 `min_green/max_green/base_green` 后 CA-MP 行为变化
 - [ ] 记录消息流是否完整闭环
 
 ```python

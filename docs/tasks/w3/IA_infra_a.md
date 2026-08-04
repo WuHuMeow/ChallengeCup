@@ -1,7 +1,8 @@
 # 仿真基础设施 A（IA） W3 任务书
 
 > 周期：8/3（周日）- 8/9（周六） | 核心目标：保障全量实验运行环境稳定，处理运行中的技术问题，并启动 Docker 环境搭建
-> **完成状态（2026-07-24）**：（已完成） `split_jobs.py`、`check_outputs.py`、`docker/Dockerfile`（ppa:sumo/stable 方案）已就绪并通过验证；运行期监控与输出完整性检查已在批量验证中覆盖；Docker 容器内验证待实机构建（归入 W4）。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） `split_jobs.py`、`check_outputs.py`、`docker/Dockerfile`（ppa:sumo/stable 方案）已就绪并通过验证；运行期监控与输出完整性检查已在批量验证中覆盖；Docker 容器内验证待实机构建（归入 W4）。
 
 ## 本周背景
 

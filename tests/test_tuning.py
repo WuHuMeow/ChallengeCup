@@ -277,6 +277,8 @@ def test_matrix_script_help_runs_directly():
         cwd=root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
 

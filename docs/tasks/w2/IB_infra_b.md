@@ -1,7 +1,8 @@
 # 仿真基础设施 B（IB） W2 任务书
 
 > 周期：7/27（周日）- 8/2（周六） | 核心目标：完善云-边-端消息流，为 experiments/runner.py 添加实验参数并确保输出完整
-> **完成状态（2026-07-24）**：（已完成） experiments/runner.py 支持 --seed/--flow-multiplier/--output-dir；CloudPolicy 动态压力分档下发；EdgeChannel V2X 延迟+方向过滤；simulation_log.csv 逐步输出；deployment.md 初稿；check_seed_repro.py 种子可复现验证。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） experiments/runner.py 支持 --seed/--flow-multiplier/--output-dir；CloudPolicy 动态压力分档下发；EdgeChannel V2X 延迟+方向过滤；simulation_log.csv 逐步输出；deployment.md 初稿；check_seed_repro.py 种子可复现验证。
 
 ## 本周背景
 
@@ -11,11 +12,11 @@ W1 已经把单路口跑通，本周进入"系统级"工作：实验入口 `expe
 
 ### Day 1（7/27 周日）
 
-- [ ] 在 `experiments/runner.py` 中新增三个命令行参数：`--seed`、`--flow-multiplier`、`--output-dir`
-- [ ] 实现 `--seed`：在 `traci.start()` 命令列表中追加 `["--seed", str(seed)]`
-- [ ] 实现 `--flow-multiplier`：采用方案 A——运行前调用 EX 的 `scale_flow.py` 生成临时 `flow.xml`，再传给 SUMO（更简单可靠）
-- [ ] 实现 `--output-dir`：把 `tripinfo.xml / stats.xml / traj.xml` 全部写入指定目录
-- [ ] 用 `argparse` 的 `--help` 自检参数说明清晰
+- [x] 在 `experiments/runner.py` 中新增三个命令行参数：`--seed`、`--flow-multiplier`、`--output-dir`
+- [x] 实现 `--seed`：在 `traci.start()` 命令列表中追加 `["--seed", str(seed)]`
+- [x] 实现 `--flow-multiplier`：通过当前 `VariantGenerator` 生成临时流量变体，保持原始 `flow.xml` 只读
+- [x] 实现 `--output-dir`：把 `tripinfo.xml / stats.xml / traj.xml` 全部写入指定目录
+- [x] 用 `argparse` 的 `--help` 自检参数说明清晰
 
 ```python
 # experiments/runner.py（节选）
@@ -47,9 +48,9 @@ def prepare_flow(scene, multiplier: float) -> str:
 ### Day 2（7/28 周一）
 
 - [ ] 在 `cloud/cloud_policy.py` 中实现 `_compute_params(states)`：根据各路口平均排队压力分档返回 `min_green / max_green / base_green`
-- [ ] 把 `predict()` 改为接收 `List[JointState]`（多路口全局视图），每 `update_interval` 步下发一次
+- [x] 把 `predict()` 改为接收 `List[JointState]`（多路口全局视图），每 `update_interval` 步下发一次
 - [ ] 与 AB 确认：CA-MP 在 `__init__` 或 `step()` 中接收并应用云端参数
-- [ ] 写一个最小单测：构造高/中/低三档压力，断言返回参数正确
+- [x] 写一个最小单测：构造高/中/低三档压力，断言返回参数正确
 
 ```python
 # cloud/cloud_policy.py（节选）
@@ -78,9 +79,9 @@ class CloudPolicy:
 
 ### Day 3（7/29 周二）
 
-- [ ] 在 edge 侧实现 V2X 消息过滤：`on_state_receive()` 只保留属于本路口进口道的 `JointState` 字段
-- [ ] 加入 1 步延迟队列（`_delay_buffer`），模拟通信延迟（加分项）
-- [ ] 把过滤+延迟模块挂到 `SimulationRunner._tick()` 的状态传递路径上
+- [x] 在 edge 侧实现 V2X 消息过滤：`on_state_receive()` 只保留属于本路口进口道的 `JointState` 字段
+- [x] 加入 1 步延迟队列（`_delay_buffer`），模拟通信延迟（加分项）
+- [x] 把过滤+延迟模块挂到 `SimulationRunner._tick()` 的状态传递路径上
 - [ ] 写注释说明这是 PDF "通信模拟模块" 的实现位置
 
 ```python
@@ -131,9 +132,9 @@ print("seed reproducibility OK")
 
 ### Day 5（7/31 周四）
 
-- [ ] 在 `engine/runner.py` 中新增 `simulation_log.csv` 写入：每步记录 `step, time, phase, queue_*, pressure_*`
-- [ ] 字段按方向展开（E/W/N/S），便于 DB 后续做可视化动画
-- [ ] 写入路径为 `{output_dir}/simulation_log.csv`，与 tripinfo 同目录
+- [x] 在 `engine/runner.py` 中新增 `simulation_log.csv` 写入：每步记录 `step, time, phase, queue_*, pressure_*`
+- [x] 字段按方向展开（E/W/N/S），便于 DB 后续做可视化动画
+- [x] 写入路径为 `{output_dir}/simulation_log.csv`，与 tripinfo 同目录
 - [ ] 用 csv.writer 缓冲写入，避免每步 flush 拖慢仿真
 
 ```python

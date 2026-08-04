@@ -1,7 +1,8 @@
 # 仿真基础设施 A（IA） W5 任务书
 
 > 周期：8/17（周日）- 8/23（周六） | 核心目标：代码最终清理、Docker 最终验证、协助交付
-> **完成状态（2026-07-24）**：（已完成） Day 1 代码清理（无调试/临时文件、无硬编码路径、`.gitignore` 已修正覆盖 SUMO 输出）、`requirements.txt` 已补 `defusedxml`、最终集成验证通过（66 tests passed）；Docker 实机构建待环境就绪后回填；协助 DA/DB 待其启动后进行。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） Day 1 代码清理（无调试/临时文件、无硬编码路径、`.gitignore` 已修正覆盖 SUMO 输出）、`requirements.txt` 已补 `defusedxml`；W5 记录中的 66 tests 全通过，当前完整测试为 198 passed；Docker 实机构建待环境就绪后回填；协助 DA/DB 待其启动后进行。
 
 ## 每日任务
 

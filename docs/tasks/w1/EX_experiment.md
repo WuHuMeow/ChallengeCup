@@ -1,6 +1,7 @@
 # EX（实验组） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：设计实验矩阵、定义指标采集方案、搭好批量实验框架（W3 一到就能直接跑）
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 本周背景
 
@@ -19,8 +20,8 @@ PDF 评分标准中"实验验证与性能评估"占 20 分：实验设计科学�
 ### Day 1（7/20 周日）
 
 - [ ] 创建 `experiments/config.yaml`，定义实验矩阵（20 路口、3 算法、2 流量等级、3 种子）
-- [ ] 列出 6 项核心指标及数据来源（avg_travel_time / avg_queue_length / throughput / fuel_consumption / avg_delay / avg_stops）
-- [ ] 计算总实验量：20 × 3 × 2 × 3 = 360 次仿真
+- [x] 列出 6 项核心指标及数据来源（avg_travel_time / avg_queue_length / throughput / fuel_consumption / avg_delay / avg_stops）
+- [x] 计算总实验量：20 × 3 × 2 × 3 = 360 次仿真
 - [ ] 估算机器时间：每次 5-10 分钟 → 总计 30-60 小时，写入 README 草稿
 
 ```yaml
@@ -161,7 +162,7 @@ def significance_test(df: pd.DataFrame, metric: str = "avg_travel_time"):
 
 ### Day 5（7/24 周四）
 
-- [ ] 设计 1.5 倍流量方案：不修改原始 flow.xml（只读），运行前生成临时 flow 文件（vehsPerHour × multiplier）
+- [x] 设计 1.5 倍流量方案：不修改原始 flow.xml（只读），运行前生成临时 flow 文件（vehsPerHour × multiplier）
 - [ ] 创建 `scripts/scale_flow.py`：读取原始 flow.xml → 乘以倍率 → 输出到 `output/variants/`
 - [ ] 与 IB 确认：`SimulationRunner` / `VariantGenerator` 是否已支持流量倍率（参考 `scenes/variant.py`）
 - [ ] 在脚本中保留原始 flow.xml 不被覆盖

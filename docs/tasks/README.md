@@ -13,13 +13,13 @@
 | W5 | [w5/](w5/) |
 | W6 | [w6/](w6/) |
 
-每周目录包含算法、交付、实验、基础设施和技术负责人等角色的任务书。任务书中的 `[ ]` 项、未来脚本名和示例命令描述当时计划或验收口径，不代表这些功能或文件当前存在，也不应直接复制执行。
+每周目录包含算法、交付、实验、基础设施和技术负责人等角色的任务书。任务书中的日期、会议安排和历史计划不代表当前状态；复选框仅在有当前仓库证据时补勾，未勾选项仍可能是未完成、待外部验证或仅有历史计划描述。当前唯一的角色状态总表是 [`current-status.md`](current-status.md)。
 
 ## 当前验证状态
 
-本目录的周次、日期和复选框保留历史计划状态，不表示当前缺陷或完成度。当前仓库是内部研发仓库：功能一、功能二作为共同基础完成，项目选择赛道 B，聚焦 CA-MP 的场景适配、参数调优和性能评估。
+截至 2026-07-28，当前仓库是内部研发仓库：功能一、功能二作为共同基础完成，项目选择赛道 B，聚焦 CA-MP 的场景适配、参数调优和性能评估。代码测试为 198 passed；角色级完成情况、交付物缺口和勾选口径见 [`current-status.md`](current-status.md)。
 
-IA/IB 当前状态以 [`docs/ia-ib-final-verification.md`](../ia-ib-final-verification.md) 为准：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。大体积仿真结果及压缩包已删除；清理记录和重新生成入口见 [`docs/ia-ib-simulation-artifact-cleanup.md`](../ia-ib-simulation-artifact-cleanup.md)。
+IA/IB 当前状态以 [`docs/ia-ib-final-verification.md`](../ia-ib-final-verification.md) 为准：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。大型仿真结果及压缩包已删除；清理记录和重新生成入口见 [`docs/ia-ib-simulation-artifact-cleanup.md`](../ia-ib-simulation-artifact-cleanup.md)。
 
 ## 当前入口
 

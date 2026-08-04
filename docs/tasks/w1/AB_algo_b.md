@@ -1,6 +1,7 @@
 # 算法 B（AB） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：在路口 1 跑通 CA-MP 核心逻辑（容量归一化压力 + 溢出门控）
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 本周背景
 
@@ -40,9 +41,9 @@
 
 ### Day 2（7/21 周一）
 
-- [ ] 创建 `algorithms/ca_max_pressure.py`，继承 `BaseControlAlgorithm`，实现 `init` / `step` / `reset` / `name`
-- [ ] 实现 `_parse_network()`：从 `scene.meta.sumo_net` 解析 `<tlLogic>` 与 `<connection>`，建立 `phase_index → [lane_ids]` 映射，并按 `车道容量 = length / 7.5` 计算容量
-- [ ] 实现改进 1（容量归一化压力）与改进 2（溢出门控），`name` 返回 `"ca_maxpressure"`
+- [x] 创建 `algorithms/ca_max_pressure.py`，继承 `BaseControlAlgorithm`，实现 `init` / `step` / `reset` / `name`
+- [x] 实现 `_parse_network()`：从 `scene.meta.sumo_net` 解析 `<tlLogic>` 与 `<connection>`，建立 `phase_index → [lane_ids]` 映射，并按 `车道容量 = length / 7.5` 计算容量
+- [x] 实现改进 1（容量归一化压力）与改进 2（溢出门控），`name` 返回 `"ca_maxpressure"`
 - [ ] 动态绿灯时长（改进 3）先留 TODO，W2 接入 CloudPolicy 后补全
 
 ```python
@@ -101,9 +102,9 @@ ALGORITHM_MAP = {
 
 ### Day 4（7/23 周三）
 
-- [ ] 处理边界：压力全为 0（无车）时返回空列表，不切换
+- [x] 处理边界：压力全为 0（无车）时返回空列表，不切换
 - [ ] 多个相位压力相同时选当前相位，避免频繁切换
-- [ ] 黄灯相位处理：`_green_phases` 只收录含 `G/g` 的相位，跳过黄灯
+- [x] 黄灯相位处理：`_green_phases` 只收录含 `G/g` 的相位，跳过黄灯
 - [ ] 步长差异：路口 11-13、15-20 步长 0.1s，与 TL/IB 确认决策频率方案（每 10 步=1s 决策一次，或 duration 以仿真步为单位）
 
 ```python
@@ -139,7 +140,7 @@ runner = SimulationRunner(scene, algo)    # engine/runner.py
 
 ### Day 6（7/25 周五）
 
-- [ ] 将 CA-MP 接入 IB 的 SimulationRunner 完整流程：`runner.run()` → `bridge.get_state()` → `JointState` → `algorithm.step()` → `List[ControlAction]` → `bridge.apply_actions()`
+- [x] 将 CA-MP 接入 IB 的 SimulationRunner 完整流程：`runner.run()` → `bridge.get_state()` → `JointState` → `algorithm.step()` → `List[ControlAction]` → `bridge.apply_actions()`
 - [ ] 确认 CloudPolicy 接口兼容（W2 正式接入）：`CloudPolicy.predict(state)` 返回 `PredictionResult`，算法据此更新 `min_green/max_green/base_green`
 - [ ] 修复联调 bug
 

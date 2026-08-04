@@ -1,6 +1,7 @@
 # 算法 A（AA） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：实现 FixedTimeAlgorithm 与 RuleAdaptiveAlgorithm 两个基线算法，跑通路口 1 的 3600 步仿真
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
 
 ## 本周背景
 
@@ -50,8 +51,8 @@ class BaseControlAlgorithm(ABC):
 
 **实现 FixedTimeAlgorithm**
 
-- [ ] 创建 `algorithms/fixed_time.py`，继承 `BaseControlAlgorithm`，`name` 返回 `"fixed_time"`
-- [ ] 采用方式 A（推荐）：`step()` 返回空列表，让 SUMO 按 `net.xml` 默认配时运行——这就是"传统固定配时"的真实含义
+- [x] 创建 `algorithms/fixed_time.py`，继承 `BaseControlAlgorithm`，`name` 返回 `"fixed_time"`
+- [x] 采用方式 A（推荐）：`step()` 返回空列表，让 SUMO 按 `net.xml` 默认配时运行——这就是"传统固定配时"的真实含义
 - [ ] 预留 `use_excel_timing` 开关：`init()` 中若开启则调用 `scenes/timing_loader.parse_timing_excel` 写入 SUMO（W1 可先留接口）
 - [ ] 接入 IB 的 `engine/runner.py`，跑路口 1 的 3600 步
 
@@ -84,8 +85,8 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
 
 **实现 RuleAdaptiveAlgorithm**
 
-- [ ] 创建 `algorithms/rule_adaptive.py`，参数 `min_green` / `max_green` / `queue_threshold` 从 `config/default.yaml` 的 `algorithms.actuated` 读取（默认 10 / 60 / 5）
-- [ ] 实现感应核心逻辑：`elapsed < min_green` 保持；排队 > 阈值且未达 `max_green` 延长绿灯（`set_phase_duration`）；否则切换下一相位（`set_phase`）
+- [x] 创建 `algorithms/rule_adaptive.py`，参数 `min_green` / `max_green` / `queue_threshold` 从 `config/default.yaml` 的 `algorithms.actuated` 读取（默认 10 / 60 / 5）
+- [x] 实现感应核心逻辑：`elapsed < min_green` 保持；排队 > 阈值且未达 `max_green` 延长绿灯（`set_phase_duration`）；否则切换下一相位（`set_phase`）
 - [ ] `ControlAction.tls_id` 必须取自 `state.tls_id`，`reason` 写明触发原因（便于日志排查）
 - [ ] 跑路口 1，确认绿灯时长在 `min_green ~ max_green` 之间动态变化
 
@@ -112,7 +113,7 @@ def step(self, state: JointState) -> List[ControlAction]:
 **测试与调试**
 
 - [ ] 路口 1 跑 FixedTime：`python examples/run_fixed_time.py 1`，检查 CSV 中 `total_throughput > 0`、有排队记录
-- [ ] 参照 `run_fixed_time.py` 创建 `examples/run_rule_adaptive.py`，跑路口 1 的 3600 步
+- [x] 通过当前 `experiments/runner.py --algorithm actuated` 接入并运行路口 1 的 Actuated 基线
 - [ ] 从日志/CSV 验证感应逻辑：绿灯时长在 `min_green ~ max_green` 间变化，排队低于阈值时提前切换
 - [ ] 对比两者输出：感应控制的平均行程时间应略优于固定配时
 
@@ -136,7 +137,7 @@ print(f"仿真完成，共记录 {len(metrics)} 条指标快照")
 
 **适配多路口**
 
-- [ ] 确认两个算法均从 `net.xml` 动态读取相位方案，不硬编码相位数量（路口 1 是 6 相位，其他路口可能不同）
+- [x] 确认两个算法均从 `net.xml` 动态读取相位方案，不硬编码相位数量（路口 1 是 6 相位，其他路口可能不同）
 - [ ] 处理步长差异：路口 11-13、15-20 步长 0.1s，`elapsed_phase_time` 由 `JointState` 提供，算法不要自己累加时间
 - [ ] 在路口 11（0.1s 步长）上跑通 FixedTime 与 RuleAdaptive
 - [ ] 在路口 16（5 进口道）上跑通两个算法
@@ -175,7 +176,7 @@ ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
 **Buffer / 文档**
 
 - [ ] 为 `fixed_time.py` / `rule_adaptive.py` 补全 docstring：算法原理、参数含义、返回值约定
-- [ ] 跑一遍 `pytest tests/test_algorithms.py -q`，确保接口契约测试全绿
+- [x] 跑一遍 `pytest tests/test_algorithms.py -q`，确保接口契约测试全绿
 - [ ] （可选）开始阅读 Webster 公式，作为第三基线候选
 - [ ] 提交代码给 TL
 

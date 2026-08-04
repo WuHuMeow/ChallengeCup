@@ -7,6 +7,21 @@
 [![SUMO](https://img.shields.io/badge/SUMO-1.27.1-brightgreen)](https://www.eclipse.org/sumo/)
 [![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+## 当前分工进度（2026-07-28）
+
+> 口径：只依据当前仓库中的代码、测试、验收记录和实际交付文件判断；“未完成”包含尚无直接证据、仍待外部验证或尚未形成正式交付物的事项。详细任务勾选见 [`docs/tasks/current-status.md`](docs/tasks/current-status.md)。
+
+| 代号 | 分工 | 当前状态 | 已完成 | 未完成或待确认 |
+|---|---|---|---|---|
+| TL | 技术负责人 | 部分完成 | 核心类型契约、算法接口、集成验证、仓库整理 | 最终集成审查、交付材料清单、答辩与提交协调 |
+| IA | 仿真基础设施 A | 基础完成 | 20 个路口本地 SUMO 验证、配置迁移、Docker 文件、部署文档 | Docker live、镜像指标、第二机器复现、提交包准备 |
+| IB | 仿真基础设施 B | 基础完成 | TraCI/Runner、云边端消息、REST API、精确指标、矩阵与恢复机制 | Docker live、第二机器复现、最终提交归档 |
+| AA | 算法 A | 部分完成 | FixedTime/Actuated 基线、测试、固定配时实跑 | 全矩阵复核、最终基线数据口径、答辩材料 |
+| AB | 算法 B | 实现完成 | CA-MP 合法相位、容量归一化、溢出门控、动态绿灯、EWMA/校准链路 | 最终性能结论、答辩口径、交付审查 |
+| EX | 实验组 | 基础完成 | 可恢复 360 组矩阵、精确指标、校准/留出分割、图表来源链路 | 重生成并归档正式全量证据，与最终报告数字逐项对齐 |
+| DA | 交付 A | 未完成 | 技术 Markdown 工作提纲 | Word/PDF 报告、PPT、实际场景演示方案、最终排版 |
+| DB | 交付 B | 部分完成 | Matplotlib 绘图接口 | 5–8 分钟演示视频；PyQt 看板为可选加分项，当前未实现 |
+
 本项目为挑战杯 2026 参赛作品（编号 XH-202613），围绕雄安新区"城市大脑"车路云一体化场景，针对"窄路密网"交通特征（路口间距短、进口道容量低、排队回溢快），提出 **CA-MP（Capacity-Aware MaxPressure）** 信号控制算法。基于 SUMO 微观仿真平台，在 20 个真实路口上对比验证固定配时、感应控制、CA-MP 三种策略，形成可复现的车路云协同算法优化平台。
 
 本仓库是团队内部研发仓库。项目 PDF 要求功能一、功能二作为共同基础完成，功能三选择一个方向深入；本项目选择赛道 B（算法调优型），以 CA-MP 的场景适配、参数调优和性能评估为主线。
@@ -15,7 +30,7 @@
 
 当前 IA/IB 状态见 [`docs/ia-ib-final-verification.md`](docs/ia-ib-final-verification.md)，仿真产物清理与重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](docs/ia-ib-simulation-artifact-cleanup.md)。
 
-`main` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
+`master` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
 
 ---
 
@@ -23,6 +38,7 @@
 
 ## 目录
 
+- [当前分工进度](#当前分工进度)
 - [项目概述](#项目概述)
 - [仓库导航](#仓库导航)
 - [快速开始](#快速开始)
@@ -75,7 +91,7 @@
 |---|------|------------------------|--------------|
 | 1 | 容量归一化压力 | 绝对排队数偏向长车道，短车道（雄安 24m 短边）被忽视 | `pressure = queue / capacity`，短车道自动获得高优先级 |
 | 2 | 溢出门控 | 窄路排队回溢堵死上游路口 | 进口道占用率 > 90% 时强制放行，防止死锁 |
-| 3 | 云端动态绿灯 | 固定绿灯时长无法适应流量波动 | CloudCoordinator 根据全局压力周期性下发 `base_green`，边缘按压力比例动态分配 |
+| 3 | 云端动态绿灯 | 固定绿灯时长无法适应流量波动 | `CloudPolicy` 根据全局压力周期性下发 `base_green`，边缘按压力比例动态分配 |
 
 <a id="当前状态"></a>
 
@@ -93,9 +109,11 @@
 - `summary.json` 从 SUMO `tripinfo.xml` 与队列快照计算精确指标；缺失的精确量使用 JSON
   `null`，不伪造为 `0`。
 
-**IA/IB 仓库实现状态（2026-07-26）**：W1-W6 代码、自动化契约、真实本地 SUMO 验证、
-实验矩阵、图表来源追踪、离线包和验收三态均已实现。Docker 实机构建/运行和第二机器复现
-是独立证据轴；当前机器未执行时必须记录为 `not_run`，不能写成通过。
+**仓库与分工状态（2026-07-28）**：当前基线位于 `main` 分支，代码测试为 198 passed；
+IA/IB 的仓库实现、自动化契约、真实本地 SUMO 验证、实验矩阵和图表来源追踪已完成。
+大型仿真产物已清理，正式数值和图表需要按复现入口重新生成。Docker 实机构建/运行和第二机器复现
+是独立证据轴；当前没有真实证据时必须记录为 `not_run`。角色级完成情况见
+[`docs/tasks/current-status.md`](docs/tasks/current-status.md)。
 
 ---
 
@@ -278,8 +296,8 @@ bash scripts/quality/lint_check.sh
 
 | 分支 | 用途 | 规则 |
 |------|------|------|
-| `main` | 稳定版本 | 只接受 PR merge，不直接 push |
-| `dev` | 开发分支 | 每周日从 main 拉新分支 |
+| `master` | 稳定版本 | 只接受 PR merge，不直接 push |
+| `dev` | 开发分支 | 每周日从 master 拉新分支 |
 | `feature/<name>` | 功能分支 | 每人一个（如 `feature/algo-ca-mp`、`feature/infra-traci`） |
 
 ### 同步节奏
@@ -315,7 +333,7 @@ ChallengeCup/
 │   │   ├── rule_adaptive.py    # 感应控制 Actuated
 │   │   └── ca_max_pressure.py  # CA-MP 容量感知最大压力
 │   ├── cloud/                  # 云端策略层
-│   │   └── cloud_policy.py     # CloudCoordinator 全局参数下发 + EWMA 预测
+│   │   └── cloud_policy.py     # CloudPolicy 全局参数下发 + EWMA 预测
 │   ├── ml/                     # ML 模型模块
 │   │   ├── train.py            # EWMA 参数校准
 │   │   ├── features.py         # 特征工程
@@ -431,7 +449,7 @@ intersection_data/{id}/
 
 ## 系统架构
 
-![系统架构](docs/architecture/images/architecture.png)
+![统一运行容器架构与云端 / 边缘 / 终端映射](docs/architecture/images/architecture.svg)
 
 <a id="云-边-端协同框架"></a>
 
@@ -449,14 +467,14 @@ intersection_data/{id}/
 
 ### 仿真数据流
 
-![仿真数据流](docs/architecture/images/simulation-loop.png)
+![单次仿真控制循环与证据生成](docs/architecture/images/simulation-loop.svg)
 
 每个仿真步的完整循环：
 
 ```text
 SUMO step -> TraCI 读取 -> JointState -> CA-MP 决策 -> ControlAction -> 写入 SUMO -> 下一步
                                               ^
-                                    CloudCoordinator（EWMA 修正）
+                                      CloudPolicy（EWMA 修正）
 ```
 
 ---
@@ -553,18 +571,18 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 团队分工
 
-![团队组织](docs/architecture/images/team-org.png)
+![角色、模块与交付接口责任矩阵](docs/architecture/images/team-org.svg)
 
-| 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-24） |
+| 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-28） |
 |------|------|------|----------|----------|--------------------|
 | TL | Tech Lead | 1 | 架构设计、接口定义、代码合入、集成协调 | `core/types.py` + `algorithms/base.py` + 集成 | 部分完成：核心契约、接口、文档 taxonomy 与集成验证已落地；最终集成和交付审查待完成 |
-| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 仓库实现与本地 SUMO 验证完成；Docker live、第二机器按独立证据轴记录 |
-| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成 |
-| AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基础实现完成：FixedTime 与 Actuated 控制器、测试和固定配时实跑已完成；全矩阵复核待完成 |
-| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、溢出门控、动态绿灯和校准链路已完成 |
-| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式全量证据按验收报告记录 |
-| DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 待完成：技术 Markdown 已有；Word 报告、PPT 和提交排版待完成 |
-| DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；PyQt 看板与演示视频待完成 |
+| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 基础实现与本地 SUMO 验证完成；Docker live、镜像指标和第二机器复现待真实证据 |
+| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成；外部环境验证待完成 |
+| AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基线实现、测试和固定配时实跑完成；全矩阵复核和最终基线口径待完成 |
+| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、容量归一化、溢出门控、动态绿灯和 EWMA/校准链路完成；最终性能答辩口径待确认 |
+| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式数据需重生成并与报告对齐 |
+| DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 未完成：仅有技术 Markdown 提纲；Word/PDF 报告、PPT、演示方案和排版待完成 |
+| DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；演示视频缺失，PyQt 看板未实现（可选加分项） |
 
 ### 个人任务书入口
 
@@ -587,7 +605,9 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 
 ## 开发计划
 
-![时间线](docs/architecture/images/timeline.png)
+![工程复现与交付阶段门控](docs/architecture/images/timeline.svg)
+
+> 上图按当前仓库证据表达阶段门控；下表保留原始六周计划，日期和历史里程碑不替代当前完成状态。
 
 | 阶段 | 时间 | 关键产出 | 里程碑 |
 |------|------|----------|--------|
@@ -609,12 +629,12 @@ predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
 | # | 材料 | 格式 | 负责人 | 状态 |
 |---|------|------|--------|------|
 | 1 | PPT 汇报 | .pptx | DA | 待完成 |
-| 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 基础设施与目录整理已完成，算法/实验/交付继续集成 |
+| 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 本地代码链路和自动化验证完成；最终集成审查待完成 |
 | 3 | 部署运行说明文档 | Markdown | IB | 已完成，路径为 `docs/deployment.md` |
 | 4 | 实验评估报告 | Word | DA + EX | 待完成 |
 | 5 | 演示视频（5-8 分钟） | .mp4 | DB | 待完成 |
 | 6 | 实际场景演示方案 | Word/Markdown | DA | 待完成 |
-| 7 | Dockerfile + 部署文档 | Dockerfile + docs/ | IB | 文件已完成，真实镜像构建待验证 |
+| 7 | Dockerfile + 部署文档 | Dockerfile + docs/ | IB | 文件已完成，Docker live 构建/运行和镜像指标待验证 |
 
 压缩包命名格式：`学校全称-团队名称-车路云协同管控算法与平台-负责人姓名`
 

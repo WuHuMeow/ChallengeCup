@@ -217,6 +217,8 @@ def _pytest_check(name: str, files: list[str]) -> CheckResult:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     errors = []
@@ -633,6 +635,8 @@ def verify_automated_regression(verification_root: Path) -> CheckResult:
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
             env=environment,
         )
@@ -716,6 +720,8 @@ def verify_docker(verification_root: Path) -> CheckResult:
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
         exit_codes.append(completed.returncode)

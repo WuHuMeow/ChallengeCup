@@ -5,6 +5,7 @@
 ## 当前入口
 
 - [项目说明、快速开始和当前验证命令](../README.md)
+- [当前分工完成情况](tasks/current-status.md)
 - [数据契约、算法接口、引擎接口和 API](interface.md)
 - [部署与复现说明](deployment.md)
 - [SUMO 环境安装与版本检查](sumo_env_setup.md)
@@ -32,6 +33,6 @@ python scripts/batch_validate.py --output-root output/runs/validate-enhanced --n
 
 ## 历史设计和周任务
 
-- [项目总路线](总路线.md)：保留六周计划和角色安排；当前 IA/IB 状态以验收记录为准。
-- [周任务书与路线图](tasks/)
+- [项目总路线](总路线.md)：保留六周计划和角色安排；当前状态以分工状态页和验收记录为准。
+- [周任务书与路线图](tasks/)，以及[当前分工完成情况](tasks/current-status.md)
 - [历史设计与实施记录](superpowers/)

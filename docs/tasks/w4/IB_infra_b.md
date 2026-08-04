@@ -1,7 +1,8 @@
 # 仿真基础设施 B（IB） W4 任务书
 
 > 周期：8/10（周日）- 8/16（周六） | 核心目标：保障 1.5 倍流量压力测试稳定运行，完善 CloudPolicy 在高压力下的行为
-> **完成状态（2026-07-24）**：（已完成） JointState 车辆采样 500 上限（MAX_VEHICLES）；CloudPolicy 极端压力档（>0.8, base_green=45）；arrival_history 300 步滚动窗口；Docker/本地一致性确认。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） JointState 车辆采样 500 上限（MAX_VEHICLES）；CloudPolicy 极端压力档（>0.8, base_green=45）；arrival_history 300 步滚动窗口；Docker/本地一致性确认。
 
 ## 本周背景
 
@@ -13,7 +14,7 @@
 
 - [ ] 监控 1.5 倍流量测试中 `experiments/runner.py` 的稳定性，重点观察内存占用
 - [ ] 在 `engine/traci_bridge.py` 中对车端字段做采样：高流量下每 3 辆取 1 辆（可配置 `vehicle_sample_rate`）
-- [ ] 给 `JointState.vehicles` 设置硬上限（如 500 辆），超出则只保留进口道上的车辆
+- [x] 给 `JointState.vehicles` 设置硬上限（如 500 辆），超出则只保留进口道上的车辆
 - [ ] 用 `tracemalloc` 跑一次 1.5 倍流量 3600 步，确认峰值内存可接受
 
 ```python
@@ -35,9 +36,9 @@ class TraCIBridge:
 
 ### Day 2（8/11 周一）
 
-- [ ] 在 `cloud/cloud_policy.py` 中新增"极高压力"档位：`avg_pressure > 0.8` 时返回更激进参数
+- [x] 在 `cloud/cloud_policy.py` 中新增"极高压力"档位：`avg_pressure > 0.8` 时返回更激进参数
 - [ ] 验证 1.5 倍流量下云端参数确实下发并影响 CA-MP 行为（日志中能看到参数切换）
-- [ ] 在 `CloudPolicy` 中加日志：每次下发参数时打印 `step / avg_pressure / params`
+- [x] 在 `CloudPolicy` 中加日志：每次下发参数时打印 `step / avg_pressure / params`
 - [ ] 与 AB 确认 CA-MP 收到新参数后行为符合预期
 
 ```python
@@ -62,8 +63,8 @@ def _compute_params(self, states: list[JointState]) -> dict:
 
 - [ ] 协助 AB 接入 EWMA 预测：与 AB 确认历史数据由谁维护（bridge 提供 vs 算法内部维护）
 - [ ] 若由 bridge 提供：在 `JointState` 中新增 `arrival_history: list[dict[str, int]]` 字段，记录过去 N 步各进口道到达车辆数
-- [ ] 在 `TraCIBridge` 内维护一个 `deque(maxlen=N)` 滚动窗口
-- [ ] 写最小单测：连续 tick N+5 步，断言 `arrival_history` 长度始终 ≤ N
+- [x] 在 `TraCIBridge` 内维护一个 `deque(maxlen=N)` 滚动窗口
+- [x] 写最小单测：连续 tick N+5 步，断言 `arrival_history` 长度始终 ≤ N
 
 ```python
 # engine/traci_bridge.py（节选）

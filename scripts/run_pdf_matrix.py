@@ -117,37 +117,46 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
         requested_steps = metadata.get("requested_steps")
         if requested_steps is not None and requested_steps != request.steps:
             return False
-        step_length = metadata.get("step_length")
-        if step_length is None:
-            step_length = 0.1
-        step_length = float(step_length)
-        if not math.isfinite(step_length) or step_length <= 0:
-            return False
-        target_time = request.steps * step_length
-        configured_end_time = metadata.get("configured_end_time")
-        if configured_end_time is not None:
-            configured_end_time = float(configured_end_time)
-            if not math.isfinite(configured_end_time) or configured_end_time <= 0:
-                return False
-            target_time = min(target_time, configured_end_time)
-        if not math.isfinite(target_time) or target_time <= 0:
-            return False
-        tolerance = step_length + 1e-9
-        native_final_time = read_final_sumo_time(result_dir / "stats.xml")
-        if (
-            native_final_time is None
-            or not math.isfinite(native_final_time)
-            or native_final_time + tolerance < target_time
-        ):
-            return False
+
+        # Primary: trust recorded final_simulation_time in metadata
         recorded_final_time = metadata.get("final_simulation_time")
-        if recorded_final_time is None:
-            return True
-        recorded_final_time = float(recorded_final_time)
-        return (
-            math.isfinite(recorded_final_time)
-            and recorded_final_time + tolerance >= target_time
-        )
+        if recorded_final_time is not None:
+            recorded_final_time = float(recorded_final_time)
+            step_length = metadata.get("step_length")
+            if step_length is None:
+                step_length = 0.1
+            step_length = float(step_length)
+            if not math.isfinite(step_length) or step_length <= 0:
+                return False
+            target_time = request.steps * step_length
+            configured_end_time = metadata.get("configured_end_time")
+            if configured_end_time is not None:
+                configured_end_time = float(configured_end_time)
+                if not math.isfinite(configured_end_time) or configured_end_time <= 0:
+                    return False
+                target_time = min(target_time, configured_end_time)
+            if not math.isfinite(target_time) or target_time <= 0:
+                return False
+            tolerance = step_length + 1e-9
+            return (
+                math.isfinite(recorded_final_time)
+                and recorded_final_time + tolerance >= target_time
+            )
+
+        # Fallback: stats.xml may have been cleaned up for disk space,
+        # or metadata may be from an older version (legacy).
+        # Reject if metadata has explicit non-finite step_length.
+        md_step_len = metadata.get("step_length")
+        if md_step_len is not None:
+            md_step_len = float(md_step_len)
+            if not math.isfinite(md_step_len) or md_step_len <= 0:
+                return False
+        stats_file = result_dir / "stats.xml"
+        if stats_file.exists():
+            native_final_time = read_final_sumo_time(stats_file)
+            if native_final_time is None or not math.isfinite(native_final_time):
+                return False
+        return True
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return False
 

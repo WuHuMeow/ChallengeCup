@@ -1,14 +1,15 @@
 # 仿真基础设施 B（IB） W5 任务书
 
 > 周期：8/17（周日）- 8/23（周六） | 核心目标：代码最终清理、接口文档定稿、协助交付物准备
-> **完成状态（2026-07-24）**：（已完成） 最终代码 review/清理完成；interface.md 定稿（495 行，含消息流图+数据类字段规格）；9 组功能验证通过（w5-verification.md）；66 测试全通过；README 定稿。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） 最终代码 review/清理完成；interface.md 定稿（495 行，含消息流图+数据类字段规格）；9 组功能验证通过（w5-verification.md）；W5 记录中的 66 tests 全通过，当前完整测试为 198 passed；README 定稿。
 
 ## 每日任务
 
 ### Day 1（8/17 周日）
 
-- [ ] 对 `engine/traci_bridge.py` / `engine/runner.py` / `cloud/cloud_policy.py` 做最终 review
-- [ ] 删除所有调试代码（临时 `print`、注释掉的旧实现、`breakpoint()`）
+- [x] 对 `engine/traci_bridge.py` / `engine/runner.py` / `cloud/cloud_policy.py` 做最终 review
+- [x] 删除所有调试代码（临时 `print`、注释掉的旧实现、`breakpoint()`）
 - [ ] 确认异常处理完整：TraCI 断开、文件不存在、参数非法等场景都有清晰报错
 - [ ] 确认所有模块、类、公共方法的 docstring 完整（参数、返回、异常）
 
@@ -24,8 +25,8 @@ git grep -nE "breakpoint\(\)|pdb\.set_trace|^\s*print\(" engine/ cloud/ \
 
 ### Day 2（8/18 周一）
 
-- [ ] 定稿 `docs/interface.md`：核对消息流图（云 → 边 → 端）与实际代码一致
-- [ ] 确认每个数据类（`JointState / ControlAction / SimulationMetrics / QueueState`）字段说明完整
+- [x] 定稿 `docs/interface.md`：核对消息流图（云 → 边 → 端）与实际代码一致
+- [x] 确认每个数据类（`JointState / ControlAction / SimulationMetrics / QueueState`）字段说明完整
 - [ ] 为每个核心类添加使用示例代码片段（`TraCIBridge` / `SimulationRunner` / `CloudPolicy`）
 - [ ] 这是 PDF 评分"设计文档规范性（5 分）"的关键材料，必须图文一致
 
@@ -71,7 +72,7 @@ print(f"exported {len(frames)} frames")
 - [ ] 最终功能验证：三种算法在路口 1、11、16 上各跑一次（共 9 组）
 - [ ] 确认每组输出完整（tripinfo / stats / traj / simulation_log / events），无报错
 - [ ] 确认 Docker 内行为与本地一致（同 seed 输出相同）
-- [ ] 把 9 组验证结果记录到 `docs/w5-verification.md`
+- [x] 把 9 组验证结果记录到 `docs/w5-verification.md`
 
 ```bash
 # 最终功能验证脚本

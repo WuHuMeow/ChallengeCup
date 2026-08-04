@@ -85,6 +85,8 @@ def _docker_evidence(output_dir: Path, image: str) -> tuple[dict, Path | None]:
         [docker, "image", "inspect", image, "--format", "{{.Id}}"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if inspect.returncode:
@@ -99,6 +101,8 @@ def _docker_evidence(output_dir: Path, image: str) -> tuple[dict, Path | None]:
         save_command,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     return {

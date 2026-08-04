@@ -14,11 +14,13 @@
 
 ---
 
-## 当前验证状态（2026-07-27）
+## 当前验证状态（2026-07-28）
 
 本路线图保存历史周计划，日期、里程碑和进度栏反映编写时的安排，不替代当前状态。当前仓库是内部研发仓库：功能一、功能二作为共同基础完成，项目选择赛道 B，聚焦 CA-MP 的场景适配、参数调优和性能评估。
 
-当前 IA/IB 验证以 [`docs/ia-ib-final-verification.md`](../ia-ib-final-verification.md) 为准：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。大体积仿真结果及压缩包已删除；清理和重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](../ia-ib-simulation-artifact-cleanup.md)。
+当前角色状态以 [`current-status.md`](current-status.md) 为准。IA/IB 验证以 [`docs/ia-ib-final-verification.md`](../ia-ib-final-verification.md) 为准：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。大型仿真结果及压缩包已删除；清理和重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](../ia-ib-simulation-artifact-cleanup.md)。
+
+当前收尾重点是 DA/DB 的正式交付物、TL 的最终集成审查、EX 数据重新生成及 Docker/第二机器外部证据；PyQt 看板属于可选加分项，不影响核心代码交付。
 
 ---
 
@@ -39,22 +41,22 @@
 
 ## 三、六周里程碑
 
-| 周 | 日期 | 里程碑 | 验收标准 | 进度（2026-07-23） |
+| 周 | 日期 | 里程碑 | 验收标准 | 当前状态（2026-07-28） |
 |----|------|--------|----------|--------------------|
-| W1 | 7/20 - 7/26 | 框架搭建 | 单路口（路口1）固定配时 + CA-MP 均可跑通 3600 步；接口冻结 | （进行中）（IA 侧 （已完成）：20 路口 3600 步 20/20 通过、固定配时路口 1 已跑通；CA-MP 跑通待 AB 实现） |
-| W2 | 7/27 - 8/2 | 算法联调 | 云-边-端消息流贯通；CA-MP 在路口 1 出对比数据；感应控制基线完成 | （未开始）（IA 侧增强版配置与批量验证脚本已就绪） |
-| W3 | 8/3 - 8/9 | 全量实验 | 20 路口 × 3 算法 × 原始流量第一轮跑完；Matplotlib 图表产出 | （未开始）（IA 侧 split_jobs / check_outputs / Dockerfile 已就绪） |
-| W4 | 8/10 - 8/16 | 压力测试 + 调优 | 1.5 倍流量实验完成；EWMA 预测接入；PyQt 看板（可选）；Docker 打包 | （未开始）（IA 侧 Docker 三件套已完成，待实机构建验证） |
-| W5 | 8/17 - 8/23 | 交付物制作 | 报告初稿、PPT 初稿、视频脚本 + 录制完成 | （未开始）（IA 侧代码清理已完成） |
-| W6 | 8/24 - 8/31 | 打磨提交 | 全员 review、修 bug、视频剪辑定稿、最终提交（8/31 前） | （未开始） |
+| W1 | 7/20 - 7/26 | 框架搭建 | 单路口（路口1）固定配时 + CA-MP 均可跑通 3600 步；接口冻结 | 基础代码链路已完成；历史阅读/会议项不作为当前完成依据 |
+| W2 | 7/27 - 8/2 | 算法联调 | 云-边-端消息流贯通；CA-MP 在路口 1 出对比数据；感应控制基线完成 | 消息链路、参数入口、种子和日志已实现并通过测试 |
+| W3 | 8/3 - 8/9 | 全量实验 | 20 路口 × 3 算法 × 原始流量第一轮跑完；Matplotlib 图表产出 | 工程验证和批量审计已完成；大型正式产物需重生成 |
+| W4 | 8/10 - 8/16 | 压力测试 + 调优 | 1.5 倍流量实验完成；EWMA 预测接入；PyQt 看板（可选）；Docker 打包 | 压力保障、EWMA 和 Docker 静态文件已完成；Docker live 未运行，PyQt 未实现 |
+| W5 | 8/17 - 8/23 | 交付物制作 | 报告初稿、PPT 初稿、视频脚本 + 录制完成 | IA/IB 工程收尾完成；DA/DB 正式交付物仍缺失 |
+| W6 | 8/24 - 8/31 | 打磨提交 | 全员 review、修 bug、视频剪辑定稿、最终提交（8/31 前） | 未完成；最终 review、答辩、打包和提交无直接证据 |
 
 ---
 
 ## 四、技术架构
 
-![CA-MP 云-边-端三层协同架构](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 
-![仿真循环数据流](../architecture/images/simulation-loop.svg)
+![单次仿真控制循环与证据生成](../architecture/images/simulation-loop.svg)
 
 ---
 
@@ -116,7 +118,7 @@ ChallengeCup/
 │   ├── rule_adaptive.py         # 感应控制（Actuated 基线）
 │   └── ca_max_pressure.py       # CA-MP（核心创新）
 ├── cloud/                       # 云端策略层
-│   └── cloud_policy.py          # CloudCoordinator 全局参数下发 + EWMA 预测
+│   └── cloud_policy.py          # CloudPolicy 全局参数下发 + EWMA 预测
 ├── ml/                          # ML 模型模块（EWMA 参数校准）
 │   ├── train.py                 # EWMA 参数校准
 │   ├── features.py              # 特征工程

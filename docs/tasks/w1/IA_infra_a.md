@@ -1,7 +1,8 @@
 # 仿真基础设施 A（IA） W1 任务书
 
 > 周期：7/20（周日）- 7/26（周六） | 核心目标：将 20 个路口全部迁移到统一 SUMO 版本，确保可运行
-> **完成状态（2026-07-24）**：（已完成） 20/20 路口在 SUMO 1.27.1 下验证通过（100 步 + 3600 步全量），`docs/migration_log.md` / `data/intersection_data/metadata/intersections.yaml` / `docs/edge_mapping.md` 已交付；不兼容路口 0 个；迁移结果已提交、IB 联调已完成。
+> 当前状态索引（2026-07-28）：以 [`current-status.md`](../current-status.md) 为准；仅对当前仓库有直接证据的事项勾选，未勾选项仍可能是未完成、待外部验证或历史计划。
+> **完成状态（2026-07-28）**：（基础任务完成） 20/20 路口在 SUMO 1.27.1 下验证通过（100 步 + 3600 步全量），`docs/migration_log.md` / `data/intersection_data/metadata/intersections.yaml` / `docs/edge_mapping.md` 已交付；不兼容路口 0 个；迁移结果已提交、IB 联调已完成。
 
 ## 本周背景
 
@@ -17,7 +18,7 @@
 - [x] 设置环境变量 `SUMO_HOME=C:\Program Files\Eclipse\Sumo`（或实际安装路径），并将 `%SUMO_HOME%\bin` 加入 PATH
 - [x] 验证 Python 接口可用（`traci` / `libsumo`）
 - [ ] 用 SUMO-GUI 打开路口 1，能正常运行则记为"兼容"，否则记录错误信息
-- [ ] 在 `docs/` 下创建 `migration_log.md` 迁移记录表
+- [x] 在 `docs/` 下创建 `migration_log.md` 迁移记录表
 
 ```markdown
 <!-- docs/migration_log.md -->
