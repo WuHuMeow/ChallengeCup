@@ -27,9 +27,6 @@ def test_required_output_contract_is_shared_by_runners_and_checker():
         "metrics.csv",
         "simulation_log.csv",
         "events.csv",
-        "tripinfo.xml",
-        "stats.xml",
-        "traj.xml",
         "summary.json",
     )
     assert RunArtifacts.required_output_names() == expected

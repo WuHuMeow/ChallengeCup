@@ -49,6 +49,8 @@ def test_export_script_runs_directly_from_repository_root(tmp_path):
         cwd=root,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
 

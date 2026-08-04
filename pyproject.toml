@@ -30,6 +30,7 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--basetemp=output/tmp"
 
 [tool.ruff]
 line-length = 100

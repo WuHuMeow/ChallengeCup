@@ -105,10 +105,10 @@
 示例：
 
 ```markdown
-![系统架构](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 ```
 
-> 提示：本项目架构图、数据流图等优先提供 SVG 格式（`architecture.svg`、`simulation-loop.svg`、`team-org.svg`、`dependencies.svg`、`timeline.svg`），可无限缩放。PNG 版本用于兼容性备份。
+> 提示：本项目五张架构类图只保留 SVG 发布物（`architecture.svg`、`simulation-loop.svg`、`team-org.svg`、`dependencies.svg`、`timeline.svg`），可无限缩放并保留可检索文本。新增 Markdown 应直接引用 SVG，不再添加对应 PNG 或临时源文件。
 
 ---
 
@@ -257,17 +257,16 @@ GitHub 会自动渲染标题为锚点，因此可以用链接手动生成目录�
 
 | SVG 文件 | 位置 | 说明 |
 |----------|------|------|
-| `architecture.svg` | `docs/architecture/images/` | 系统整体架构图 |
-| `simulation-loop.svg` | `docs/architecture/images/` | 单步仿真循环与 ML 增强路径 |
-| `team-org.svg` | `docs/architecture/images/` | 团队组织架构图 |
-| `dependencies.svg` | `docs/architecture/images/` | 组间依赖关系图 |
-| `timeline.svg` | `docs/architecture/images/` | 开发阶段甘特图 |
-| `org-chart.svg` | `docs/tasks/` | 团队架构图（任务书用） |
+| `architecture.svg` | `docs/architecture/images/` | 统一运行容器架构与云端 / 边缘 / 终端映射 |
+| `simulation-loop.svg` | `docs/architecture/images/` | 单次仿真控制循环与证据生成 |
+| `team-org.svg` | `docs/architecture/images/` | 角色、模块与交付接口责任矩阵 |
+| `dependencies.svg` | `docs/architecture/images/` | 模块依赖、只读输入与证据输出边界 |
+| `timeline.svg` | `docs/architecture/images/` | 工程复现与交付阶段门控 |
 
 ### 16.3 引用示例
 
 ```markdown
-![系统架构](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 ```
 
 ## 17. 任务书写作规范

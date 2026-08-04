@@ -19,14 +19,15 @@ class RunArtifacts:
 
     @staticmethod
     def required_output_names() -> tuple[str, ...]:
-        """Return the canonical files required for a completed run."""
+        """Return the canonical files required for a completed run.
+        NOTE: tripinfo.xml/stats.xml/traj.xml are removed — they are used
+        only to compute summary.json and can be 10+ MB each on 0.1s-step
+        intersections, rapidly filling the disk during batch runs.
+        """
         return (
             "metrics.csv",
             "simulation_log.csv",
             "events.csv",
-            "tripinfo.xml",
-            "stats.xml",
-            "traj.xml",
             "summary.json",
         )
 

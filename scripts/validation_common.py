@@ -54,7 +54,9 @@ def run_sumo_validation(
         command.extend(
             ["--queue-output", (output_dir / "queues.xml").resolve().as_posix()]
         )
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(
+        command, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     lines = completed.stderr.splitlines()
     warnings = [line for line in lines if line.startswith("Warning:")]
     errors = [line for line in lines if line.startswith("Error:")]
