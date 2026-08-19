@@ -52,6 +52,26 @@ CA-MP 参数只允许：
 
 原始 `data/intersection_data/` 是只读输入，不允许在原目录原地修改。
 
+### SceneManifest
+
+`SceneRegistry.list_scenes(formal_only=False)` 返回不可变的
+`tuple[SceneManifest, ...]`，提供正式场景的只读审计元数据；运行时调用继续使用
+`get_scene()` 和 `get_meta()`，其 `SceneMeta` 接口不变。每个 `SceneManifest` 包含：
+
+- `scene_id`、仓库相对的 `source_files` 及其流式计算的 `sha256`；
+- `step_length`（未在 `.sumocfg` 显式配置时为 SUMO 默认 `1.0`）、`tls_ids`、
+  `lane_ids` 和受控有效 lane-to-lane `movement_count`；
+- `validation_status`（`pass` 或 `fail`）与不被吞没的 `warnings`。
+
+`SceneValidator.validate(scene_root)` 使用 XML 和 Excel 的结构化解析预检 net、flow、
+route、turn、sumocfg 和配时输入。不存在合法受控 movement、无效步长、断开的路线或
+引用不存在的车道/边/信号程序时返回 `fail`。官方源已知的 `.sumocfg` 未直接引用
+flow/turn 输入会保留为 `source warning`，不作为没有告警的成功声明。
+
+`SceneImporter.import_scene(source_root, destination_root)` 先完成验证，只有 `pass` 时才
+将完整场景树复制为 `<destination_root>/<scene_id>/`；失败时抛出
+`SceneValidationError`，不会创建部分包，也绝不写回 `source_root`。
+
 ## 2. 运行状态与产物
 
 `RunArtifacts.required_output_names()` is the single completed-run checker
