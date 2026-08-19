@@ -1,21 +1,26 @@
 import json
 import threading
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
+from core.types import Scene
+from scenes.registry import SceneRegistry
 from engine.run_service import RunService
 
 
 class RecordingRunner:
     calls = []
+    run_steps = []
 
     def __init__(self, **kwargs):
         self.artifacts = kwargs["artifacts"]
         type(self).calls.append(kwargs)
 
     def run(self, steps, stop_event=None):
+        type(self).run_steps.append(steps)
         status = "stopped" if stop_event and stop_event.is_set() else "completed"
         self.artifacts.metrics.write_text("step\n0\n", encoding="utf-8")
         now = datetime.now(timezone.utc).isoformat()
@@ -32,6 +37,7 @@ class RecordingRunner:
 
 def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
     RecordingRunner.calls = []
+    RecordingRunner.run_steps = []
     service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
 
     result = service.run_sync(RunRequest("1", "fixed_time", steps=2))
@@ -42,6 +48,42 @@ def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
         "status"
     ] == "completed"
     assert len(RecordingRunner.calls) == 1
+
+
+def test_run_service_derives_steps_from_tenth_second_scene_window(tmp_path):
+    RecordingRunner.run_steps = []
+    service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
+
+    result = service.run_sync(RunRequest("12", "fixed_time"))
+
+    assert result.status is RunStatus.COMPLETED
+    assert RecordingRunner.run_steps[-1] == 36000
+
+
+def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
+    base_registry = SceneRegistry()
+    base_scene = base_registry.get_scene("1")
+    custom_cfg = tmp_path / "one-second.sumocfg"
+    custom_cfg.write_text(
+        "<configuration><time><step-length value='1.0'/></time></configuration>",
+        encoding="utf-8",
+    )
+
+    class CustomRegistry:
+        def get_scene(self, intersection_id):
+            return Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg))
+
+    RecordingRunner.run_steps = []
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=RecordingRunner,
+        registry=CustomRegistry(),
+    )
+
+    result = service.run_sync(RunRequest("1", "fixed_time"))
+
+    assert result.status is RunStatus.COMPLETED
+    assert RecordingRunner.run_steps[-1] == 3600
 
 
 def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):

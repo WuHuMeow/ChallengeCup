@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from core.run_models import VariantSpec
+from core.types import TrafficLevel
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
@@ -47,6 +48,20 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
     assert float(phases[0].get("duration")) == pytest.approx(42 * 1.1)
     assert float(phases[1].get("duration")) == 3.0
 
+
+def test_variant_generator_uses_seconds_first_high_level_fallback(monkeypatch):
+    from scenes import variant
+
+    class EmptyConfig:
+        def get(self, key, default=None):
+            return {}
+
+    monkeypatch.setattr(variant, "get_config", lambda: EmptyConfig())
+
+    generator = variant.VariantGenerator()
+
+    assert generator.levels[TrafficLevel.NORMAL] == 1.0
+    assert generator.levels[TrafficLevel.HIGH] == 1.25
 
 def test_lane_closure_additional_is_bounded_and_reproducible(tmp_path):
     meta = SceneRegistry().get_scene("1").meta

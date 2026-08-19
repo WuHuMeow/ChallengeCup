@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Callable
 
 from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
 from core.run_models import RunRequest, RunResult, RunStatus
+from core.timebase import steps_for_seconds
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel
 from engine.runner import SimulationRunner
@@ -126,6 +128,7 @@ class RunService:
         )
         try:
             scene = self.registry.get_scene(request.intersection_id)
+            requested_steps = self._requested_steps(request, scene.meta.sumo_cfg)
             bundle = VariantGenerator().generate_bundle(
                 scene.meta,
                 request.flow_multiplier,
@@ -148,7 +151,7 @@ class RunService:
                 artifacts=artifacts,
                 state_channel=state_channel,
             )
-            runner.run(request.steps, stop_event=stop_event)
+            runner.run(requested_steps, stop_event=stop_event)
             if not artifacts.metadata.exists():
                 now = datetime.now(timezone.utc).isoformat()
                 artifacts.write_metadata(
@@ -158,7 +161,7 @@ class RunService:
                     started_at=now,
                     ended_at=now,
                     sumo_version="unknown",
-                    requested_steps=request.steps,
+                    requested_steps=requested_steps,
                 )
         except Exception as exc:
             if not artifacts.metadata.exists():
@@ -170,11 +173,26 @@ class RunService:
                     started_at=now,
                     ended_at=now,
                     sumo_version="unknown",
-                    requested_steps=request.steps,
+                    requested_steps=requested_steps if "requested_steps" in locals() else None,
                 )
         result = self._result_from_artifacts(artifacts)
         self._store(result)
         return result
+
+    @staticmethod
+    def _requested_steps(request: RunRequest, sumo_cfg: Path) -> int:
+        """Resolve a request's compatibility step count at the scene boundary."""
+        if request.steps is not None:
+            return request.steps
+        step_length = request.step_length_override
+        if step_length is None:
+            try:
+                root = ET.parse(sumo_cfg).getroot()
+                element = root.find("./time/step-length")
+                step_length = float(element.get("value")) if element is not None else 1.0
+            except (OSError, ET.ParseError, TypeError, ValueError) as exc:
+                raise ValueError(f"invalid SUMO step-length in {sumo_cfg}") from exc
+        return steps_for_seconds(request.duration_seconds, step_length)
 
     def _result_from_artifacts(self, artifacts: RunArtifacts) -> RunResult:
         payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))

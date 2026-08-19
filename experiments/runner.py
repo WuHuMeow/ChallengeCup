@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
+import math
 from pathlib import Path
 from typing import List
 
@@ -136,13 +137,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         p.error("--intersection must be in 1..20")
     if args.steps is not None and args.steps <= 0:
         p.error("--steps must be > 0")
-    if args.duration_seconds <= 0:
+    if not math.isfinite(args.duration_seconds) or args.duration_seconds <= 0:
         p.error("--duration-seconds must be > 0")
-    if args.warmup_seconds < 0 or args.warmup_seconds >= args.duration_seconds:
+    if (
+        not math.isfinite(args.warmup_seconds)
+        or args.warmup_seconds < 0
+        or args.warmup_seconds >= args.duration_seconds
+    ):
         p.error("--warmup-seconds must be >= 0 and less than duration")
     if args.seed < 0:
         p.error("--seed must be >= 0")
-    if args.flow_multiplier <= 0:
+    if not math.isfinite(args.flow_multiplier) or args.flow_multiplier <= 0:
         p.error("--flow-multiplier must be > 0")
     return args
 

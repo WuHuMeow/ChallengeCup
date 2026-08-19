@@ -1,7 +1,7 @@
 """场景变体生成。
 
-根据基准流量文件生成 1.0x / 1.5x 流量等级变体，
-用于对比实验（原始流量 vs 1.5 倍压力）。
+根据基准流量文件生成 1.0x / 1.25x 流量等级变体，
+用于对比实验（原始流量 vs 1.25 倍高流量）。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class VariantGenerator:
             raw = cfg.get("scene.default_traffic_levels", {})
             levels = {
                 TrafficLevel.NORMAL: raw.get("normal", 1.0),
-                TrafficLevel.HIGH: raw.get("high", 1.5),
+                TrafficLevel.HIGH: raw.get("high", 1.25),
             }
         self.levels = levels
 

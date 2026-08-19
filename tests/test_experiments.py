@@ -100,6 +100,12 @@ def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
     ("--steps", "0"),
     ("--seed", "-1"),
     ("--flow-multiplier", "0"),
+    ("--flow-multiplier", "nan"),
+    ("--flow-multiplier", "inf"),
+    ("--duration-seconds", "nan"),
+    ("--duration-seconds", "inf"),
+    ("--warmup-seconds", "nan"),
+    ("--warmup-seconds", "inf"),
 ])
 def test_parse_args_rejects_invalid_dimensions(option, value):
     from experiments.runner import parse_args

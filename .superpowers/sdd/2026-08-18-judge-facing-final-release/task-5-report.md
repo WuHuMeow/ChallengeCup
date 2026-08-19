@@ -49,3 +49,21 @@
 
 - 本任务按简报不实现 `step-length` 场景清单解析、SimulationRunner 按秒终止或正式原子 `manifest.json` 写入；这些接口归 Task 12-13。当前旧 Runner 在收到没有兼容 `steps` 的请求时仍有历史回退路径，后续任务必须在场景解析后显式传入派生步数，不能恢复全局 36000 步默认。
 - `tests/test_tuning.py` 中 PDF matrix 的显式 36000 步断言属于现有 Task 14 兼容路径，不代表新的 RunRequest 默认值。
+
+## Fix Round 1
+
+独立审查指出默认秒制请求仍会将 `None` 传入旧 Runner、variant fallback 仍为 1.5，以及 CLI 未拒绝 NaN/Inf。已完成最小修复：
+
+- `engine/run_service.py` 在场景边界解析当前 sumocfg 的 `<step-length>`；优先级为显式 `steps`、`step_length_override`、场景配置，随后用 `steps_for_seconds` 派生请求步数。缺失 step-length 按已有 SUMO 约定使用 1.0，非法配置显式失败，不再静默回退 36000。
+- `scenes/variant.py` 的缺失配置 fallback 和模块文档统一为 high=1.25。
+- `experiments/runner.py` 对 flow/duration/warmup 使用 `math.isfinite` 校验。
+- 新增真实回归覆盖 0.1 秒场景（scene 12 -> 36000 步）、1.0 秒临时 sumocfg（-> 3600 步）、variant fallback 和 NaN/Inf CLI 参数。
+
+### Fix Round 1 TDD / Verification
+
+- RED：新增修复测试运行结果为 `8 failed, 6 passed`，失败分别表现为 `None` 传入 Runner、fallback=1.5 和 NaN/Inf 未被拒绝。
+- GREEN 聚焦：`\.venv\Scripts\python.exe -m pytest tests/test_run_service.py::test_run_service_derives_steps_from_tenth_second_scene_window tests/test_run_service.py::test_run_service_derives_steps_from_one_second_step_length tests/test_variants.py::test_variant_generator_uses_seconds_first_high_level_fallback tests/test_experiments.py::test_parse_args_rejects_invalid_dimensions -q`，结果 `14 passed`。
+- Fix Round 1 聚焦回归：`\.venv\Scripts\python.exe -m pytest tests/test_timebase.py tests/test_run_models.py tests/test_experiments.py tests/test_tuning.py tests/test_variants.py tests/test_run_service.py -q`，结果 `69 passed`。
+- Fix Round 1 全量：`\.venv\Scripts\python.exe -m pytest -q`，结果 `301 passed`。
+
+修复仍遵守边界：按秒完整终止状态机和原子 manifest 继续归 Task 12-13；本轮只桥接请求到现有 Runner 的场景步长边界。
