@@ -23,8 +23,11 @@ _CACHE_COMPONENTS = frozenset(
     }
 )
 _INTERNAL_MARKERS = (
+    "development-roadmap",
     "internal-",
     "member-assignment",
+    "member-code",
+    "project-division",
     "team-assignment",
     "weekly-progress",
     "weekly-task",

@@ -48,6 +48,10 @@ def test_cache_runtime_and_personal_environment_are_not_release_paths(
         "docs/internal-progress.md",
         "docs/team-assignment.md",
         "docs/weekly-tasks.md",
+        "docs/development-roadmap.md",
+        "docs/project-division.md",
+        "docs/member-code-notes.md",
+        "docs/internal-verification-report.md",
         "output/evidence/verify_route_1/report.json",
         "output/evidence/legacy-route-check/report.json",
     ],
@@ -55,7 +59,7 @@ def test_cache_runtime_and_personal_environment_are_not_release_paths(
 def test_internal_and_superseded_route_material_is_not_released(
     tmp_path, relative_path
 ):
-    assert is_release_path(tmp_path / relative_path) is False
+    assert is_release_path(Path(relative_path)) is False
 
 
 @pytest.mark.parametrize(
