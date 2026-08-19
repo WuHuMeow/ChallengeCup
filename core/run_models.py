@@ -98,6 +98,10 @@ class DisturbanceSpec:
             raise ValueError("end_seconds must be greater than begin_seconds")
         if intensity <= 0:
             raise ValueError("intensity must be > 0")
+        if self.kind in {"construction", "vehicle_failure"} and intensity > 1:
+            raise ValueError(
+                "intensity must be <= 1 for construction and vehicle_failure"
+            )
         if not isinstance(self.target, str) or not self.target.strip():
             raise ValueError("target must be a non-empty string")
         object.__setattr__(self, "begin_seconds", begin)
@@ -113,6 +117,9 @@ class VariantBundle:
     additional_files: tuple[Path, ...]
     manifest: dict[str, object]
     flow_file: Path | None = None
+    route_file: Path | None = None
+    sumo_cfg: Path | None = None
+    network_file: Path | None = None
 
 
 @dataclass(frozen=True)

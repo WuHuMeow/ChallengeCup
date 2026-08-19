@@ -107,7 +107,8 @@ def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
 
     additional_files = RecordingRunner.calls[0]["additional_files"]
     assert result.status is RunStatus.COMPLETED
-    assert len(additional_files) == 3
+    assert len(additional_files) == 2
+    assert RecordingRunner.calls[0]["sumo_cfg"].name == "variant.sumocfg"
     assert (result.run_dir / "variants" / "variant_manifest.json").is_file()
 
 

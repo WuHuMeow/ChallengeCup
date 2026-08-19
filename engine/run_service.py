@@ -147,6 +147,7 @@ class RunService:
                     **request.algorithm_params
                 ),
                 additional_files=list(bundle.additional_files),
+                sumo_cfg=bundle.sumo_cfg,
                 seed=request.seed,
                 artifacts=artifacts,
                 state_channel=state_channel,

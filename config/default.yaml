@@ -33,6 +33,8 @@ scene:
     high: 1.25
   # 正式扰动矩阵的冻结基线；每次运行仍须声明作用对象与时间窗。
   disturbance_defaults:
+    # construction/failure intensity: (0, 1]，作用时间占声明时间窗的比例。
+    # event_demand intensity: 正数，额外需求为每小时 360 * intensity 辆。
     construction:
       intensity: 1.0
       begin_seconds: 600

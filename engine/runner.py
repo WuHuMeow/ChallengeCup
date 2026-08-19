@@ -35,6 +35,7 @@ class SimulationRunner:
         output_csv: Optional[Path] = None,
         snapshot_interval: Optional[int] = None,
         additional_files: Optional[List[Path]] = None,
+        sumo_cfg: Optional[Path] = None,
         bridge: Optional[object] = None,
         seed: Optional[int] = None,
         step_log_csv: Optional[Path] = None,
@@ -86,13 +87,13 @@ class SimulationRunner:
             self.bridge = bridge
             self.bridge.event_callback = self._record_bridge_event
         else:
-            cfg = scene.meta.sumo_cfg
+            cfg = Path(sumo_cfg) if sumo_cfg is not None else scene.meta.sumo_cfg
             enhanced = (
                 Path(__file__).resolve().parent
                 / "configs"
                 / f"demo_{scene.meta.intersection_id}.sumocfg"
             )
-            if enhanced.exists():
+            if sumo_cfg is None and enhanced.exists():
                 cfg = enhanced
             self.bridge = TraCIBridge(
                 cfg,

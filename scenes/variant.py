@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict
@@ -66,6 +68,79 @@ class VariantGenerator:
             per_hour_attr = flow.get("vehsPerHour")
             if per_hour_attr is not None:
                 flow.set("vehsPerHour", f"{float(per_hour_attr) * factor:g}")
+        for vehicle in root.findall("vehicle"):
+            vehicle_id = vehicle.get("id")
+            if vehicle_id is not None:
+                vehicle.set("id", vehicle_id + suffix)
+            type_attr = vehicle.get("type")
+            if type_attr in vtype_map:
+                vehicle.set("type", vtype_map[type_attr])
+
+    @staticmethod
+    def _relative_runtime_path(path: Path, destination: Path) -> str:
+        return Path(os.path.relpath(path, destination)).as_posix()
+
+    @classmethod
+    def _write_runtime_config(
+        cls,
+        scene_meta: SceneMeta,
+        route_file: Path,
+        output_file: Path,
+    ) -> None:
+        """Clone config metadata while replacing its sole demand population."""
+        tree = ET.parse(scene_meta.sumo_cfg)
+        root = tree.getroot()
+        inputs = root.find("input")
+        if inputs is None:
+            inputs = ET.SubElement(root, "input")
+        net = inputs.find("net-file")
+        if net is None:
+            net = ET.SubElement(inputs, "net-file")
+        net.set("value", cls._relative_runtime_path(scene_meta.sumo_net, output_file.parent))
+        routes = inputs.find("route-files")
+        if routes is None:
+            routes = ET.SubElement(inputs, "route-files")
+        routes.set("value", route_file.name)
+        for extra in inputs.findall("additional-files"):
+            inputs.remove(extra)
+        outputs = root.find("output")
+        if outputs is not None:
+            root.remove(outputs)
+        tree.write(output_file, encoding="utf-8", xml_declaration=True)
+
+    @staticmethod
+    def _derive_routes(
+        scene_meta: SceneMeta,
+        flow_file: Path,
+        route_file: Path,
+    ) -> None:
+        """Route the one scaled source population into an executable routes file."""
+        cmd = [
+            "jtrrouter",
+            "--net-file", str(scene_meta.sumo_net),
+            "--route-files", str(flow_file),
+            "--turn-ratio-files", str(scene_meta.sumo_turn),
+            "--output-file", str(route_file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0 or not route_file.exists():
+            detail = (result.stderr or result.stdout).strip()
+            raise ValueError(f"jtrrouter failed to derive demand routes: {detail}")
+
+    @staticmethod
+    def _manifest_path(path: Path, repo_root: Path) -> str:
+        try:
+            return path.resolve().relative_to(repo_root.resolve()).as_posix()
+        except ValueError:
+            return f"external/{path.name}"
+
+    @staticmethod
+    def _intensity_semantics(disturbance: DisturbanceSpec) -> str:
+        if disturbance.kind == "construction":
+            return "closure duration = declared interval * intensity (0, 1]"
+        if disturbance.kind == "event_demand":
+            return "additional demand = 360 vehicles/hour * intensity"
+        return "stopped vehicle duration = declared interval * intensity (0, 1]"
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -230,6 +305,10 @@ class VariantGenerator:
         self._scale_tree(flow_root, flow_multiplier, f"_x{flow_multiplier:g}")
         flow_file = output_dir / f"{scene_meta.sumo_flow.stem}_variant.flow.xml"
         flow_tree.write(flow_file, encoding="utf-8", xml_declaration=True)
+        route_file = output_dir / "derived_demand.rou.xml"
+        self._derive_routes(scene_meta, flow_file, route_file)
+        runtime_config = output_dir / "variant.sumocfg"
+        self._write_runtime_config(scene_meta, route_file, runtime_config)
 
         signal_file = output_dir / "signal_program.add.xml"
         self._write_signal_additional(
@@ -237,7 +316,7 @@ class VariantGenerator:
             variant.signal_duration_scale,
             signal_file,
         )
-        additional_files = [flow_file, signal_file]
+        additional_files = [signal_file]
 
         if variant.closed_lanes:
             closure_file = output_dir / "lane_closure.add.xml"
@@ -246,9 +325,14 @@ class VariantGenerator:
 
         if disturbance is not None:
             disturbance_file = output_dir / f"disturbance_{disturbance.kind}.add.xml"
-            write_disturbance(disturbance, disturbance_file)
+            write_disturbance(
+                disturbance,
+                disturbance_file,
+                network_file=scene_meta.sumo_net,
+            )
             additional_files.append(disturbance_file)
 
+        repo_root = Path(__file__).resolve().parents[1]
         manifest: dict[str, object] = {
             "flow_multiplier": flow_multiplier,
             "vehicle_type_overrides": variant.vehicle_type_overrides,
@@ -258,14 +342,23 @@ class VariantGenerator:
             "closure_end": variant.closure_end,
             "parent_sha256": self._sha256(scene_meta.sumo_flow),
             "lane_ids": sorted(lane_ids),
+            "runtime_files": {
+                "flow": flow_file.name,
+                "route": route_file.name,
+                "sumocfg": runtime_config.name,
+            },
             "sources": {
                 "flow": {
-                    "path": str(scene_meta.sumo_flow),
+                    "path": self._manifest_path(scene_meta.sumo_flow, repo_root),
                     "sha256": self._sha256(scene_meta.sumo_flow),
                 },
                 "network": {
-                    "path": str(scene_meta.sumo_net),
+                    "path": self._manifest_path(scene_meta.sumo_net, repo_root),
                     "sha256": self._sha256(scene_meta.sumo_net),
+                },
+                "route": {
+                    "path": self._manifest_path(scene_meta.sumo_rou, repo_root),
+                    "sha256": self._sha256(scene_meta.sumo_rou),
                 },
             },
             "additional_files": [path.name for path in additional_files],
@@ -277,15 +370,22 @@ class VariantGenerator:
                 "end_seconds": disturbance.end_seconds,
                 "target": disturbance.target,
                 "intensity": disturbance.intensity,
+                "intensity_semantics": self._intensity_semantics(disturbance),
             }
         (output_dir / "variant_manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        bundle = VariantBundle(tuple(additional_files), manifest, flow_file)
+        bundle = VariantBundle(
+            tuple(additional_files), manifest, flow_file, route_file, runtime_config,
+            scene_meta.sumo_net,
+        )
         issues = validate_variant(bundle)
         if issues:
-            for path in [*additional_files, output_dir / "variant_manifest.json"]:
+            for path in [
+                flow_file, route_file, runtime_config, *additional_files,
+                output_dir / "variant_manifest.json",
+            ]:
                 path.unlink(missing_ok=True)
             raise ValueError("invalid variant bundle: " + "; ".join(issues))
         return bundle

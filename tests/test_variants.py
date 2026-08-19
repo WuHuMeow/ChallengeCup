@@ -29,7 +29,7 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
         tmp_path,
     )
 
-    assert len(bundle.additional_files) == 2
+    assert len(bundle.additional_files) == 1
     assert bundle.manifest["flow_multiplier"] == 1.5
     assert bundle.manifest["signal_duration_scale"] == 1.1
     assert json.loads(
@@ -38,11 +38,11 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
     assert meta.sumo_flow.read_bytes() == original_flow
     assert meta.sumo_net.read_bytes() == original_net
 
-    flow_root = ET.parse(bundle.additional_files[0]).getroot()
+    flow_root = ET.parse(bundle.flow_file).getroot()
     assert flow_root.find("vType").get("sigma") == "0.2"
     assert int(flow_root.find("flow").get("number")) == round(366 * 1.5)
 
-    signal_root = ET.parse(bundle.additional_files[1]).getroot()
+    signal_root = ET.parse(bundle.additional_files[0]).getroot()
     assert signal_root.find("tlLogic").get("programID") == "variant_x1.1"
     phases = signal_root.findall("./tlLogic/phase")
     assert float(phases[0].get("duration")) == pytest.approx(42 * 1.1)
@@ -74,7 +74,7 @@ def test_lane_closure_additional_is_bounded_and_reproducible(tmp_path):
     first = VariantGenerator().generate_bundle(meta, 1.0, spec, tmp_path / "a")
     second = VariantGenerator().generate_bundle(meta, 1.0, spec, tmp_path / "b")
 
-    assert len(first.additional_files) == 3
+    assert len(first.additional_files) == 2
     assert _normalized_xml(first.additional_files[-1]) == _normalized_xml(
         second.additional_files[-1]
     )
@@ -98,14 +98,9 @@ def test_bundle_scales_probability_and_vehicles_per_hour(tmp_path):
     meta = SceneRegistry().get_scene("1").meta
     meta.sumo_flow = source
 
-    bundle = VariantGenerator().generate_bundle(
-        meta,
-        1.5,
-        VariantSpec(),
-        tmp_path / "bundle",
-    )
+    output = VariantGenerator().generate_scaled(meta, 1.5, tmp_path / "bundle")
 
-    root = ET.parse(bundle.additional_files[0]).getroot()
+    root = ET.parse(output).getroot()
     flows = root.findall("flow")
     assert float(flows[0].get("probability")) == pytest.approx(0.3)
     assert float(flows[1].get("vehsPerHour")) == pytest.approx(150.0)
