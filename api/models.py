@@ -17,6 +17,7 @@ from core.types import (
     QueueState,
     VehicleState,
 )
+from core.movements import MovementKey, MovementState, PhaseMovementState
 
 
 class VariantSpecModel(BaseModel):
@@ -137,6 +138,48 @@ class PhaseTrafficStateModel(BaseModel):
         )
 
 
+class MovementStateModel(BaseModel):
+    incoming_lane: str
+    outgoing_lane: str
+    queue_vehicles: float = Field(ge=0, allow_inf_nan=False)
+    downstream_queue_vehicles: float = Field(ge=0, allow_inf_nan=False)
+    incoming_capacity: float = Field(gt=0, allow_inf_nan=False)
+    downstream_capacity: float = Field(gt=0, allow_inf_nan=False)
+    downstream_occupancy: float = Field(ge=0, le=1, allow_inf_nan=False)
+    saturation_rate: float = Field(ge=0, allow_inf_nan=False)
+    turn_ratio: float = Field(ge=0, allow_inf_nan=False)
+
+    def to_domain(self) -> MovementState:
+        return MovementState(
+            key=MovementKey(
+                incoming_lane=self.incoming_lane,
+                outgoing_lane=self.outgoing_lane,
+            ),
+            queue_vehicles=self.queue_vehicles,
+            downstream_queue_vehicles=self.downstream_queue_vehicles,
+            incoming_capacity=self.incoming_capacity,
+            downstream_capacity=self.downstream_capacity,
+            downstream_occupancy=self.downstream_occupancy,
+            saturation_rate=self.saturation_rate,
+            turn_ratio=self.turn_ratio,
+        )
+
+
+class PhaseMovementStateModel(BaseModel):
+    phase_index: int = Field(ge=0)
+    signal_state: str
+    movements: list[MovementStateModel] = Field(default_factory=list)
+    nominal_duration: float = Field(ge=0, allow_inf_nan=False)
+
+    def to_domain(self) -> PhaseMovementState:
+        return PhaseMovementState(
+            phase_index=self.phase_index,
+            signal_state=self.signal_state,
+            movements=tuple(movement.to_domain() for movement in self.movements),
+            nominal_duration=self.nominal_duration,
+        )
+
+
 class VehicleStateModel(BaseModel):
     vehicle_id: str
     lane_id: str
@@ -159,6 +202,7 @@ class JointStateModel(BaseModel):
     vehicles: list[VehicleStateModel] = Field(default_factory=list)
     arrival_history: list[int] = Field(default_factory=list)
     phase_states: list[PhaseTrafficStateModel] = Field(default_factory=list)
+    phase_movements: list[PhaseMovementStateModel] = Field(default_factory=list)
 
     def to_domain(self) -> JointState:
         return JointState(
@@ -174,6 +218,7 @@ class JointStateModel(BaseModel):
             vehicles=[vehicle.to_domain() for vehicle in self.vehicles],
             arrival_history=self.arrival_history,
             phase_states=[phase.to_domain() for phase in self.phase_states],
+            phase_movements=tuple(phase.to_domain() for phase in self.phase_movements),
         )
 
 

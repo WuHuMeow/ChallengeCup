@@ -136,6 +136,7 @@ class BaseControlAlgorithm(ABC):
 | `vehicles` | `list[VehicleState]` | 采样车辆，硬上限 500 |
 | `arrival_history` | `list[int]` | 最近 300 步到达历史 |
 | `phase_states` | `list[PhaseTrafficState]` | 合法相位的上下游交通状态 |
+| `phase_movements` | `tuple[PhaseMovementState, ...]` | 唯一用于 movement pressure 的相位-转向状态；默认空元组 |
 
 ### QueueState
 
@@ -153,6 +154,21 @@ class BaseControlAlgorithm(ABC):
 | `incoming_queue` / `outgoing_queue` | 上下游排队 |
 | `incoming_capacity` / `outgoing_capacity` | 上下游容量 |
 | `outgoing_occupancy` | 下游占用率，范围 `0..1` |
+
+### PhaseMovementState 与 MovementState
+
+`JointState.phase_movements` 是 movement pressure 的唯一算法输入；`queues` 保留用于兼容和展示。
+每个 `PhaseMovementState` 对应一个合法相位，包含 `phase_index`、`signal_state`、
+`nominal_duration`（仿真秒）及其 `movements`。每个 `MovementState` 以不可变的
+`MovementKey(incoming_lane, outgoing_lane)` 标识，包含：
+
+| 字段 | 说明 |
+|---|---|
+| `queue_vehicles` / `downstream_queue_vehicles` | 上游和下游排队，单位为车辆 |
+| `incoming_capacity` / `downstream_capacity` | 上游和下游容量，单位为车辆，必须大于 `0` |
+| `downstream_occupancy` | 下游占用率，范围 `0..1` |
+| `saturation_rate` | 饱和流率，单位为车辆/仿真秒 |
+| `turn_ratio` | 转向比例 |
 
 ### ControlAction 与 ActionResult
 

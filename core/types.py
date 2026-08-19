@@ -10,7 +10,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 import math
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Protocol
+
+if TYPE_CHECKING:
+    from core.movements import PhaseMovementState
 
 
 def _require_number(
@@ -157,7 +160,7 @@ class JointState:
     """
 
     step: int
-    timestamp: float
+    timestamp: float  # Simulation seconds.
     tls_id: str
     current_phase: int
     current_phase_name: str
@@ -168,6 +171,7 @@ class JointState:
     vehicles: List[VehicleState] = field(default_factory=list)  # 采样后的车辆快照
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
     phase_states: List[PhaseTrafficState] = field(default_factory=list)
+    phase_movements: tuple[PhaseMovementState, ...] = ()
 
     def __post_init__(self) -> None:
         _require_number("step", self.step, minimum=0)
