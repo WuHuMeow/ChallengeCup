@@ -31,6 +31,25 @@ def test_environment_does_not_record_personal_absolute_paths(tmp_path):
     assert "environment" in payload
 
 
+def test_environment_uses_status_only_for_preflight_vocabulary(tmp_path):
+    (tmp_path / preflight.SOURCE_ARCHIVE).write_bytes(b"archive")
+
+    payload = preflight.collect_environment(tmp_path)
+
+    def statuses(value):
+        if isinstance(value, dict):
+            if "status" in value:
+                yield value["status"]
+            for nested in value.values():
+                yield from statuses(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                yield from statuses(nested)
+
+    assert set(statuses(payload)) <= preflight.VALID_STATUSES
+    assert payload["environment"]["source_archive"]["presence"] == "present"
+
+
 def test_docker_detection_stays_not_run_without_live_verification(
     monkeypatch, tmp_path
 ):

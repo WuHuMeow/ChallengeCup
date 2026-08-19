@@ -98,7 +98,7 @@ def _untracked_files(repo_root: Path, raw_path: str) -> list[str]:
 def _relative_record(
     repo_root: Path,
     raw_path: str,
-    status: str,
+    git_status: str,
     *,
     role: str = "path",
     prefer_head: bool = False,
@@ -112,7 +112,7 @@ def _relative_record(
         digest = "unavailable"
     return {
         "path": normalized,
-        "status": status,
+        "git_status": git_status,
         "role": role,
         "sha256": digest,
     }
@@ -203,10 +203,10 @@ def _git_commit(repo_root: Path) -> str:
 def _archive_record(repo_root: Path) -> dict[str, object]:
     archive = repo_root / SOURCE_ARCHIVE
     if not archive.is_file():
-        return {"path": SOURCE_ARCHIVE, "status": "missing"}
+        return {"path": SOURCE_ARCHIVE, "presence": "missing"}
     return {
         "path": SOURCE_ARCHIVE,
-        "status": "present",
+        "presence": "present",
         "size_bytes": archive.stat().st_size,
         "sha256": _sha256(archive),
     }
