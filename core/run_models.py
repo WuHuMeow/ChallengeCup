@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from algorithms.registry import canonicalize_algorithm_key, get_algorithm_registry
 from core.timebase import SimulationWindow, steps_for_seconds
@@ -63,6 +63,7 @@ class VariantSpec:
     closed_lanes: tuple[str, ...] = ()
     closure_begin: float = 0.0
     closure_end: float = 3600.0
+    disturbance: DisturbanceSpec | None = None
 
     def __post_init__(self) -> None:
         scale = _finite_number("signal_duration_scale", self.signal_duration_scale, minimum=0.0)
@@ -72,7 +73,37 @@ class VariantSpec:
         end = _finite_number("closure_end", self.closure_end, minimum=0.0)
         if self.closed_lanes and end <= begin:
             raise ValueError("closure_end must be greater than closure_begin")
+        if self.disturbance is not None and not isinstance(self.disturbance, DisturbanceSpec):
+            raise ValueError("disturbance must be a DisturbanceSpec")
         object.__setattr__(self, "closed_lanes", tuple(self.closed_lanes))
+
+
+@dataclass(frozen=True)
+class DisturbanceSpec:
+    """A bounded, auditable temporary disturbance in simulation seconds."""
+
+    kind: Literal["construction", "event_demand", "vehicle_failure"]
+    begin_seconds: float
+    end_seconds: float
+    target: str
+    intensity: float
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"construction", "event_demand", "vehicle_failure"}:
+            raise ValueError(f"unsupported disturbance kind: {self.kind}")
+        begin = _finite_number("begin_seconds", self.begin_seconds, minimum=0.0)
+        end = _finite_number("end_seconds", self.end_seconds, minimum=0.0)
+        intensity = _finite_number("intensity", self.intensity, minimum=0.0)
+        if end <= begin:
+            raise ValueError("end_seconds must be greater than begin_seconds")
+        if intensity <= 0:
+            raise ValueError("intensity must be > 0")
+        if not isinstance(self.target, str) or not self.target.strip():
+            raise ValueError("target must be a non-empty string")
+        object.__setattr__(self, "begin_seconds", begin)
+        object.__setattr__(self, "end_seconds", end)
+        object.__setattr__(self, "intensity", intensity)
+        object.__setattr__(self, "target", self.target.strip())
 
 
 @dataclass(frozen=True)
@@ -81,6 +112,7 @@ class VariantBundle:
 
     additional_files: tuple[Path, ...]
     manifest: dict[str, object]
+    flow_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +133,7 @@ class RunRequest:
     edge_delay_steps: int = 0
     edge_directions: tuple[str, ...] = ()
     variant: VariantSpec = field(default_factory=VariantSpec)
+    disturbance: DisturbanceSpec | None = None
     algorithm_params: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -169,6 +202,21 @@ class RunRequest:
         object.__setattr__(self, "seed", seed)
         object.__setattr__(self, "edge_delay_steps", edge_delay_steps)
         object.__setattr__(self, "edge_directions", tuple(self.edge_directions))
+        if self.disturbance is not None and not isinstance(self.disturbance, DisturbanceSpec):
+            raise ValueError("disturbance must be a DisturbanceSpec")
+        if self.disturbance is not None and self.variant.disturbance is None:
+            object.__setattr__(
+                self,
+                "variant",
+                VariantSpec(
+                    vehicle_type_overrides=self.variant.vehicle_type_overrides,
+                    signal_duration_scale=self.variant.signal_duration_scale,
+                    closed_lanes=self.variant.closed_lanes,
+                    closure_begin=self.variant.closure_begin,
+                    closure_end=self.variant.closure_end,
+                    disturbance=self.disturbance,
+                ),
+            )
         object.__setattr__(self, "algorithm_params", parameters)
         if self.output_root is not None:
             object.__setattr__(self, "output_root", Path(self.output_root))

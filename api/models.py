@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from algorithms.registry import canonicalize_algorithm_key
-from core.run_models import RunRequest, RunResult, RunStatus, VariantSpec
+from core.run_models import DisturbanceSpec, RunRequest, RunResult, RunStatus, VariantSpec
 from core.types import (
     ControlAction,
     JointState,
@@ -54,6 +54,7 @@ class RunRequestModel(BaseModel):
     edge_delay_steps: int = Field(default=0, ge=0)
     edge_directions: list[str] = Field(default_factory=list)
     variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
+    disturbance: DisturbanceSpecModel | None = None
     algorithm_params: dict[str, float] = Field(default_factory=dict)
 
     def to_domain(self, output_root: Path | None = None) -> RunRequest:
@@ -70,8 +71,20 @@ class RunRequestModel(BaseModel):
             edge_delay_steps=self.edge_delay_steps,
             edge_directions=tuple(self.edge_directions),
             variant=self.variant.to_domain(),
+            disturbance=self.disturbance.to_domain() if self.disturbance else None,
             algorithm_params=self.algorithm_params,
         )
+
+
+class DisturbanceSpecModel(BaseModel):
+    kind: Literal["construction", "event_demand", "vehicle_failure"]
+    begin_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+    target: str = Field(min_length=1)
+    intensity: float = Field(gt=0)
+
+    def to_domain(self) -> DisturbanceSpec:
+        return DisturbanceSpec(**self.model_dump())
 
 
 class LegacyRunRequestModel(RunRequestModel):

@@ -13,8 +13,10 @@ from pathlib import Path
 from typing import Dict
 
 from core.config import get_config
-from core.run_models import VariantBundle, VariantSpec
+from core.run_models import DisturbanceSpec, VariantBundle, VariantSpec
 from core.types import SceneMeta, TrafficLevel
+from scenes.disturbances import validate_variant, write_disturbance
+from scenes.models import SceneManifest
 
 
 class VariantGenerator:
@@ -154,25 +156,77 @@ class VariantGenerator:
             xml_declaration=True,
         )
 
+    @staticmethod
+    def _coerce_meta(scene: SceneMeta | SceneManifest) -> SceneMeta:
+        """Keep the Task 6 manifest surface usable without breaking runtime metadata."""
+        if isinstance(scene, SceneMeta):
+            return scene
+        files = scene.source_files
+        try:
+            return SceneMeta(
+                scene.scene_id,
+                scene.name,
+                Path(files["net"]),
+                Path(files["route"]),
+                Path(files["flow"]),
+                Path(files["turn"]),
+                Path(files["sumocfg"]),
+                Path(files["timing"]),
+                description=scene.description,
+            )
+        except KeyError as exc:
+            raise ValueError(f"scene manifest is missing source file: {exc.args[0]}") from exc
+
+    @staticmethod
+    def _lane_ids(scene_meta: SceneMeta) -> set[str]:
+        return {
+            lane.get("id")
+            for lane in ET.parse(scene_meta.sumo_net).getroot().findall(".//lane")
+            if lane.get("id")
+        }
+
+    @staticmethod
+    def _validate_disturbance_target(
+        disturbance: DisturbanceSpec,
+        lane_ids: set[str],
+    ) -> None:
+        if disturbance.kind in {"construction", "vehicle_failure"}:
+            if disturbance.target not in lane_ids:
+                raise ValueError(f"disturbance target is not an accessible lane: {disturbance.target}")
+        else:
+            edge = disturbance.target
+            if not any(lane.rsplit("_", 1)[0] == edge for lane in lane_ids):
+                raise ValueError(f"disturbance target is not an accessible edge: {edge}")
+
     def generate_bundle(
         self,
-        scene_meta: SceneMeta,
+        scene_meta: SceneMeta | SceneManifest,
         flow_multiplier: float,
-        spec: VariantSpec,
+        spec: VariantSpec | DisturbanceSpec | None,
         output_dir: Path,
     ) -> VariantBundle:
         """Generate a deterministic, source-preserving SUMO variant bundle."""
+        scene_meta = self._coerce_meta(scene_meta)
+        disturbance = (
+            spec
+            if isinstance(spec, DisturbanceSpec)
+            else getattr(spec, "disturbance", None)
+        )
+        variant = spec if isinstance(spec, VariantSpec) else VariantSpec()
         if flow_multiplier <= 0:
             raise ValueError(f"flow multiplier must be > 0, got {flow_multiplier}")
-        if spec.signal_duration_scale <= 0:
+        if variant.signal_duration_scale <= 0:
             raise ValueError("signal_duration_scale must be > 0")
-        if spec.closed_lanes and spec.closure_end <= spec.closure_begin:
+        if variant.closed_lanes and variant.closure_end <= variant.closure_begin:
             raise ValueError("closure_end must be greater than closure_begin")
+        lane_ids = self._lane_ids(scene_meta)
+        if disturbance is not None:
+            self._validate_disturbance_target(disturbance, lane_ids)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         flow_tree = ET.parse(scene_meta.sumo_flow)
         flow_root = flow_tree.getroot()
-        self._apply_vehicle_overrides(flow_root, spec.vehicle_type_overrides)
+        self._apply_vehicle_overrides(flow_root, variant.vehicle_type_overrides)
         self._scale_tree(flow_root, flow_multiplier, f"_x{flow_multiplier:g}")
         flow_file = output_dir / f"{scene_meta.sumo_flow.stem}_variant.flow.xml"
         flow_tree.write(flow_file, encoding="utf-8", xml_declaration=True)
@@ -180,23 +234,30 @@ class VariantGenerator:
         signal_file = output_dir / "signal_program.add.xml"
         self._write_signal_additional(
             scene_meta,
-            spec.signal_duration_scale,
+            variant.signal_duration_scale,
             signal_file,
         )
         additional_files = [flow_file, signal_file]
 
-        if spec.closed_lanes:
+        if variant.closed_lanes:
             closure_file = output_dir / "lane_closure.add.xml"
-            self._write_closure_additional(spec, closure_file)
+            self._write_closure_additional(variant, closure_file)
             additional_files.append(closure_file)
+
+        if disturbance is not None:
+            disturbance_file = output_dir / f"disturbance_{disturbance.kind}.add.xml"
+            write_disturbance(disturbance, disturbance_file)
+            additional_files.append(disturbance_file)
 
         manifest: dict[str, object] = {
             "flow_multiplier": flow_multiplier,
-            "vehicle_type_overrides": spec.vehicle_type_overrides,
-            "signal_duration_scale": spec.signal_duration_scale,
-            "closed_lanes": list(spec.closed_lanes),
-            "closure_begin": spec.closure_begin,
-            "closure_end": spec.closure_end,
+            "vehicle_type_overrides": variant.vehicle_type_overrides,
+            "signal_duration_scale": variant.signal_duration_scale,
+            "closed_lanes": list(variant.closed_lanes),
+            "closure_begin": variant.closure_begin,
+            "closure_end": variant.closure_end,
+            "parent_sha256": self._sha256(scene_meta.sumo_flow),
+            "lane_ids": sorted(lane_ids),
             "sources": {
                 "flow": {
                     "path": str(scene_meta.sumo_flow),
@@ -209,11 +270,25 @@ class VariantGenerator:
             },
             "additional_files": [path.name for path in additional_files],
         }
+        if disturbance is not None:
+            manifest["disturbance"] = {
+                "kind": disturbance.kind,
+                "begin_seconds": disturbance.begin_seconds,
+                "end_seconds": disturbance.end_seconds,
+                "target": disturbance.target,
+                "intensity": disturbance.intensity,
+            }
         (output_dir / "variant_manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        return VariantBundle(tuple(additional_files), manifest)
+        bundle = VariantBundle(tuple(additional_files), manifest, flow_file)
+        issues = validate_variant(bundle)
+        if issues:
+            for path in [*additional_files, output_dir / "variant_manifest.json"]:
+                path.unlink(missing_ok=True)
+            raise ValueError("invalid variant bundle: " + "; ".join(issues))
+        return bundle
 
     def generate(
         self,

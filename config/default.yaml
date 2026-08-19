@@ -31,6 +31,20 @@ scene:
   default_traffic_levels:
     normal: 1.0
     high: 1.25
+  # 正式扰动矩阵的冻结基线；每次运行仍须声明作用对象与时间窗。
+  disturbance_defaults:
+    construction:
+      intensity: 1.0
+      begin_seconds: 600
+      end_seconds: 1200
+    event_demand:
+      intensity: 1.25
+      begin_seconds: 600
+      end_seconds: 1200
+    vehicle_failure:
+      intensity: 1.0
+      begin_seconds: 600
+      end_seconds: 1200
 
 algorithms:
   fixed_time:
