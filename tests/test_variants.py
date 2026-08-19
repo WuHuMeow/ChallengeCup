@@ -49,6 +49,24 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
     assert float(phases[1].get("duration")) == 3.0
 
 
+def test_runtime_config_preserves_scene_identity_and_parent_output(tmp_path):
+    meta = SceneRegistry().get_scene("11").meta
+    original_config = meta.sumo_cfg.read_bytes()
+    source_output = ET.tostring(
+        ET.parse(meta.sumo_cfg).getroot().find("output"),
+        encoding="unicode",
+    )
+
+    bundle = VariantGenerator().generate_bundle(meta, 1.0, None, tmp_path)
+
+    derived_output_node = ET.parse(bundle.sumo_cfg).getroot().find("output")
+    assert derived_output_node is not None
+    derived_output = ET.tostring(derived_output_node, encoding="unicode")
+    assert bundle.sumo_cfg.name == "demo_11_variant.sumocfg"
+    assert derived_output == source_output
+    assert meta.sumo_cfg.read_bytes() == original_config
+
+
 def test_variant_generator_uses_seconds_first_high_level_fallback(monkeypatch):
     from scenes import variant
 
@@ -66,7 +84,7 @@ def test_variant_generator_uses_seconds_first_high_level_fallback(monkeypatch):
 def test_lane_closure_additional_is_bounded_and_reproducible(tmp_path):
     meta = SceneRegistry().get_scene("1").meta
     spec = VariantSpec(
-        closed_lanes=("edge_0_0",),
+        closed_lanes=("E0_0",),
         closure_begin=600,
         closure_end=1200,
     )
@@ -83,7 +101,7 @@ def test_lane_closure_additional_is_bounded_and_reproducible(tmp_path):
     closing = interval.find("closingLaneReroute")
     assert interval.get("begin") == "600"
     assert interval.get("end") == "1200"
-    assert closing.get("id") == "edge_0_0"
+    assert closing.get("id") == "E0_0"
     assert closing.get("allow") == "authority"
 
 

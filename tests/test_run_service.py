@@ -2,6 +2,7 @@ import json
 import threading
 from dataclasses import replace
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
@@ -9,6 +10,8 @@ from core.run_models import RunRequest, RunStatus, VariantSpec
 from core.types import Scene
 from scenes.registry import SceneRegistry
 from engine.run_service import RunService
+from engine.runner import SimulationRunner
+from engine.traci_bridge import traci
 
 
 class RecordingRunner:
@@ -27,6 +30,39 @@ class RecordingRunner:
         self.artifacts.write_metadata(
             status,
             "stop requested" if status == "stopped" else "",
+            [self.artifacts.metrics],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+        )
+        return []
+
+
+class EdgeMappingRunner(SimulationRunner):
+    instances = []
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        type(self).instances.append(self)
+
+    def run(self, steps, stop_event=None):
+        controlled_lanes = ["-E1_0", "-E1_1", "E0_0"]
+        with (
+            patch.object(traci, "start"),
+            patch.object(traci.trafficlight, "getIDList", return_value=["tls"]),
+            patch.object(
+                traci.trafficlight,
+                "getControlledLanes",
+                return_value=controlled_lanes,
+            ),
+            patch.object(traci.trafficlight, "setProgram"),
+        ):
+            self.bridge.start()
+        self.artifacts.metrics.write_text("step\n0\n", encoding="utf-8")
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            "completed",
+            "",
             [self.artifacts.metrics],
             started_at=now,
             ended_at=now,
@@ -98,7 +134,7 @@ def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
             flow_multiplier=1.5,
             variant=VariantSpec(
                 signal_duration_scale=1.1,
-                closed_lanes=("edge_0_0",),
+                closed_lanes=("E0_0",),
                 closure_begin=10,
                 closure_end=20,
             ),
@@ -108,8 +144,24 @@ def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
     additional_files = RecordingRunner.calls[0]["additional_files"]
     assert result.status is RunStatus.COMPLETED
     assert len(additional_files) == 2
-    assert RecordingRunner.calls[0]["sumo_cfg"].name == "variant.sumocfg"
+    assert RecordingRunner.calls[0]["sumo_cfg"].name == "demo_1_variant.sumocfg"
     assert (result.run_dir / "variants" / "variant_manifest.json").is_file()
+
+
+def test_run_service_variant_applies_edge_mapping_through_real_runner(tmp_path):
+    EdgeMappingRunner.instances = []
+    service = RunService(output_root=tmp_path, runner_factory=EdgeMappingRunner)
+
+    result = service.run_sync(RunRequest("1", "fixed_time", steps=1))
+
+    bridge = EdgeMappingRunner.instances[0].bridge
+    assert result.status is RunStatus.COMPLETED
+    assert bridge._inbound_lanes == ["-E1_0", "-E1_1", "E0_0"]
+    assert bridge.lane_directions == {
+        "-E1_0": "东",
+        "-E1_1": "东",
+        "E0_0": "西",
+    }
 
 
 def test_run_service_injects_frozen_ca_mp_parameters(tmp_path):

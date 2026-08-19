@@ -14,7 +14,7 @@ from core.types import SceneMeta
 from scenes.disturbances import validate_variant
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
-from engine.traci_bridge import TraCIBridge
+from engine.traci_bridge import TraCIBridge, traci
 
 
 def _scene(tmp_path: Path) -> SceneMeta:
@@ -22,6 +22,14 @@ def _scene(tmp_path: Path) -> SceneMeta:
     flow = tmp_path / "demo.flow.xml"
     flow.write_bytes(base.sumo_flow.read_bytes())
     return replace(base, sumo_flow=flow)
+
+
+def _replace_xml_attribute(path: Path, xpath: str, name: str, value: str) -> None:
+    tree = ET.parse(path)
+    node = tree.getroot().find(xpath)
+    assert node is not None
+    node.set(name, value)
+    tree.write(path, encoding="utf-8", xml_declaration=True)
 
 
 def test_disturbance_spec_validates_and_api_round_trips():
@@ -122,6 +130,124 @@ def test_validate_variant_rejects_broken_additional_references(tmp_path):
     assert any("unknown edge" in issue for issue in issues)
 
 
+@pytest.mark.parametrize(
+    ("attribute", "value", "expected"),
+    [
+        ("type", "missing_type", "unknown vehicle type"),
+        ("route", "missing_route", "missing route"),
+        ("id", "", "non-empty demand ID"),
+        ("begin", "5", "invalid demand interval"),
+    ],
+)
+def test_validate_variant_rejects_broken_nested_event_flow(
+    tmp_path, attribute, value, expected
+):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("event_demand", 1, 4, "E0", 0.5),
+        tmp_path / "bundle",
+    )
+    _replace_xml_attribute(
+        bundle.additional_files[-1], "./calibrator/flow", attribute, value
+    )
+    assert any(expected in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_duplicate_nested_demand_id(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("event_demand", 1, 4, "E0", 0.5),
+        tmp_path / "bundle",
+    )
+    tree = ET.parse(bundle.additional_files[-1])
+    calibrator = tree.getroot().find("calibrator")
+    duplicate = ET.SubElement(
+        calibrator,
+        "flow",
+        {
+            "id": "event_demand",
+            "begin": "2",
+            "end": "3",
+            "vehsPerHour": "180",
+            "type": "event_demand_type",
+            "route": "event_demand_route",
+        },
+    )
+    assert duplicate is not None
+    tree.write(bundle.additional_files[-1], encoding="utf-8", xml_declaration=True)
+    assert any("duplicate demand IDs" in issue for issue in validate_variant(bundle))
+
+
+@pytest.mark.parametrize("attribute", ["from", "to"])
+def test_validate_variant_rejects_unknown_intermediate_flow_edge(
+    tmp_path, attribute
+):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    _replace_xml_attribute(bundle.flow_file, "./flow", attribute, "missing")
+
+    assert any(
+        f"unknown {attribute} edge" in issue for issue in validate_variant(bundle)
+    )
+
+
+def test_validate_variant_rejects_invalid_runtime_vehicle_depart(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    _replace_xml_attribute(bundle.route_file, ".//vehicle", "depart", "nan")
+
+    assert any("invalid vehicle depart" in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_disconnected_route_edges(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    _replace_xml_attribute(bundle.route_file, ".//vehicle/route", "edges", "E0 -E0")
+
+    assert any(
+        "disconnected route edge pair" in issue for issue in validate_variant(bundle)
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "xpath", "attribute", "value", "expected"),
+    [
+        ("construction", "./rerouter", "edges", "missing", "unknown rerouter edge"),
+        (
+            "construction",
+            "./rerouter/interval/closingLaneReroute",
+            "id",
+            "missing_0",
+            "inaccessible lane target",
+        ),
+        (
+            "event_demand",
+            "./calibrator",
+            "edge",
+            "missing",
+            "unknown calibrator edge",
+        ),
+    ],
+)
+def test_validate_variant_rejects_broken_disturbance_targets(
+    tmp_path, kind, xpath, attribute, value, expected
+):
+    scene = _scene(tmp_path)
+    target = "E0_0" if kind == "construction" else "E0"
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec(kind, 1, 4, target, 0.5),
+        tmp_path / "bundle",
+    )
+    _replace_xml_attribute(bundle.additional_files[-1], xpath, attribute, value)
+    assert any(expected in issue for issue in validate_variant(bundle))
+
+
 def test_validate_variant_rejects_runtime_config_with_parent_population(tmp_path):
     scene = _scene(tmp_path)
     bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
@@ -130,6 +256,35 @@ def test_validate_variant_rejects_runtime_config_with_parent_population(tmp_path
     config.write(bundle.sumo_cfg, encoding="utf-8", xml_declaration=True)
 
     assert any("runtime route population" in issue for issue in validate_variant(bundle))
+
+
+@pytest.mark.parametrize(
+    ("xpath", "value", "expected"),
+    [
+        ("./input/net-file", "../wrong.net.xml", "runtime network"),
+        ("./input/route-files", "subdir/derived_demand.rou.xml", "runtime route"),
+    ],
+)
+def test_validate_variant_resolves_runtime_paths_to_exact_bundle_files(
+    tmp_path, xpath, value, expected
+):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    _replace_xml_attribute(bundle.sumo_cfg, xpath, "value", value)
+    assert any(expected in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_configured_additional_files(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    tree = ET.parse(bundle.sumo_cfg)
+    ET.SubElement(
+        tree.getroot().find("input"),
+        "additional-files",
+        {"value": scene.sumo_flow.as_posix()},
+    )
+    tree.write(bundle.sumo_cfg, encoding="utf-8", xml_declaration=True)
+    assert any("configured additional-files" in issue for issue in validate_variant(bundle))
 
 
 def test_variant_manifest_excludes_workspace_absolute_paths(tmp_path):
@@ -161,42 +316,118 @@ def test_disturbance_outputs_are_deterministic_and_auditable(tmp_path, kind, tar
     assert validate_variant(first) == []
 
 
-@pytest.mark.parametrize(
-    ("kind", "target", "xpath"),
-    [
-        ("construction", "E0_0", "./rerouter/interval"),
-        ("event_demand", "E0", "./calibrator/flow"),
-        ("vehicle_failure", "E0_0", "./vehicle/stop"),
-    ],
-)
-def test_disturbance_intensity_changes_distinct_executable_semantics(tmp_path, kind, target, xpath):
-    source = tmp_path / "source"
-    source.mkdir()
-    scene = _scene(source)
-    low = VariantGenerator().generate_bundle(scene, 1.0, DisturbanceSpec(kind, 10, 30, target, 0.25), tmp_path / "low")
-    high = VariantGenerator().generate_bundle(scene, 1.0, DisturbanceSpec(kind, 10, 30, target, 1.0), tmp_path / "high")
-    low_node = ET.parse(low.additional_files[-1]).getroot().find(xpath)
-    high_node = ET.parse(high.additional_files[-1]).getroot().find(xpath)
-    assert low_node is not None and high_node is not None
-    assert low_node.attrib != high_node.attrib
-    assert ET.parse(low.additional_files[-1]).getroot().tag == "additional"
-    assert validate_variant(low) == []
-
-
-@pytest.mark.parametrize("kind,target", [("construction", "E0_0"), ("event_demand", "E0"), ("vehicle_failure", "E0_0")])
-def test_each_disturbance_starts_real_sumo_within_active_interval(tmp_path, kind, target):
+def test_construction_intensity_scales_effective_duration_exactly(tmp_path):
     scene = _scene(tmp_path)
     bundle = VariantGenerator().generate_bundle(
-        scene, 1.0, DisturbanceSpec(kind, 1, 3, target, 0.5), tmp_path / kind
+        scene, 1.0, DisturbanceSpec("construction", 10, 30, "E0_0", 0.25), tmp_path / "bundle"
     )
-    result = subprocess.run(
-        ["sumo", "-c", str(bundle.sumo_cfg), "-a", ",".join(map(str, bundle.additional_files)), "--end", "4", "--no-step-log", "true"],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
+    interval = ET.parse(bundle.additional_files[-1]).getroot().find("./rerouter/interval")
+    assert interval.attrib == {"begin": "10", "end": "15"}
+
+
+def test_event_demand_intensity_scales_rate_not_declared_window(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene, 1.0, DisturbanceSpec("event_demand", 10, 30, "E0", 0.25), tmp_path / "bundle"
     )
-    assert result.returncode == 0, result.stderr
+    flow = ET.parse(bundle.additional_files[-1]).getroot().find("./calibrator/flow")
+    assert flow.get("begin") == "10"
+    assert flow.get("end") == "30"
+    assert flow.get("vehsPerHour") == "90"
+
+
+def test_vehicle_failure_intensity_scales_stop_duration_exactly(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene, 1.0, DisturbanceSpec("vehicle_failure", 10, 30, "E0_0", 0.25), tmp_path / "bundle"
+    )
+    stop = ET.parse(bundle.additional_files[-1]).getroot().find("./vehicle/stop")
+    assert stop.get("duration") == "5"
+
+
+def _start_bundle_sumo(bundle, end_seconds):
+    traci.start(
+        [
+            "sumo",
+            "-c",
+            str(bundle.sumo_cfg),
+            "-a",
+            ",".join(map(str, bundle.additional_files)),
+            "--end",
+            str(end_seconds),
+            "--no-step-log",
+            "true",
+        ]
+    )
+
+
+def _step_sumo_to(target_seconds):
+    while traci.simulation.getTime() < target_seconds:
+        traci.simulationStep()
+
+
+def test_construction_activates_and_releases_lane_in_real_sumo(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("construction", 1, 5, "E0_0", 0.5),
+        tmp_path / "construction",
+    )
+    try:
+        _start_bundle_sumo(bundle, 5)
+        _step_sumo_to(2)
+        assert traci.lane.getAllowed("E0_0") == ("authority",)
+        _step_sumo_to(4)
+        assert traci.lane.getAllowed("E0_0") == ()
+    finally:
+        if traci.isLoaded():
+            traci.close()
+
+
+def test_event_demand_remains_active_for_full_window_in_real_sumo(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("event_demand", 1, 5, "E0", 0.5),
+        tmp_path / "event",
+    )
+    try:
+        _start_bundle_sumo(bundle, 6)
+        _step_sumo_to(4)
+        assert "event_demand_calibrator" in traci.calibrator.getIDList()
+        assert traci.calibrator.getBegin("event_demand_calibrator") == 1.0
+        assert traci.calibrator.getEnd("event_demand_calibrator") == 5.0
+        assert traci.calibrator.getVehsPerHour("event_demand_calibrator") == 180.0
+    finally:
+        if traci.isLoaded():
+            traci.close()
+
+
+def test_vehicle_failure_reaches_active_stop_in_real_sumo(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("vehicle_failure", 1, 21, "E0_0", 0.5),
+        tmp_path / "failure",
+    )
+    stopped = False
+    try:
+        _start_bundle_sumo(bundle, 60)
+        while traci.simulation.getTime() < 60:
+            traci.simulationStep()
+            if (
+                "vehicle_failure" in traci.vehicle.getIDList()
+                and traci.vehicle.isStopped("vehicle_failure")
+            ):
+                stopped = True
+                break
+        assert stopped
+    finally:
+        if traci.isLoaded():
+            traci.close()
 
 
 def test_disturbance_rejects_unknown_lane_and_invalid_bundle(tmp_path):

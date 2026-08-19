@@ -9,6 +9,8 @@ from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.mock_bridge import MockBridge
 from engine.traci_bridge import TraCIBridge, traci
+from scenes.registry import SceneRegistry
+from scenes.variant import VariantGenerator
 
 
 def test_control_action_validation_normalizes_values_and_rejections():
@@ -86,6 +88,23 @@ def test_build_cmd_redirects_configured_queue_output(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "11", "actuated", 1.5, 42)
 
     cmd = TraCIBridge(config, artifacts=artifacts)._build_cmd()
+
+    assert cmd[cmd.index("--queue-output") + 1] == (
+        artifacts.queues.resolve().as_posix()
+    )
+
+
+def test_scene_11_variant_keeps_configured_queue_output_redirect(tmp_path):
+    meta = SceneRegistry().get_scene("11").meta
+    bundle = VariantGenerator().generate_bundle(
+        meta,
+        1.0,
+        None,
+        tmp_path / "variants",
+    )
+    artifacts = RunArtifacts.create(tmp_path, "11", "actuated", 1.0, 42)
+
+    cmd = TraCIBridge(bundle.sumo_cfg, artifacts=artifacts)._build_cmd()
 
     assert cmd[cmd.index("--queue-output") + 1] == (
         artifacts.queues.resolve().as_posix()

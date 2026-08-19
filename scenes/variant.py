@@ -103,9 +103,6 @@ class VariantGenerator:
         routes.set("value", route_file.name)
         for extra in inputs.findall("additional-files"):
             inputs.remove(extra)
-        outputs = root.find("output")
-        if outputs is not None:
-            root.remove(outputs)
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
 
     @staticmethod
@@ -307,7 +304,7 @@ class VariantGenerator:
         flow_tree.write(flow_file, encoding="utf-8", xml_declaration=True)
         route_file = output_dir / "derived_demand.rou.xml"
         self._derive_routes(scene_meta, flow_file, route_file)
-        runtime_config = output_dir / "variant.sumocfg"
+        runtime_config = output_dir / f"{scene_meta.sumo_cfg.stem}_variant.sumocfg"
         self._write_runtime_config(scene_meta, route_file, runtime_config)
 
         signal_file = output_dir / "signal_program.add.xml"
