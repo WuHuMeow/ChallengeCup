@@ -18,7 +18,7 @@ _CACHE_COMPONENTS = frozenset(
         ".venv-native",
         "--pycache--",
         "env",
-        "node_modules",
+        "node-modules",
         "venv",
     }
 )
