@@ -49,6 +49,7 @@ def test_cache_runtime_and_personal_environment_are_not_release_paths(
         "docs/team-assignment.md",
         "docs/weekly-tasks.md",
         "docs/development-roadmap.md",
+        "docs/development-route.md",
         "docs/project-division.md",
         "docs/member-code-notes.md",
         "docs/internal-verification-report.md",

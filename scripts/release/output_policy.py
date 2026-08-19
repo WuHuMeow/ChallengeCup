@@ -24,6 +24,7 @@ _CACHE_COMPONENTS = frozenset(
 )
 _INTERNAL_MARKERS = (
     "development-roadmap",
+    "development-route",
     "internal-",
     "member-assignment",
     "member-code",
