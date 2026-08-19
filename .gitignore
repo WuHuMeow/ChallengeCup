@@ -35,6 +35,9 @@ output/deliverables/*
 !output/evidence/
 output/evidence/*
 !output/evidence/README.md
+!output/evidence/*/
+output/evidence/*/*
+!output/evidence/*/README.md
 experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv

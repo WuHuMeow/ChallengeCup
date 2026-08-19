@@ -1,7 +1,9 @@
 # Output Ownership
 
-`output/` is the runtime root for generated simulation material. Generated files remain ignored by
-Git; the only retained files are `output/README.md` and `output/deliverables/README.md`.
+`output/` is the runtime root for generated simulation material and release
+evidence. Generated files remain ignored by Git. Directory-level `README.md`
+files may be tracked to define their evidence contract without committing
+machine-specific results.
 
 ## Runtime Outputs
 
@@ -14,15 +16,21 @@ Commands create runtime-facing paths such as:
   emit them there.
 
 Use the run command's output-directory option when available to direct a new
-run to the appropriate runtime directory. These directories are disposable
-generated state and must not be treated as archival evidence.
+run to the appropriate runtime directory. `runs/`, `tmp/`, `pytest-*`, and
+legacy experiment results are disposable state. They are not release evidence.
 
-The historical 13-pass/0-fail acceptance record and the audited 360-run matrix are documented in
-`docs/ia-ib-final-verification.md` and `docs/ia-ib-simulation-artifact-cleanup.md`. Their generated
-artifacts and archives were removed; do not describe any generated directory as currently present.
-Docker live and second-machine reproduction remain `not_run` evidence axes.
+`evidence/` contains only evidence produced under the current release
+contracts. A status is `pass` only after the corresponding command has run on
+the current code and artifacts; otherwise it is `fail` or `not_run`.
 
 ## Deliverables
 
 `deliverables/` is reserved for submission-facing material. Its current state
 and retention rule are documented in `deliverables/README.md`.
+
+## Preserved Inputs
+
+`赛题资料.7z` and `data/intersection_data/` are official read-only inputs.
+Cleanup and packaging tools may reference and audit them, but must never
+overwrite, repack, or remove them. `scripts/release/output_policy.py` exposes a
+read-only audit; it intentionally has no deletion operation.
