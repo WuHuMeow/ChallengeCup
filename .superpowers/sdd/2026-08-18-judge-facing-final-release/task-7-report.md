@@ -71,3 +71,4 @@
 ### 提交
 
 - `dede66f` (`fix: isolate derived variant demand`)
+- `662b046` (`docs: record task 7 review fix evidence`)

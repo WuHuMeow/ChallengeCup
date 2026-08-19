@@ -248,3 +248,4 @@
 - 验证：三类真实 SUMO smoke 均 exit 0、stderr 空；聚焦 `73 passed`；全量 `335 passed`；Python 3.14.7 compileall exit 0。
 - 保护输入：压缩包 SHA-256 不变，官方数据 163 Git 跟踪文件，保护路径无 diff。
 - 提交：`dede66f` (`fix: isolate derived variant demand`)。
+- 台账提交：`662b046` (`docs: record task 7 review fix evidence`)。
