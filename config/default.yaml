@@ -14,13 +14,23 @@ sumo:
   # 批量跑批推荐用命令行版 sumo；需要可视化观察时改为 sumo-gui。
   binary: "sumo"
   step_length: 0.1
-  default_simulation_steps: 36000
+
+simulation:
+  duration_seconds: 3600
+  warmup_seconds: 600
+  quick_duration_seconds: 600
+
+smoke:
+  steps: 100
+
+experiments:
+  formal_seeds: [42, 43, 44]
 
 scene:
   # 20 路口 × 2 流量等级 = 40 个变体
   default_traffic_levels:
     normal: 1.0
-    high: 1.5
+    high: 1.25
 
 algorithms:
   fixed_time:

@@ -19,7 +19,7 @@ PARAMETER_GRID = {
 }
 CALIBRATION_INTERSECTIONS = ("1", "11", "16")
 CALIBRATION_SEEDS = (42,)
-HOLDOUT_SEEDS = (123, 456)
+HOLDOUT_SEEDS = (43, 44)
 
 
 def calibration_seeds() -> tuple[int, ...]:
@@ -97,15 +97,21 @@ def _request(
     intersection: str,
     algorithm: str,
     seed: int,
-    steps: int,
+    steps: int | None = None,
     parameters: dict[str, float] | None = None,
+    duration_seconds: float = 3600.0,
+    warmup_seconds: float = 600.0,
+    step_length_override: float | None = None,
 ) -> RunRequest:
     return RunRequest(
         intersection_id=intersection,
         algorithm=algorithm,
         steps=steps,
-        flow_multiplier=1.5,
+        flow_multiplier=1.25,
         seed=seed,
+        duration_seconds=duration_seconds,
+        warmup_seconds=warmup_seconds,
+        step_length_override=step_length_override,
         output_root=output_root / "runs",
         algorithm_params=parameters or {},
     )
@@ -122,10 +128,12 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
 
 def tune_ca_mp(
     output_root: Path,
-    steps: int = 36000,
+    steps: int | None = None,
     run_service: RunService | None = None,
+    duration_seconds: float = 3600.0,
+    warmup_seconds: float = 600.0,
 ) -> dict[str, float]:
-    """Calibrate on seed 42, freeze a winner, then evaluate seeds 123/456."""
+    """Calibrate on seed 42, freeze a winner, then evaluate seeds 43/44."""
     output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     service = run_service or RunService(output_root=output_root / "runs")
@@ -139,6 +147,8 @@ def tune_ca_mp(
                     "fixed_time",
                     CALIBRATION_SEEDS[0],
                     steps,
+                    duration_seconds=duration_seconds,
+                    warmup_seconds=warmup_seconds,
                 )
             )
             for intersection in CALIBRATION_INTERSECTIONS
@@ -160,6 +170,8 @@ def tune_ca_mp(
                         CALIBRATION_SEEDS[0],
                         steps,
                         parameters,
+                        duration_seconds=duration_seconds,
+                        warmup_seconds=warmup_seconds,
                     )
                 )
                 for intersection in CALIBRATION_INTERSECTIONS
@@ -231,6 +243,8 @@ def tune_ca_mp(
                     "fixed_time",
                     seed,
                     steps,
+                    duration_seconds=duration_seconds,
+                    warmup_seconds=warmup_seconds,
                 )
             )
             candidate = service.run_sync(
@@ -241,6 +255,8 @@ def tune_ca_mp(
                     seed,
                     steps,
                     selected,
+                    duration_seconds=duration_seconds,
+                    warmup_seconds=warmup_seconds,
                 )
             )
             holdout_rows.append({

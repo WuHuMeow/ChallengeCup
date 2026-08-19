@@ -44,7 +44,18 @@ def test_tuning_grid_and_seed_split_are_exact():
         "base_green": (25.0, 35.0, 45.0),
     }
     assert calibration_seeds() == (42,)
-    assert holdout_seeds() == (123, 456)
+    assert holdout_seeds() == (43, 44)
+
+
+def test_tuning_request_uses_seconds_and_high_formal_traffic_level():
+    from experiments.tuning import _request
+
+    request = _request(Path("out"), "1", "fixed_time", 42)
+
+    assert request.duration_seconds == 3600
+    assert request.warmup_seconds == 600
+    assert request.steps is None
+    assert request.flow_multiplier == 1.25
 
 
 def test_is_complete_requires_every_nonempty_artifact(tmp_path):
@@ -236,17 +247,17 @@ def test_tuning_writes_all_candidates_selected_params_and_holdout(tmp_path):
     holdout = json.loads(
         (tmp_path / "holdout_summary.json").read_text(encoding="utf-8")
     )
-    assert holdout["seeds"] == [123, 456]
+    assert holdout["seeds"] == [43, 44]
     calibration_requests = [
         request for request in service.requests if request.seed == 42
     ]
     holdout_requests = [
-        request for request in service.requests if request.seed in (123, 456)
+        request for request in service.requests if request.seed in (43, 44)
     ]
     assert calibration_requests
     assert holdout_requests
     assert all(request.seed == 42 for request in calibration_requests)
-    assert all(request.seed in (123, 456) for request in holdout_requests)
+    assert all(request.seed in (43, 44) for request in holdout_requests)
     assert {request.algorithm for request in service.requests} == {
         "fixed_time",
         "capacity_aware_maxpressure",

@@ -46,7 +46,9 @@ def test_parse_args_defaults():
     assert args.flow_multiplier == 1.0
     assert args.output_dir is None
     assert args.intersection == "1"
-    assert args.steps == 36000
+    assert args.steps is None
+    assert args.duration_seconds == 3600
+    assert args.warmup_seconds == 600
     assert args.algorithm == "fixed_time"
 
 
@@ -59,6 +61,22 @@ def test_parse_args_custom():
     ])
     assert (args.seed, args.flow_multiplier, args.intersection) == (7, 1.5, "16")
     assert args.algorithm == "capacity_aware_maxpressure"
+
+
+def test_run_single_constructs_a_seconds_first_request_by_default(tmp_path):
+    from unittest.mock import Mock
+    from experiments.runner import parse_args, run_single
+
+    args = parse_args(["--output-dir", str(tmp_path)])
+    service = Mock()
+    service.run_sync.return_value = Mock()
+
+    run_single(args, run_service=service)
+
+    request = service.run_sync.call_args.args[0]
+    assert request.duration_seconds == 3600
+    assert request.warmup_seconds == 600
+    assert request.steps is None
 
 
 def test_build_artifacts_encodes_all_run_dimensions(tmp_path):

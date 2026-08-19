@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from algorithms.registry import canonicalize_algorithm_key, get_algorithm_registry
+from core.timebase import SimulationWindow, steps_for_seconds
 
 SUPPORTED_ALGORITHMS = frozenset(
     spec.key for spec in get_algorithm_registry().list()
@@ -88,9 +89,14 @@ class RunRequest:
 
     intersection_id: str
     algorithm: str
-    steps: int = 36000
+    # Explicit steps are retained for smoke tests and legacy CLI callers. Formal
+    # requests use duration_seconds and resolve steps after loading the scene.
+    steps: int | None = None
     flow_multiplier: float = 1.0
     seed: int = 42
+    duration_seconds: float = 3600.0
+    warmup_seconds: float = 600.0
+    step_length_override: float | None = None
     output_root: Path | None = None
     edge_delay_steps: int = 0
     edge_directions: tuple[str, ...] = ()
@@ -113,8 +119,30 @@ class RunRequest:
         if self.algorithm not in SUPPORTED_ALGORITHMS:
             raise ValueError(f"unknown algorithm: {self.algorithm}")
         algorithm = self.algorithm
-        if isinstance(self.steps, bool) or not isinstance(self.steps, int) or self.steps <= 0:
-            raise ValueError("steps must be > 0")
+        if self.steps is not None and (
+            isinstance(self.steps, bool)
+            or not isinstance(self.steps, int)
+            or self.steps <= 0
+        ):
+            raise ValueError("steps must be > 0 when explicitly supplied")
+        window = SimulationWindow(self.duration_seconds, self.warmup_seconds)
+        step_length = self.step_length_override
+        if step_length is not None:
+            try:
+                numeric_step_length = float(step_length)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("step_length_override must be numeric") from exc
+            if not math.isfinite(numeric_step_length) or numeric_step_length <= 0:
+                raise ValueError("step_length_override must be finite and > 0")
+            object.__setattr__(self, "step_length_override", numeric_step_length)
+            if self.steps is None:
+                object.__setattr__(
+                    self,
+                    "steps",
+                    steps_for_seconds(window.duration_seconds, numeric_step_length),
+                )
+        object.__setattr__(self, "duration_seconds", window.duration_seconds)
+        object.__setattr__(self, "warmup_seconds", window.warmup_seconds)
         flow_multiplier = _finite_number(
             "flow_multiplier",
             self.flow_multiplier,

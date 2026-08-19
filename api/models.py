@@ -45,9 +45,12 @@ class RunRequestModel(BaseModel):
         "capacity_aware_maxpressure",
         "actuated",
     ]
-    steps: int = Field(default=36000, gt=0)
+    steps: int | None = Field(default=None, gt=0)
     flow_multiplier: float = Field(default=1.0, gt=0)
     seed: int = Field(default=42, ge=0)
+    duration_seconds: float = Field(default=3600.0, gt=0)
+    warmup_seconds: float = Field(default=600.0, ge=0)
+    step_length_override: float | None = Field(default=None, gt=0)
     edge_delay_steps: int = Field(default=0, ge=0)
     edge_directions: list[str] = Field(default_factory=list)
     variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
@@ -60,6 +63,9 @@ class RunRequestModel(BaseModel):
             steps=self.steps,
             flow_multiplier=self.flow_multiplier,
             seed=self.seed,
+            duration_seconds=self.duration_seconds,
+            warmup_seconds=self.warmup_seconds,
+            step_length_override=self.step_length_override,
             output_root=output_root,
             edge_delay_steps=self.edge_delay_steps,
             edge_directions=tuple(self.edge_directions),
