@@ -51,6 +51,32 @@ def test_phase_movement_rejects_negative_phase_index():
         PhaseMovementState(-1, "Gr", (), 30.0)
 
 
+@pytest.mark.parametrize("phase_index", [0.5, "1", True])
+def test_phase_movement_requires_a_non_boolean_integer_index(phase_index):
+    with pytest.raises(ValueError, match="phase_index"):
+        PhaseMovementState(phase_index, "Gr", (), 30.0)
+
+
+def test_phase_movement_requires_positive_nominal_duration():
+    with pytest.raises(ValueError, match="nominal_duration"):
+        PhaseMovementState(0, "Gr", (), 0.0)
+
+
+def test_phase_movement_normalizes_movements_to_an_immutable_tuple():
+    movement = MovementState(MovementKey("in", "out"), 1, 0, 10, 10, 0, 1, 1)
+    source = [movement]
+
+    phase = PhaseMovementState(0, "Gr", source, 30.0)
+    source.clear()
+
+    assert phase.movements == (movement,)
+
+
+def test_phase_movement_rejects_non_movement_items():
+    with pytest.raises(ValueError, match="movements"):
+        PhaseMovementState(0, "Gr", [object()], 30.0)
+
+
 def test_phase_movement_payload_round_trips_through_api_model():
     payload = PhaseMovementStateModel(
         phase_index=0,
@@ -75,6 +101,25 @@ def test_phase_movement_payload_round_trips_through_api_model():
 
     assert state.phase_index == 0
     assert state.movements[0].key == MovementKey("in_0", "out_0")
+
+
+def test_api_phase_model_rejects_zero_nominal_duration():
+    with pytest.raises(ValidationError):
+        PhaseMovementStateModel(
+            phase_index=0,
+            signal_state="Gr",
+            nominal_duration=0.0,
+        )
+
+
+@pytest.mark.parametrize("phase_index", ["1", True])
+def test_api_phase_model_requires_a_strict_integer_index(phase_index):
+    with pytest.raises(ValidationError):
+        PhaseMovementStateModel(
+            phase_index=phase_index,
+            signal_state="Gr",
+            nominal_duration=30.0,
+        )
 
 
 @pytest.mark.parametrize(

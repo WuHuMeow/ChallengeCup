@@ -54,5 +54,19 @@ class PhaseMovementState:
     nominal_duration: float  #: Phase duration in simulation seconds.
 
     def __post_init__(self) -> None:
+        if isinstance(self.phase_index, bool) or not isinstance(self.phase_index, int):
+            raise ValueError("phase_index must be a non-negative integer")
         _require_number("phase_index", self.phase_index, minimum=0)
-        _require_number("nominal_duration", self.nominal_duration, minimum=0)
+        try:
+            movements = tuple(self.movements)
+        except TypeError as exc:
+            raise ValueError("movements must be an iterable of MovementState") from exc
+        if not all(isinstance(movement, MovementState) for movement in movements):
+            raise ValueError("movements must contain only MovementState values")
+        object.__setattr__(self, "movements", movements)
+        _require_number(
+            "nominal_duration",
+            self.nominal_duration,
+            minimum=0,
+            strict_minimum=True,
+        )

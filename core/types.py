@@ -178,6 +178,21 @@ class JointState:
         _require_number("timestamp", self.timestamp, minimum=0)
         _require_number("current_phase", self.current_phase, minimum=0)
         _require_number("elapsed_phase_time", self.elapsed_phase_time, minimum=0)
+        from core.movements import PhaseMovementState
+
+        try:
+            phase_movements = tuple(self.phase_movements)
+        except TypeError as exc:
+            raise ValueError(
+                "phase_movements must be an iterable of PhaseMovementState"
+            ) from exc
+        if not all(
+            isinstance(phase, PhaseMovementState) for phase in phase_movements
+        ):
+            raise ValueError(
+                "phase_movements must contain only PhaseMovementState values"
+            )
+        self.phase_movements = phase_movements
 
 
 @dataclass

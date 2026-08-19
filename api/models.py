@@ -166,10 +166,10 @@ class MovementStateModel(BaseModel):
 
 
 class PhaseMovementStateModel(BaseModel):
-    phase_index: int = Field(ge=0)
+    phase_index: int = Field(ge=0, strict=True)
     signal_state: str
     movements: list[MovementStateModel] = Field(default_factory=list)
-    nominal_duration: float = Field(ge=0, allow_inf_nan=False)
+    nominal_duration: float = Field(gt=0, allow_inf_nan=False)
 
     def to_domain(self) -> PhaseMovementState:
         return PhaseMovementState(

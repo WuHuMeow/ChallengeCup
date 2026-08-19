@@ -1,4 +1,6 @@
 """core/types.py 新增字段契约测试（IB W1/W4）。"""
+import pytest
+
 from core.movements import PhaseMovementState
 from core.types import JointState, QueueState, VehicleState
 
@@ -25,6 +27,36 @@ def test_joint_state_new_fields_default_empty():
     assert state.arrival_history == []
     assert state.detector_values == {}
     assert state.phase_movements == ()
+
+
+def test_joint_state_normalizes_phase_movements_to_tuple():
+    phase = PhaseMovementState(0, "Gr", (), 30.0)
+    source = [phase]
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls_0",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        phase_movements=source,
+    )
+    source.clear()
+
+    assert state.phase_movements == (phase,)
+
+
+def test_joint_state_rejects_non_phase_movement_items():
+    with pytest.raises(ValueError, match="phase_movements"):
+        JointState(
+            step=0,
+            timestamp=0.0,
+            tls_id="tls_0",
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=0.0,
+            phase_movements=[object()],
+        )
 
 
 def test_joint_state_preserves_movement_phase_state_tuple():
