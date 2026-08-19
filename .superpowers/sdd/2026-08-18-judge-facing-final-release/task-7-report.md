@@ -72,3 +72,127 @@
 
 - `dede66f` (`fix: isolate derived variant demand`)
 - `662b046` (`docs: record task 7 review fix evidence`)
+
+## Review 修复第 2 轮
+
+### 根因
+
+- `validate_variant()` 只遍历根级 demand，嵌套在 calibrator 下的 flow 可绕过 ID、车型、路由和区间校验；rerouter/calibrator/closing lane 目标也未验证。
+- 运行配置只比较 route basename，未按 sumocfg 所在目录解析 net/route 实际路径，也未拒绝配置内重新引入的 additional-files。
+- event_demand 同时缩短活动时间窗并缩放流率，使总增量需求按 intensity 的平方缩放。
+- 派生配置固定命名为 `variant.sumocfg`，`TraCIBridge` 无法从文件名解析 `demo_<id>`，因此 edge mapping 回退。
+- `_write_runtime_config()` 删除父配置的整个 `<output>`，scene 11 的 queue-output 能力随之丢失。
+
+### 修复
+
+- 对中间 flow、派生 route 和所有 additional XML 执行嵌套 demand、非空/唯一 ID、车型/命名 route、from/to、depart、区间、route edge 与网络连通性校验；运行人口去重排除未被 SUMO 加载的中间 flow。
+- 校验 rerouter edge、calibrator edge、closingLaneReroute lane 和 stop lane；sumocfg 的 net/route 路径必须解析到 bundle 的精确文件，配置内不得额外声明 additional-files。
+- event_demand 保留完整声明窗口，仅以 `360 veh/h * intensity` 缩放流率；construction 和 vehicle_failure 继续以 intensity 缩放持续时长。
+- 派生配置改为 `<父配置 stem>_variant.sumocfg`，保留 `demo_<id>` 身份；父 `<output>` 原样保留，源配置字节不变。
+- RunService 经真实 SimulationRunner/TraCIBridge 启动边界验证：scene 1 派生配置成功应用进口道筛选和 lane direction mapping；scene 11 的命令继续重定向 queue-output 到运行 artifacts。
+
+### TDD 记录
+
+- RED 1：嵌套 event flow、重复 demand ID、扰动目标、运行配置实际路径/additional-files 和 event 精确强度语义新增测试。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-red-resume2
+  # 12 failed, 18 passed in 38.65s
+  ```
+
+- GREEN 1：实现嵌套/引用/路径/目标校验和 event 窗口修复。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-green1b
+  # 30 passed in 38.96s
+  ```
+
+- RED 2：派生配置身份、父 output、scene 11 queue-output 和 RunService edge mapping 调用链。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_variants.py::test_runtime_config_preserves_scene_identity_and_parent_output tests/test_traci_outputs.py::test_scene_11_variant_keeps_configured_queue_output_redirect tests/test_run_service.py::test_run_service_passes_complete_variant_bundle_to_runner tests/test_run_service.py::test_run_service_variant_applies_edge_mapping_through_real_runner -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-red-config2
+  # 4 failed in 4.21s
+  ```
+
+- GREEN 2：保留 output 并采用 scene-aware 配置名。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_variants.py::test_runtime_config_preserves_scene_identity_and_parent_output tests/test_traci_outputs.py::test_scene_11_variant_keeps_configured_queue_output_redirect tests/test_run_service.py::test_run_service_passes_complete_variant_bundle_to_runner tests/test_run_service.py::test_run_service_variant_applies_edge_mapping_through_real_runner -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-green-config
+  # 4 passed in 4.81s
+  ```
+
+- RED 3：未知 from/to、非有限 depart 和已知但不连通 route。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py -q -k "unknown_intermediate_flow_edge or invalid_runtime_vehicle_depart or disconnected_route_edges" -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-red-demand
+  # 4 failed, 30 deselected in 4.31s
+  ```
+
+- GREEN 3：加入对应最小校验。
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-green-demand
+  # 34 passed in 30.53s
+  ```
+
+### SUMO Smoke
+
+使用真实 TraCI/SUMO 1.27.1 读取扰动运行状态，而非只检查 XML 可解析：
+
+- construction：t=2 时 `E0_0` 仅允许 authority，t=4 时恢复开放。
+- event_demand：t=4 时 calibrator 仍存在，begin/end 为 `1/5`，流率为 `180 veh/h`；该时点已超过旧错误实现的缩短窗口。
+- vehicle_failure：故障车辆在 60 秒真实仿真窗口内进入 stopped 状态。
+- 三项 smoke：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py -q -k "activates_and_releases_lane or remains_active_for_full_window or reaches_active_stop" -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-sumo-probe
+  # 3 passed, 31 deselected in 6.06s
+  ```
+
+### 最终验证
+
+- 聚焦：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests/test_disturbances.py tests/test_variants.py tests/test_run_service.py tests/test_resilience.py tests/test_traci_outputs.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-focused2
+  # 74 passed in 47.23s
+  ```
+
+- 全量：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r2-full
+  # 354 passed in 74.28s
+  ```
+
+- 系统 Python `3.14.7`：
+
+  ```powershell
+  & 'C:\Users\peng\AppData\Local\Programs\Python\Python314\python.exe' --version
+  # Python 3.14.7
+  & 'C:\Users\peng\AppData\Local\Programs\Python\Python314\python.exe' -m compileall -q algorithms api cloud core engine experiments ml scenes scripts visualization
+  # exit 0
+  ```
+
+- 差异格式：
+
+  ```powershell
+  git diff --check
+  git diff --cached --check
+  # exit 0
+  ```
+
+- 保护输入：`赛题资料.7z` SHA-256 仍为 `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`，保持未跟踪/未暂存；`data/intersection_data` 仍为 `163` 个 Git 跟踪文件且无任务差异。
+
+  ```powershell
+  Get-FileHash -LiteralPath '赛题资料.7z' -Algorithm SHA256
+  (git ls-files -- 'data/intersection_data' | Measure-Object).Count
+  git diff --name-only -- 'data/intersection_data'
+  git diff --cached --name-only
+  # SHA-256 12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F
+  # 163 tracked files; protected data diff empty; archive absent from staged names
+  ```
+
+### 提交
+
+- `08b7be1` (`fix: validate executable disturbance bundles`)

@@ -251,3 +251,16 @@
 - 台账提交：`662b046` (`docs: record task 7 review fix evidence`)。
 - Task 7 fix round 1/5：原 7 项发现中 5 项 ADDRESSED、2 项 NOT ADDRESSED；修复 diff 新增 3 项 Important 回归，合计 5 项开放。开放项为：全 additional/runtime XML 验证仍漏掉嵌套 calibrator flow、closingLaneReroute 和配置实际路径；对应测试未覆盖这些语义；event_demand 的 intensity 同时缩短时间窗和缩放流率造成平方缩放；固定 `variant.sumocfg` 使 TraCI 无法恢复路口编号与 edge mapping；删除父配置 `<output>` 使原有 queue-output 场景丢失队列证据。修复范围 `9439f92..dede66f`。
 - Task 7 fix round 2/5 已派回 `/root/task7_implementer`；必须先用真实行为测试逐项复现上述 5 个开放问题，再修复并重新执行聚焦、全量、真实 SUMO smoke、Python 3.14.7 compileall 与保护输入校验。
+
+## Task 7 review fix round 2
+
+- 状态：修复实现与现场验证完成；保持 Task 7，不开始 Task 8。
+- Python 环境复核：系统 `python`/`py` 指向 Python 3.14.7（`C:/Users/peng/AppData/Local/Programs/Python/Python314/python.exe`）；项目 `.venv/Scripts/python.exe` 为 Python 3.12.13。项目 pytest 使用虚拟环境，系统 Python 用于 compileall 兼容性检查。
+- 根因修复：完整校验嵌套 demand、引用、区间、from/to/depart、route 连通性、rerouter/calibrator/closing/stop 目标和 sumocfg 实际路径；拒绝配置内 additional-files。
+- 强度语义：event_demand 保留完整声明时间窗并仅缩放流率；construction 与 vehicle_failure 分别缩放封道/停车时长。
+- 运行链路：派生配置名保留 `demo_<id>`，RunService -> SimulationRunner -> TraCIBridge 可恢复 edge mapping；父 `<output>` 原样保留，scene 11 queue-output 继续重定向至运行 artifacts。
+- TDD RED/GREEN：首轮 `12 failed, 18 passed` -> `30 passed`；配置/映射轮 `4 failed` -> `4 passed`；端点/depart/连通性轮 `4 failed, 30 deselected` -> disturbances 完整 `34 passed`。
+- 真实 SUMO：施工车道权限在窗口内激活并在期后恢复；活动 calibrator 在旧缩短窗口之后仍保持 `180 veh/h` 至声明 end；故障车辆真实进入 stopped 状态；`3 passed`。
+- 最终验证：聚焦 `74 passed in 47.23s`；全量 `354 passed in 74.28s`；系统 Python 3.14.7 compileall exit 0；`git diff --check` 通过。
+- 保护输入：压缩包 SHA-256 不变并保持未跟踪/未暂存；官方数据仍为 163 个 Git 跟踪文件且无任务差异。
+- 修复提交：`08b7be1` (`fix: validate executable disturbance bundles`)。
