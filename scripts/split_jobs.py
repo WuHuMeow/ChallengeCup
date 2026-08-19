@@ -12,11 +12,17 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-ALGOS = ["fixed_time", "actuated", "ca_maxpressure"]
+from algorithms.registry import get_algorithm_registry  # noqa: E402
+
+ALGOS = [
+    spec.key for spec in get_algorithm_registry().list(formal_only=True)
+]
 FLOW_MULTIPLIERS = [1.0, 1.5]
 SEEDS = [42, 123, 456]
 ONE_SECOND_INTERSECTIONS = set(range(1, 11)) | {14}

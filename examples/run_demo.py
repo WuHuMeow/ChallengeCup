@@ -5,7 +5,7 @@
 
 示例：
     python examples/run_demo.py 1 fixed_time
-    python examples/run_demo.py 16 ca_maxpressure
+    python examples/run_demo.py 16 capacity_aware_maxpressure
 
 默认使用 MockBridge（无需 SUMO），加 --sumo 参数使用真实仿真。
 """
@@ -14,12 +14,15 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from algorithms.base import BaseControlAlgorithm
+from algorithms.registry import get_algorithm_registry
 from core.config import get_config
 from scenes.registry import SceneRegistry
-from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,11 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ALGORITHM_MAP = {
-    "fixed_time": FixedTimeAlgorithm,
-    "actuated": RuleAdaptiveAlgorithm,
-    "ca_maxpressure": CAMaxPressureAlgorithm,
-}
+def create_algorithm(algo_name: str) -> BaseControlAlgorithm:
+    return get_algorithm_registry().get(algo_name).factory()
 
 
 def demo_offline(intersection_id: str, algo_name: str) -> None:
@@ -57,8 +57,7 @@ def demo_offline(intersection_id: str, algo_name: str) -> None:
     print(f"      当前路口: {scene.meta.name}")
 
     # 3. 算法初始化
-    algo_cls = ALGORITHM_MAP[algo_name]
-    algorithm = algo_cls()
+    algorithm = create_algorithm(algo_name)
     print(f"\n[3/6] 算法初始化: {algorithm.name}")
 
     # 4. 引擎启动 (MockBridge)
@@ -98,8 +97,7 @@ def demo_with_sumo(intersection_id: str, algo_name: str) -> None:
 
     registry = SceneRegistry()
     scene = registry.get_scene(intersection_id)
-    algo_cls = ALGORITHM_MAP[algo_name]
-    algorithm = algo_cls()
+    algorithm = create_algorithm(algo_name)
 
     print(f"运行路口 {intersection_id}，算法: {algo_name}")
     runner = SimulationRunner(scene, algorithm)
@@ -110,10 +108,15 @@ def demo_with_sumo(intersection_id: str, algo_name: str) -> None:
 
 def main() -> None:
     intersection_id = sys.argv[1] if len(sys.argv) > 1 else "1"
-    algo_name = sys.argv[2] if len(sys.argv) > 2 else "ca_maxpressure"
+    algo_name = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else "capacity_aware_maxpressure"
+    )
 
-    if algo_name not in ALGORITHM_MAP:
-        print(f"未知算法: {algo_name}，可选: {list(ALGORITHM_MAP.keys())}")
+    public_keys = [spec.key for spec in get_algorithm_registry().list()]
+    if algo_name not in public_keys:
+        print(f"未知算法: {algo_name}，可选: {public_keys}")
         sys.exit(1)
 
     use_sumo = "--sumo" in sys.argv

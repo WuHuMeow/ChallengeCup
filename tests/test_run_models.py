@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from core.run_models import RunRequest, RunStatus, VariantSpec
+import pytest
+
+from core.run_models import RunRequest, RunStatus, SUPPORTED_ALGORITHMS, VariantSpec
 
 
 def test_run_request_has_pdf_defaults():
@@ -29,8 +31,23 @@ def test_run_status_values_are_stable():
 def test_run_request_accepts_explicit_output_root(tmp_path):
     request = RunRequest(
         intersection_id="16",
-        algorithm="ca_maxpressure",
+        algorithm="capacity_aware_maxpressure",
         output_root=tmp_path,
     )
 
     assert request.output_root == Path(tmp_path)
+    assert request.algorithm == "capacity_aware_maxpressure"
+
+
+def test_new_run_request_rejects_migration_only_algorithm_aliases():
+    with pytest.raises(ValueError, match="unknown algorithm: ca_maxpressure"):
+        RunRequest(intersection_id="16", algorithm="ca_maxpressure")
+
+
+def test_supported_algorithms_contain_only_canonical_keys():
+    assert SUPPORTED_ALGORITHMS == frozenset({
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+        "actuated",
+    })

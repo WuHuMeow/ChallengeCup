@@ -14,13 +14,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from algorithms.registry import get_algorithm_registry  # noqa: E402
 from core.run_models import RunRequest, RunResult, RunStatus  # noqa: E402
 from engine.artifacts import RunArtifacts  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
 from experiments.tuning import tune_ca_mp  # noqa: E402
 
 
-ALGORITHMS = ("fixed_time", "actuated", "ca_maxpressure")
+ALGORITHMS = tuple(
+    spec.key for spec in get_algorithm_registry().list(formal_only=True)
+)
 FLOW_MULTIPLIERS = (1.0, 1.5)
 SEEDS = (42, 123, 456)
 REQUIRED_ARTIFACTS = RunArtifacts.required_output_names()
@@ -53,7 +56,9 @@ def build_pdf_matrix(
             flow_multiplier=flow_multiplier,
             seed=seed,
             output_root=Path(output_root) / "runs",
-            algorithm_params=parameters if algorithm == "ca_maxpressure" else {},
+            algorithm_params=(
+                parameters if algorithm == "capacity_aware_maxpressure" else {}
+            ),
         )
         for intersection in intersections
         for algorithm in ALGORITHMS
@@ -208,6 +213,7 @@ def _load_result(request: RunRequest, run_id: str) -> RunResult:
         reason=metadata.get("reason", ""),
         run_dir=run_dir,
         summary=summary,
+        algorithm=request.algorithm,
     )
 
 

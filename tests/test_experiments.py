@@ -1,11 +1,36 @@
 """实验框架接口测试。"""
 import inspect
 import pytest
-from experiments.runner import run_batch, ALGORITHM_MAP
+from algorithms.registry import get_algorithm_registry
+from experiments.runner import run_batch
+from scripts.split_jobs import ALGOS, JOBS
 
 
-def test_algorithm_map_has_three_entries():
-    assert set(ALGORITHM_MAP.keys()) == {"fixed_time", "actuated", "ca_maxpressure"}
+def test_formal_experiment_algorithms_come_from_registry():
+    assert [
+        item.key for item in get_algorithm_registry().list(formal_only=True)
+    ] == [
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+    ]
+
+
+def test_split_jobs_uses_only_formal_registry_algorithms():
+    assert ALGOS == [
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+    ]
+    assert {algorithm for _, algorithm, _, _ in JOBS} == set(ALGOS)
+
+
+def test_demo_constructs_algorithms_through_the_registry():
+    from examples.run_demo import create_algorithm
+
+    algorithm = create_algorithm("capacity_aware_maxpressure")
+
+    assert algorithm.name == "capacity_aware_maxpressure"
 
 
 def test_run_batch_signature_accepts_seeds():
@@ -30,10 +55,10 @@ def test_parse_args_custom():
     args = parse_args([
         "--seed", "7", "--flow-multiplier", "1.5",
         "--output-dir", "output/x", "--intersection", "16",
-        "--steps", "100", "--algorithm", "ca_maxpressure",
+        "--steps", "100", "--algorithm", "capacity_aware_maxpressure",
     ])
     assert (args.seed, args.flow_multiplier, args.intersection) == (7, 1.5, "16")
-    assert args.algorithm == "ca_maxpressure"
+    assert args.algorithm == "capacity_aware_maxpressure"
 
 
 def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
@@ -107,7 +132,7 @@ def test_run_batch_delegates_every_case_to_run_service(tmp_path):
     service = FakeService()
     results = run_batch(
         intersection_ids=["1"],
-        algorithms=["fixed_time", "ca_maxpressure"],
+        algorithms=["fixed_time", "capacity_aware_maxpressure"],
         levels=[TrafficLevel.NORMAL],
         seeds=[42],
         steps=10,
@@ -118,7 +143,7 @@ def test_run_batch_delegates_every_case_to_run_service(tmp_path):
     assert len(results) == 2
     assert [request.algorithm for request in service.requests] == [
         "fixed_time",
-        "ca_maxpressure",
+        "capacity_aware_maxpressure",
     ]
     assert all(request.output_root == tmp_path for request in service.requests)
 

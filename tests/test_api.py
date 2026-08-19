@@ -22,6 +22,7 @@ class FakeRunService:
             status=RunStatus.QUEUED,
             reason="",
             run_dir=self.root / "run-1",
+            algorithm=request.algorithm,
         )
         self.records[result.run_id] = result
         return result
@@ -69,6 +70,22 @@ def test_scenes_are_real_registry_rows(client):
     assert rows[0]["name"]
 
 
+def test_algorithm_endpoint_exposes_canonical_registry(client):
+    response = client.get("/api/algorithms")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["key"] for item in payload["formal"]] == [
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+    ]
+    assert [item["key"] for item in payload["optional"]] == ["actuated"]
+    classic = payload["formal"][1]
+    assert classic["available"] is False
+    assert "aliases" not in classic
+
+
 def test_submit_read_and_stop_run(client, service):
     response = client.post("/api/runs", json={
         "intersection_id": "1",
@@ -80,9 +97,32 @@ def test_submit_read_and_stop_run(client, service):
 
     assert response.status_code == 202
     assert response.json()["run_id"] == "run-1"
+    assert response.json()["algorithm"] == "fixed_time"
     assert service.requests[0].intersection_id == "1"
     assert client.get("/api/runs/run-1").json()["status"] == "queued"
     assert client.post("/api/runs/run-1/stop").json()["status"] == "stopped"
+
+
+def test_canonical_run_endpoint_rejects_legacy_algorithm_alias(client):
+    response = client.post("/api/runs", json={
+        "intersection_id": "1",
+        "algorithm": "ca_maxpressure",
+        "steps": 100,
+    })
+
+    assert response.status_code == 422
+
+
+def test_legacy_run_endpoint_returns_canonical_algorithm(client, service):
+    response = client.post("/run", json={
+        "intersection_id": "1",
+        "algorithm": "ca_maxpressure",
+        "steps": 100,
+    })
+
+    assert response.status_code == 202
+    assert service.requests[-1].algorithm == "capacity_aware_maxpressure"
+    assert response.json()["algorithm"] == "capacity_aware_maxpressure"
 
 
 def test_unknown_run_returns_404(client):
@@ -133,6 +173,37 @@ def test_cloud_and_edge_endpoints_use_shared_state_contract(client):
     assert "predicted_flows" in prediction.json()
     assert actions.status_code == 200
     assert isinstance(actions.json()["actions"], list)
+
+
+def test_edge_control_constructs_algorithm_through_registry(
+    service, monkeypatch
+):
+    from algorithms.fixed_time import FixedTimeAlgorithm
+    from algorithms.registry import AlgorithmSpec
+    from api import server
+
+    requested = []
+
+    class RecordingRegistry:
+        def get(self, key):
+            requested.append(key)
+            return AlgorithmSpec(
+                "capacity_aware_maxpressure",
+                "Capacity-Aware MaxPressure",
+                FixedTimeAlgorithm,
+                True,
+                (),
+            )
+
+    monkeypatch.setattr(server, "get_algorithm_registry", RecordingRegistry)
+    isolated_client = TestClient(server.create_app(service))
+
+    response = isolated_client.post(
+        "/api/edge/control", json={"state": _state_payload()}
+    )
+
+    assert response.status_code == 200
+    assert requested == ["capacity_aware_maxpressure"]
 
 
 def test_legacy_health_and_scenes_are_deprecated_wrappers(client):

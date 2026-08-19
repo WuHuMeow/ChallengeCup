@@ -8,8 +8,11 @@ import math
 from pathlib import Path
 from typing import Any
 
+from algorithms.registry import canonicalize_algorithm_key, get_algorithm_registry
 
-SUPPORTED_ALGORITHMS = frozenset({"fixed_time", "actuated", "ca_maxpressure"})
+SUPPORTED_ALGORITHMS = frozenset(
+    spec.key for spec in get_algorithm_registry().list()
+)
 CA_MP_PARAMETER_NAMES = frozenset({
     "overflow_occupancy_threshold",
     "prediction_weight",
@@ -109,6 +112,7 @@ class RunRequest:
             raise ValueError("intersection_id must be in 1..20")
         if self.algorithm not in SUPPORTED_ALGORITHMS:
             raise ValueError(f"unknown algorithm: {self.algorithm}")
+        algorithm = self.algorithm
         if isinstance(self.steps, bool) or not isinstance(self.steps, int) or self.steps <= 0:
             raise ValueError("steps must be > 0")
         flow_multiplier = _finite_number(
@@ -120,8 +124,10 @@ class RunRequest:
             raise ValueError("flow_multiplier must be > 0")
         seed = _non_negative_int("seed", self.seed)
         edge_delay_steps = _non_negative_int("edge_delay_steps", self.edge_delay_steps)
-        if self.algorithm_params and self.algorithm != "ca_maxpressure":
-            raise ValueError("algorithm_params are supported only for ca_maxpressure")
+        if self.algorithm_params and algorithm != "capacity_aware_maxpressure":
+            raise ValueError(
+                "algorithm_params are supported only for capacity_aware_maxpressure"
+            )
         unknown_params = set(self.algorithm_params) - CA_MP_PARAMETER_NAMES
         if unknown_params:
             raise ValueError(f"unknown CA-MP parameters: {sorted(unknown_params)}")
@@ -130,6 +136,7 @@ class RunRequest:
             for name, value in self.algorithm_params.items()
         }
         object.__setattr__(self, "intersection_id", str(intersection))
+        object.__setattr__(self, "algorithm", algorithm)
         object.__setattr__(self, "flow_multiplier", flow_multiplier)
         object.__setattr__(self, "seed", seed)
         object.__setattr__(self, "edge_delay_steps", edge_delay_steps)
@@ -148,3 +155,12 @@ class RunResult:
     reason: str
     run_dir: Path
     summary: dict[str, Any] | None = None
+    algorithm: str = ""
+
+    def __post_init__(self) -> None:
+        if self.algorithm:
+            object.__setattr__(
+                self,
+                "algorithm",
+                canonicalize_algorithm_key(self.algorithm),
+            )

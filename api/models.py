@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from algorithms.registry import canonicalize_algorithm_key
 from core.run_models import RunRequest, RunResult, RunStatus, VariantSpec
 from core.types import (
     ControlAction,
@@ -37,7 +38,12 @@ class VariantSpecModel(BaseModel):
 
 class RunRequestModel(BaseModel):
     intersection_id: str = Field(pattern=r"^(?:[1-9]|1[0-9]|20)$")
-    algorithm: Literal["fixed_time", "actuated", "ca_maxpressure"]
+    algorithm: Literal[
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+        "actuated",
+    ]
     steps: int = Field(default=36000, gt=0)
     flow_multiplier: float = Field(default=1.0, gt=0)
     seed: int = Field(default=42, ge=0)
@@ -61,12 +67,25 @@ class RunRequestModel(BaseModel):
         )
 
 
+class LegacyRunRequestModel(RunRequestModel):
+    algorithm: str
+
+    @field_validator("algorithm", mode="before")
+    @classmethod
+    def migrate_algorithm_alias(cls, value: object) -> str:
+        try:
+            return canonicalize_algorithm_key(str(value))
+        except KeyError as exc:
+            raise ValueError(str(exc)) from exc
+
+
 class RunResultModel(BaseModel):
     run_id: str
     status: RunStatus
     reason: str
     run_dir: str
     summary: dict[str, Any] | None = None
+    algorithm: str = ""
 
     @classmethod
     def from_domain(cls, result: RunResult) -> "RunResultModel":
@@ -76,6 +95,7 @@ class RunResultModel(BaseModel):
             reason=result.reason,
             run_dir=str(result.run_dir),
             summary=result.summary,
+            algorithm=result.algorithm,
         )
 
 

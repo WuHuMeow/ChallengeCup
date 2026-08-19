@@ -9,9 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
 from core.run_models import RunRequest, RunResult, RunStatus
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel
@@ -19,12 +17,6 @@ from engine.runner import SimulationRunner
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
-
-ALGORITHM_FACTORIES = {
-    "fixed_time": FixedTimeAlgorithm,
-    "actuated": RuleAdaptiveAlgorithm,
-    "ca_maxpressure": CAMaxPressureAlgorithm,
-}
 
 TERMINAL_STATUSES = frozenset({
     RunStatus.COMPLETED,
@@ -44,10 +36,12 @@ class RunService:
         output_root: Path = Path("output/runs"),
         runner_factory: Callable[..., object] = SimulationRunner,
         registry: SceneRegistry | None = None,
+        algorithm_registry: AlgorithmRegistry | None = None,
     ) -> None:
         self.output_root = Path(output_root)
         self.runner_factory = runner_factory
         self.registry = registry or SceneRegistry()
+        self.algorithm_registry = algorithm_registry or get_algorithm_registry()
         self.max_workers = 1
         self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
         self._records: dict[str, RunResult] = {}
@@ -108,6 +102,7 @@ class RunService:
             RunStatus.QUEUED,
             "",
             artifacts.run_dir,
+            algorithm=request.algorithm,
         )
         with self._lock:
             self._records[artifacts.run_id] = queued
@@ -126,6 +121,7 @@ class RunService:
                 RunStatus.RUNNING,
                 "",
                 artifacts.run_dir,
+                algorithm=request.algorithm,
             )
         )
         try:
@@ -144,7 +140,7 @@ class RunService:
                 )
             runner = self.runner_factory(
                 scene=scene,
-                algorithm=ALGORITHM_FACTORIES[request.algorithm](
+                algorithm=self.algorithm_registry.get(request.algorithm).factory(
                     **request.algorithm_params
                 ),
                 additional_files=list(bundle.additional_files),
@@ -191,6 +187,7 @@ class RunService:
             payload.get("reason", ""),
             artifacts.run_dir,
             summary,
+            artifacts.algorithm,
         )
 
     def _store(self, result: RunResult) -> None:

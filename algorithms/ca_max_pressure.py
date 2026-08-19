@@ -290,4 +290,4 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
 
     @property
     def name(self) -> str:
-        return "ca_maxpressure"
+        return "capacity_aware_maxpressure"

@@ -92,7 +92,11 @@ def test_algorithm_names_unique():
         RuleAdaptiveAlgorithm().name,
         CAMaxPressureAlgorithm().name,
     ]
-    assert len(set(names)) == 3
+    assert names == [
+        "fixed_time",
+        "actuated",
+        "capacity_aware_maxpressure",
+    ]
 
 
 def _phase(

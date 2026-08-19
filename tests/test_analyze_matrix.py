@@ -14,8 +14,8 @@ def write_complete_matrix_fixture(tmp_path: Path) -> Path:
     rows = []
     factors = {
         "fixed_time": (100.0, 50.0, 10.0, 100.0, 8.0, 1000.0),
-        "actuated": (90.0, 45.0, 9.0, 105.0, 7.0, 900.0),
-        "ca_maxpressure": (80.0, 40.0, 8.0, 110.0, 6.0, 800.0),
+        "classic_maxpressure": (90.0, 45.0, 9.0, 105.0, 7.0, 900.0),
+        "capacity_aware_maxpressure": (80.0, 40.0, 8.0, 110.0, 6.0, 800.0),
     }
     metrics = (
         "avg_travel_time",
@@ -28,6 +28,12 @@ def write_complete_matrix_fixture(tmp_path: Path) -> Path:
     for intersection in ("1", "2"):
         for flow in (1.0, 1.5):
             for seed in (42, 123, 456):
+                case_scale = (
+                    1.0
+                    + 0.01 * int(intersection)
+                    + 0.001 * flow
+                    + 0.000001 * seed
+                )
                 for algorithm, values in factors.items():
                     row = {
                         "intersection_id": intersection,
@@ -36,7 +42,10 @@ def write_complete_matrix_fixture(tmp_path: Path) -> Path:
                         "seed": seed,
                         "status": "completed",
                     }
-                    row.update(dict(zip(metrics, values)))
+                    row.update({
+                        metric: value * case_scale
+                        for metric, value in zip(metrics, values)
+                    })
                     rows.append(row)
     path = tmp_path / "matrix.csv"
     pd.DataFrame(rows).to_csv(path, index=False)
@@ -54,7 +63,8 @@ def test_analysis_pairs_identical_cases_and_preserves_direction(tmp_path):
     matrix = write_complete_matrix_fixture(tmp_path)
     outputs = analyze_matrix(matrix, tmp_path / "stats")
     paired = pd.read_csv(outputs["paired_tests"])
-    assert set(paired["baseline"]) == {"fixed_time", "actuated"}
+    assert set(paired["baseline"]) == {"fixed_time", "classic_maxpressure"}
+    assert set(paired["candidate"]) == {"capacity_aware_maxpressure"}
     assert set(paired["metric"]) == {
         "avg_travel_time",
         "avg_delay",

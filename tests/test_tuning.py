@@ -12,6 +12,8 @@ from experiments.tuning import (
     tune_ca_mp,
 )
 from scripts.run_pdf_matrix import (
+    _load_result,
+    _run_dir,
     build_pdf_matrix,
     is_complete,
     run_pdf_matrix,
@@ -27,8 +29,8 @@ def test_pdf_matrix_has_exact_360_requests():
     }
     assert {request.algorithm for request in requests} == {
         "fixed_time",
-        "actuated",
-        "ca_maxpressure",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
     }
     assert {request.flow_multiplier for request in requests} == {1.0, 1.5}
     assert {request.seed for request in requests} == {42, 123, 456}
@@ -245,6 +247,30 @@ def test_tuning_writes_all_candidates_selected_params_and_holdout(tmp_path):
     assert holdout_requests
     assert all(request.seed == 42 for request in calibration_requests)
     assert all(request.seed in (123, 456) for request in holdout_requests)
+    assert {request.algorithm for request in service.requests} == {
+        "fixed_time",
+        "capacity_aware_maxpressure",
+    }
+
+
+def test_resumed_matrix_result_keeps_the_canonical_algorithm(tmp_path):
+    request = build_pdf_matrix(
+        tmp_path,
+        steps=100,
+        intersections=("1",),
+    )[-1]
+    run_id = "resume-run"
+    run_dir = _run_dir(request, run_id)
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps({"status": "completed"}),
+        encoding="utf-8",
+    )
+    (run_dir / "summary.json").write_text("{}", encoding="utf-8")
+
+    result = _load_result(request, run_id)
+
+    assert result.algorithm == "capacity_aware_maxpressure"
 
 
 def test_quick_matrix_writes_all_54_explicit_rows(tmp_path):

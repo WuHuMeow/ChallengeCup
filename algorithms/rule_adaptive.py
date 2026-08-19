@@ -69,4 +69,4 @@ class RuleAdaptiveAlgorithm(BaseControlAlgorithm):
 
     @property
     def name(self) -> str:
-        return "rule_adaptive"
+        return "actuated"

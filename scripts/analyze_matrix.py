@@ -17,6 +17,8 @@ from typing import Any
 import pandas as pd
 from scipy.stats import ttest_rel
 
+from algorithms.registry import get_algorithm_registry
+
 PAIR_KEYS = ["intersection_id", "flow_multiplier", "seed"]
 METRICS = (
     "avg_travel_time",
@@ -26,7 +28,13 @@ METRICS = (
     "total_stops",
     "fuel_consumption",
 )
-BASELINES = ("fixed_time", "actuated")
+FORMAL_ALGORITHMS = tuple(
+    spec.key for spec in get_algorithm_registry().list(formal_only=True)
+)
+CANDIDATE_ALGORITHM = "capacity_aware_maxpressure"
+BASELINES = tuple(
+    key for key in FORMAL_ALGORITHMS if key != CANDIDATE_ALGORITHM
+)
 LOWER_IS_BETTER = {
     "avg_travel_time",
     "avg_delay",
@@ -76,7 +84,7 @@ def analyze_matrix(
 
     # All three algorithms must be present
     algorithms = set(frame["algorithm"].unique())
-    expected = {"fixed_time", "actuated", "ca_maxpressure"}
+    expected = set(FORMAL_ALGORITHMS)
     if algorithms != expected:
         raise ValueError(
             f"Expected algorithms {sorted(expected)}, got {sorted(algorithms)}"
@@ -120,7 +128,7 @@ def analyze_matrix(
     # 3. Paired t-tests
     # ------------------------------------------------------------------
     paired_rows: list[dict[str, Any]] = []
-    candidate_algo = "ca_maxpressure"
+    candidate_algo = CANDIDATE_ALGORITHM
     candidate_data = frame[frame["algorithm"] == candidate_algo]
 
     for baseline_algo in BASELINES:

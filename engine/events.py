@@ -8,6 +8,8 @@ import logging
 from pathlib import Path
 from typing import List
 
+from algorithms.registry import canonicalize_algorithm_key
+
 logger = logging.getLogger(__name__)
 
 EVENT_FIELDS = (
@@ -25,14 +27,14 @@ EVENT_FIELDS = (
     "detail",
 )
 
-EVENT_ALGORITHM_NAMES = {
-    "rule_adaptive": "actuated",
-}
-
-
 def contract_algorithm_name(internal_name: str) -> str:
     """Return the stable external algorithm name used by events.csv."""
-    return EVENT_ALGORITHM_NAMES.get(internal_name, internal_name)
+    if not internal_name:
+        return ""
+    try:
+        return canonicalize_algorithm_key(internal_name)
+    except KeyError:
+        return internal_name
 
 
 class EventLogger:

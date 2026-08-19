@@ -156,7 +156,7 @@ def tune_ca_mp(
                     _request(
                         output_root,
                         intersection,
-                        "ca_maxpressure",
+                        "capacity_aware_maxpressure",
                         CALIBRATION_SEEDS[0],
                         steps,
                         parameters,
@@ -237,7 +237,7 @@ def tune_ca_mp(
                 _request(
                     output_root,
                     intersection,
-                    "ca_maxpressure",
+                    "capacity_aware_maxpressure",
                     seed,
                     steps,
                     selected,

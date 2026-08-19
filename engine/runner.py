@@ -68,7 +68,16 @@ class SimulationRunner:
         self.collector: Optional[MetricsCollector] = None
         self.metrics_history: List[dict] = []
         self.step_logger = StepLogger(step_log_csv) if step_log_csv else None
-        self.event_logger = EventLogger(events_csv) if events_csv else None
+        self.event_logger = (
+            EventLogger(
+                events_csv,
+                run_id=artifacts.run_id if artifacts is not None else "",
+                intersection_id=scene.meta.intersection_id,
+                algorithm=algorithm.name,
+            )
+            if events_csv
+            else None
+        )
         self._terminal_reason = ""
         self._sumo_version_value = "unknown"
         self._last_simulation_time = 0.0

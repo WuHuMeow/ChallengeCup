@@ -51,7 +51,8 @@ def test_events_csv_lifecycle_and_actions(tmp_path):
     [
         ("fixed_time", "fixed_time"),
         ("rule_adaptive", "actuated"),
-        ("ca_maxpressure", "ca_maxpressure"),
+        ("ca_maxpressure", "capacity_aware_maxpressure"),
+        ("capacity_aware_maxpressure", "capacity_aware_maxpressure"),
     ],
 )
 def test_events_csv_algorithm_uses_external_contract_name(
@@ -69,3 +70,20 @@ def test_events_csv_algorithm_uses_external_contract_name(
 
     rows = list(csv.DictReader(events.open(encoding="utf-8")))
     assert rows[0]["algorithm"] == contract_name
+
+
+def test_simulation_runner_wires_canonical_algorithm_context(tmp_path):
+    events = tmp_path / "events.csv"
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        output_csv=tmp_path / "snap.csv",
+        bridge=MockBridge(),
+        events_csv=events,
+    )
+
+    runner.run(1)
+
+    rows = list(csv.DictReader(events.open(encoding="utf-8")))
+    assert {row["algorithm"] for row in rows} == {"fixed_time"}
+    assert {row["intersection_id"] for row in rows} == {"1"}

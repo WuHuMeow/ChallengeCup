@@ -10,12 +10,9 @@ import argparse
 import itertools
 import logging
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
-from algorithms.base import BaseControlAlgorithm
-from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.registry import get_algorithm_registry
 from core.config import get_config
 from core.run_models import RunRequest, RunResult
 from core.types import TrafficLevel
@@ -24,13 +21,6 @@ from engine.run_service import RunService
 from scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
-
-
-ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
-    "fixed_time": FixedTimeAlgorithm,
-    "actuated": RuleAdaptiveAlgorithm,
-    "ca_maxpressure": CAMaxPressureAlgorithm,
-}
 
 
 def run_batch(
@@ -60,7 +50,9 @@ def run_batch(
     if intersection_ids is None:
         intersection_ids = [str(index) for index in range(1, 21)]
     if algorithms is None:
-        algorithms = list(ALGORITHM_MAP.keys())
+        algorithms = [
+            spec.key for spec in get_algorithm_registry().list(formal_only=True)
+        ]
     if levels is None:
         levels = [TrafficLevel.NORMAL, TrafficLevel.HIGH]
     if seeds is None:
@@ -111,7 +103,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="输出根目录（CSV/变体写入其下），默认 config 的 paths.output_root")
     p.add_argument("--intersection", type=str, default="1", help="路口编号 1-20")
     p.add_argument("--steps", type=int, default=36000, help="仿真步数")
-    p.add_argument("--algorithm", choices=list(ALGORITHM_MAP), default="fixed_time",
+    p.add_argument(
+        "--algorithm",
+        choices=[spec.key for spec in get_algorithm_registry().list()],
+        default="fixed_time",
                    help="控制算法")
     args = p.parse_args(argv)
     try:
@@ -139,7 +134,7 @@ def build_artifacts(args: argparse.Namespace) -> RunArtifacts:
     return RunArtifacts.create(
         root,
         args.intersection,
-        args.algorithm,
+        get_algorithm_registry().get(args.algorithm).key,
         args.flow_multiplier,
         args.seed,
     )

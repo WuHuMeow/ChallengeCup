@@ -2,6 +2,8 @@ import json
 import threading
 from datetime import datetime, timezone
 
+from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
 from engine.run_service import RunService
 
@@ -74,7 +76,7 @@ def test_run_service_injects_frozen_ca_mp_parameters(tmp_path):
     result = service.run_sync(
         RunRequest(
             "1",
-            "ca_maxpressure",
+            "capacity_aware_maxpressure",
             steps=2,
             algorithm_params={
                 "overflow_occupancy_threshold": 0.85,
@@ -89,6 +91,31 @@ def test_run_service_injects_frozen_ca_mp_parameters(tmp_path):
     assert algorithm.overflow_threshold == 0.85
     assert algorithm.prediction_weight == 0.0
     assert algorithm.base_green == 45.0
+
+
+def test_run_service_constructs_algorithms_through_injected_registry(tmp_path):
+    constructed = []
+
+    def factory():
+        algorithm = FixedTimeAlgorithm()
+        constructed.append(algorithm)
+        return algorithm
+
+    algorithm_registry = AlgorithmRegistry()
+    algorithm_registry.register(
+        AlgorithmSpec("fixed_time", "Fixed Time", factory, True, ())
+    )
+    RecordingRunner.calls = []
+    service = RunService(
+        output_root=tmp_path,
+        runner_factory=RecordingRunner,
+        algorithm_registry=algorithm_registry,
+    )
+
+    result = service.run_sync(RunRequest("1", "fixed_time", steps=2))
+
+    assert result.status is RunStatus.COMPLETED
+    assert RecordingRunner.calls[0]["algorithm"] is constructed[0]
 
 
 class BlockingRunner(RecordingRunner):

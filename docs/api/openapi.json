@@ -141,6 +141,66 @@
         "title": "JointStateModel",
         "type": "object"
       },
+      "LegacyRunRequestModel": {
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "algorithm_params": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Algorithm Params",
+            "type": "object"
+          },
+          "edge_delay_steps": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Edge Delay Steps",
+            "type": "integer"
+          },
+          "edge_directions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edge Directions",
+            "type": "array"
+          },
+          "flow_multiplier": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Flow Multiplier",
+            "type": "number"
+          },
+          "intersection_id": {
+            "pattern": "^(?:[1-9]|1[0-9]|20)$",
+            "title": "Intersection Id",
+            "type": "string"
+          },
+          "seed": {
+            "default": 42,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "steps": {
+            "default": 36000,
+            "exclusiveMinimum": 0.0,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/VariantSpecModel"
+          }
+        },
+        "required": [
+          "intersection_id",
+          "algorithm"
+        ],
+        "title": "LegacyRunRequestModel",
+        "type": "object"
+      },
       "PhaseTrafficStateModel": {
         "properties": {
           "incoming_capacity": {
@@ -279,8 +339,9 @@
           "algorithm": {
             "enum": [
               "fixed_time",
-              "actuated",
-              "ca_maxpressure"
+              "classic_maxpressure",
+              "capacity_aware_maxpressure",
+              "actuated"
             ],
             "title": "Algorithm",
             "type": "string"
@@ -341,6 +402,11 @@
       },
       "RunResultModel": {
         "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -517,6 +583,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/algorithms": {
+      "get": {
+        "operationId": "list_algorithms_api_algorithms_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response List Algorithms Api Algorithms Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Algorithms"
+      }
+    },
     "/api/cloud/predict": {
       "post": {
         "operationId": "cloud_predict_api_cloud_predict_post",
@@ -803,7 +895,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RunRequestModel"
+                "$ref": "#/components/schemas/LegacyRunRequestModel"
               }
             }
           },
@@ -903,7 +995,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RunRequestModel"
+                "$ref": "#/components/schemas/LegacyRunRequestModel"
               }
             }
           },

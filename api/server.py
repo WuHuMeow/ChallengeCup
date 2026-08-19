@@ -6,10 +6,11 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.registry import get_algorithm_registry
 from api.models import (
     ControlActionModel,
     ControlActionsModel,
+    LegacyRunRequestModel,
     PredictionResultModel,
     RunRequestModel,
     RunResultModel,
@@ -50,6 +51,26 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
             }
             for meta in service.registry.list_scenes()
         ]
+
+    @application.get("/api/algorithms")
+    def list_algorithms() -> dict[str, list[dict[str, object]]]:
+        registry = get_algorithm_registry()
+
+        def public_row(spec) -> dict[str, object]:
+            return {
+                "key": spec.key,
+                "display_name": spec.display_name,
+                "formal": spec.formal,
+                "available": spec.available,
+                "unavailable_reason": spec.unavailable_reason,
+            }
+
+        return {
+            "formal": [public_row(spec) for spec in registry.list(formal_only=True)],
+            "optional": [
+                public_row(spec) for spec in registry.list() if not spec.formal
+            ],
+        }
 
     @application.post(
         "/api/runs",
@@ -99,7 +120,10 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
         response_model=ControlActionsModel,
     )
     def edge_control(payload: StateRequestModel) -> ControlActionsModel:
-        actions = CAMaxPressureAlgorithm().step(payload.state.to_domain())
+        algorithm = get_algorithm_registry().get(
+            "capacity_aware_maxpressure"
+        ).factory()
+        actions = algorithm.step(payload.state.to_domain())
         return ControlActionsModel(
             actions=[ControlActionModel.from_domain(action) for action in actions]
         )
@@ -113,7 +137,7 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
         return list_scenes()
 
     @application.post("/run", deprecated=True, status_code=202)
-    def legacy_run(payload: RunRequestModel) -> RunResultModel:
+    def legacy_run(payload: LegacyRunRequestModel) -> RunResultModel:
         return submit_run(payload)
 
     @application.get("/status", deprecated=True)
@@ -121,7 +145,7 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
         return get_run(run_id)
 
     @application.post("/api/simulation/start", deprecated=True, status_code=202)
-    def legacy_simulation_start(payload: RunRequestModel) -> RunResultModel:
+    def legacy_simulation_start(payload: LegacyRunRequestModel) -> RunResultModel:
         return submit_run(payload)
 
     @application.post("/api/simulation/stop", deprecated=True)
