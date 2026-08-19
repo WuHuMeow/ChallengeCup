@@ -241,7 +241,7 @@
 
 ## Task 7 review fix round 1
 
-- 状态：实现已提交，待重新复审。
+- 状态：scoped re-review 未通过，修复第 2 轮进行中。
 - 根因：变体 flow 通过 `-a` 叠加到父 sumocfg 的原始 `.rou.xml`，真实 SUMO 同时加载两套需求。
 - 修复：从唯一缩放 flow 用 jtrrouter 派生 `derived_demand.rou.xml`；临时 `variant.sumocfg` 仅引用该路由；RunService/Runner 显式使用该配置；flow 不再作为 additional 文件。
 - 扰动：construction、event_demand、vehicle_failure 现在是不同且可执行的 XML；强度分别控制封道时长、额外需求率和安全停车时长；活动 vType/route 均可解析。
@@ -249,3 +249,5 @@
 - 保护输入：压缩包 SHA-256 不变，官方数据 163 Git 跟踪文件，保护路径无 diff。
 - 提交：`dede66f` (`fix: isolate derived variant demand`)。
 - 台账提交：`662b046` (`docs: record task 7 review fix evidence`)。
+- Task 7 fix round 1/5：原 7 项发现中 5 项 ADDRESSED、2 项 NOT ADDRESSED；修复 diff 新增 3 项 Important 回归，合计 5 项开放。开放项为：全 additional/runtime XML 验证仍漏掉嵌套 calibrator flow、closingLaneReroute 和配置实际路径；对应测试未覆盖这些语义；event_demand 的 intensity 同时缩短时间窗和缩放流率造成平方缩放；固定 `variant.sumocfg` 使 TraCI 无法恢复路口编号与 edge mapping；删除父配置 `<output>` 使原有 queue-output 场景丢失队列证据。修复范围 `9439f92..dede66f`。
+- Task 7 fix round 2/5 已派回 `/root/task7_implementer`；必须先用真实行为测试逐项复现上述 5 个开放问题，再修复并重新执行聚焦、全量、真实 SUMO smoke、Python 3.14.7 compileall 与保护输入校验。
