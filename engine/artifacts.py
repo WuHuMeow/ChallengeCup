@@ -6,6 +6,16 @@ from pathlib import Path
 from uuid import uuid4
 
 
+RAW_SUMO_OUTPUT_NAMES = ("tripinfo.xml", "stats.xml", "traj.xml")
+STABLE_OUTPUT_NAMES = (
+    "metrics.csv",
+    "simulation_log.csv",
+    "events.csv",
+    *RAW_SUMO_OUTPUT_NAMES,
+    "summary.json",
+)
+
+
 @dataclass(frozen=True)
 class RunArtifacts:
     """Stable paths for one isolated intersection/algorithm run."""
@@ -19,17 +29,13 @@ class RunArtifacts:
 
     @staticmethod
     def required_output_names() -> tuple[str, ...]:
-        """Return the canonical files required for a completed run.
-        NOTE: tripinfo.xml/stats.xml/traj.xml are removed — they are used
-        only to compute summary.json and can be 10+ MB each on 0.1s-step
-        intersections, rapidly filling the disk during batch runs.
-        """
-        return (
-            "metrics.csv",
-            "simulation_log.csv",
-            "events.csv",
-            "summary.json",
-        )
+        """Return the canonical non-empty files for a completed run."""
+        return STABLE_OUTPUT_NAMES
+
+    @staticmethod
+    def raw_sumo_output_names() -> tuple[str, ...]:
+        """Return raw SUMO XML retained as stable provenance inputs."""
+        return RAW_SUMO_OUTPUT_NAMES
 
     @classmethod
     def create(
@@ -41,24 +47,32 @@ class RunArtifacts:
         seed: int,
         run_id: str | None = None,
     ) -> "RunArtifacts":
-        resolved_run_id = run_id or uuid4().hex[:12]
-        run_dir = (
-            Path(root)
-            / f"i{intersection_id}"
-            / algorithm
-            / f"x{flow_multiplier:g}"
-            / f"s{seed}"
-            / resolved_run_id
-        )
-        run_dir.mkdir(parents=True, exist_ok=False)
-        return cls(
-            run_dir,
-            intersection_id,
-            algorithm,
-            flow_multiplier,
-            seed,
-            resolved_run_id,
-        )
+        root = Path(root)
+        for _ in range(5):
+            resolved_run_id = run_id or uuid4().hex[:12]
+            run_dir = (
+                root
+                / f"i{intersection_id}"
+                / algorithm
+                / f"x{flow_multiplier:g}"
+                / f"s{seed}"
+                / resolved_run_id
+            )
+            try:
+                run_dir.mkdir(parents=True, exist_ok=False)
+            except FileExistsError:
+                if run_id is not None:
+                    raise
+                continue
+            return cls(
+                run_dir,
+                intersection_id,
+                algorithm,
+                flow_multiplier,
+                seed,
+                resolved_run_id,
+            )
+        raise FileExistsError("could not allocate a collision-free run directory")
 
     @property
     def metrics(self) -> Path:

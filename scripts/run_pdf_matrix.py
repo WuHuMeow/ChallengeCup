@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import sys
@@ -62,13 +63,35 @@ def build_pdf_matrix(
 
 
 def request_key(request: RunRequest) -> str:
-    return "|".join([
-        request.intersection_id,
-        request.algorithm,
-        f"{request.flow_multiplier:g}",
-        str(request.seed),
-        str(request.steps),
-    ])
+    parameters = dict(sorted(
+        (str(name), float(value))
+        for name, value in request.algorithm_params.items()
+    ))
+    encoded_parameters = json.dumps(
+        parameters,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    identity = {
+        "intersection_id": str(request.intersection_id),
+        "algorithm": str(request.algorithm),
+        "flow_multiplier": float(request.flow_multiplier),
+        "seed": int(request.seed),
+        "steps": int(request.steps),
+        "algorithm_params": parameters,
+        "algorithm_params_fingerprint": hashlib.sha256(
+            encoded_parameters
+        ).hexdigest(),
+    }
+    return json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
 
 
 def read_final_sumo_time(stats_path: Path) -> float | None:

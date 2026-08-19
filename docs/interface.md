@@ -54,6 +54,19 @@ CA-MP 参数只允许：
 
 ## 2. 运行状态与产物
 
+`RunArtifacts.required_output_names()` is the single completed-run checker
+contract. A `completed` run must retain non-empty `metrics.csv`,
+`simulation_log.csv`, `events.csv`, `tripinfo.xml`, `stats.xml`, `traj.xml`,
+and `summary.json`. The three XML files are raw SUMO provenance outputs;
+`queues.xml` remains optional when the source configuration enables it.
+
+`variants/` contains generated per-run inputs and is not an original-data
+directory. No intermediate file is written under `data/intersection_data/`
+or `engine/configs/`. `run_metadata.json` records the terminal lifecycle
+state and the actual existing names in `generated_files`; optional or cleaned
+files are not claimed there. Formal acceptance evidence is separate under
+`output/evidence/` and is never a run artifact.
+
 每次运行生成随机、碰撞安全的 `run_id`，目录固定为：
 
 ```text
@@ -153,6 +166,13 @@ class BaseControlAlgorithm(ABC):
 
 `TraCIBridge.apply_actions(actions) -> list[ActionResult]`。每个结果包含原动作、
 `accepted` 和 `detail`；拒绝动作会写入事件日志，调用方不需要从 warning 文本猜测结果。
+
+`events.csv` keeps the legacy `step`, `type`, and `detail` columns and adds
+`run_id`, `intersection_id`, `algorithm`, `status`, `reason`, `accepted`,
+and action fields. Lifecycle events use `status`/`reason`; action rows use
+`accepted` plus the validation detail. This makes `run_start`,
+`action_applied`, `action_rejected`, `channel_wait`, `disconnected`, and
+`terminal` auditable without parsing warning text.
 
 ## 4. CA-MP 行为
 

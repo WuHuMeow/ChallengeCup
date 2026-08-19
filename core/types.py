@@ -8,8 +8,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, ClassVar, Dict, List, Optional, Protocol
+
+
+def _require_number(
+    name: str,
+    value: object,
+    *,
+    minimum: float | None = None,
+    strict_minimum: bool = False,
+    maximum: float | None = None,
+) -> None:
+    """Validate a numeric contract without changing the caller's value."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be numeric: {value!r}") from exc
+    if not math.isfinite(numeric):
+        raise ValueError(f"{name} must be finite: {value!r}")
+    if minimum is not None:
+        invalid = numeric <= minimum if strict_minimum else numeric < minimum
+        if invalid:
+            operator = ">" if strict_minimum else ">="
+            raise ValueError(f"{name} must be {operator} {minimum}: {value!r}")
+    if maximum is not None and numeric > maximum:
+        raise ValueError(f"{name} must be <= {maximum}: {value!r}")
 
 
 class TrafficLevel(str, Enum):
@@ -73,6 +98,12 @@ class QueueState:
     vehicle_count: int
     capacity: float = 0.0  # 车道容量（辆）= 车道长度 / 7.5m；0 表示未知
 
+    def __post_init__(self) -> None:
+        _require_number("queue_length", self.queue_length, minimum=0)
+        _require_number("waiting_time", self.waiting_time, minimum=0)
+        _require_number("vehicle_count", self.vehicle_count, minimum=0)
+        _require_number("capacity", self.capacity, minimum=0)
+
 
 @dataclass(frozen=True)
 class PhaseTrafficState:
@@ -88,6 +119,25 @@ class PhaseTrafficState:
     outgoing_queue: float
     outgoing_capacity: float
     outgoing_occupancy: float
+
+    def __post_init__(self) -> None:
+        _require_number("phase_index", self.phase_index, minimum=0)
+        _require_number(
+            "nominal_duration",
+            self.nominal_duration,
+            minimum=0,
+            strict_minimum=True,
+        )
+        _require_number("incoming_queue", self.incoming_queue, minimum=0)
+        _require_number("incoming_capacity", self.incoming_capacity, minimum=0)
+        _require_number("outgoing_queue", self.outgoing_queue, minimum=0)
+        _require_number("outgoing_capacity", self.outgoing_capacity, minimum=0)
+        _require_number(
+            "outgoing_occupancy",
+            self.outgoing_occupancy,
+            minimum=0,
+            maximum=1,
+        )
 
 
 @dataclass
@@ -112,12 +162,18 @@ class JointState:
     current_phase: int
     current_phase_name: str
     elapsed_phase_time: float
-    queues: List[QueueState]
-    flows: Dict[str, float]  # 方向 ->  vehicles / hour
+    queues: List[QueueState] = field(default_factory=list)
+    flows: Dict[str, float] = field(default_factory=dict)  # 方向 ->  vehicles / hour
     detector_values: Dict[str, float] = field(default_factory=dict)
     vehicles: List[VehicleState] = field(default_factory=list)  # 采样后的车辆快照
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
     phase_states: List[PhaseTrafficState] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        _require_number("step", self.step, minimum=0)
+        _require_number("timestamp", self.timestamp, minimum=0)
+        _require_number("current_phase", self.current_phase, minimum=0)
+        _require_number("elapsed_phase_time", self.elapsed_phase_time, minimum=0)
 
 
 @dataclass
@@ -128,6 +184,12 @@ class ControlAction:
     action_type: str  # "set_phase" / "set_phase_duration" / "set_program"
     value: Any
     reason: str = ""
+
+    ALLOWED_ACTION_TYPES: ClassVar[frozenset[str]] = frozenset({
+        "set_phase",
+        "set_phase_duration",
+        "set_program",
+    })
 
 
 @dataclass(frozen=True)
@@ -153,13 +215,28 @@ class SimulationMetrics:
     """单步或多步汇总指标，对应 PDF 评分中的效率、安全、能耗维度。"""
 
     step: int
-    avg_queue_length: float
-    max_queue_length: float
-    avg_delay: float
-    total_throughput: int
-    avg_travel_time: Optional[float]
-    total_stops: Optional[int]
-    fuel_consumption: Optional[float]
+    avg_queue_length: Optional[float]
+    max_queue_length: Optional[float]
+    avg_delay: Optional[float]
+    total_throughput: Optional[int]
+    avg_travel_time: Optional[float] = None
+    total_stops: Optional[int] = None
+    fuel_consumption: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        _require_number("step", self.step, minimum=0)
+        for name in (
+            "avg_queue_length",
+            "max_queue_length",
+            "avg_delay",
+            "total_throughput",
+            "avg_travel_time",
+            "total_stops",
+            "fuel_consumption",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                _require_number(name, value, minimum=0)
 
 
 # 用于需要函数式接口的扩展点（如指标回调）。

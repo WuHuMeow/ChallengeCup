@@ -92,6 +92,40 @@ def test_build_cmd_redirects_configured_queue_output(tmp_path):
     )
 
 
+def test_get_state_uses_spent_duration_after_phase_duration_override():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    program = SimpleNamespace(
+        programID="program_0",
+        phases=[SimpleNamespace(state="G", duration=50.0, name="green")],
+    )
+    with (
+        patch.object(traci.simulation, "getTime", return_value=14.0),
+        patch.object(traci.trafficlight, "getPhase", return_value=0),
+        patch.object(
+            traci.trafficlight,
+            "getAllProgramLogics",
+            return_value=[program],
+        ),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
+        patch.object(
+            traci.trafficlight,
+            "getSpentDuration",
+            return_value=4.0,
+        ) as get_spent,
+        patch.object(traci.trafficlight, "getPhaseDuration", return_value=50.0) as get_total,
+        patch.object(traci.trafficlight, "getNextSwitch", return_value=98.0) as get_next,
+        patch.object(traci.trafficlight, "getControlledLinks", return_value=[]),
+        patch.object(traci.vehicle, "getIDList", return_value=[]),
+    ):
+        state = bridge.get_state()
+
+    assert state.elapsed_phase_time == 4.0
+    get_spent.assert_called_once_with("tls")
+    get_total.assert_not_called()
+    get_next.assert_not_called()
+
+
 def test_invalid_phase_returns_rejection_without_calling_traci():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"

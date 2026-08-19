@@ -8,6 +8,7 @@
             "type": "string"
           },
           "reason": {
+            "default": "",
             "title": "Reason",
             "type": "string"
           },
@@ -22,8 +23,7 @@
         "required": [
           "tls_id",
           "action_type",
-          "value",
-          "reason"
+          "value"
         ],
         "title": "ControlActionModel",
         "type": "object"
@@ -250,6 +250,7 @@
             "type": "string"
           },
           "queue_length": {
+            "minimum": 0.0,
             "title": "Queue Length",
             "type": "number"
           },
@@ -259,6 +260,7 @@
             "type": "integer"
           },
           "waiting_time": {
+            "minimum": 0.0,
             "title": "Waiting Time",
             "type": "number"
           }
@@ -310,6 +312,7 @@
             "type": "number"
           },
           "intersection_id": {
+            "pattern": "^(?:[1-9]|1[0-9]|20)$",
             "title": "Intersection Id",
             "type": "string"
           },
@@ -351,8 +354,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/RunStatus"
           },
           "summary": {
             "anyOf": [
@@ -375,6 +377,21 @@
         ],
         "title": "RunResultModel",
         "type": "object"
+      },
+      "RunStatus": {
+        "description": "Stable lifecycle states used by runners, services, APIs, and reports.",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "stopped",
+          "ended_early",
+          "disconnected",
+          "interrupted",
+          "failed"
+        ],
+        "title": "RunStatus",
+        "type": "string"
       },
       "StateRequestModel": {
         "properties": {

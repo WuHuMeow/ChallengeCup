@@ -41,6 +41,8 @@ def validate_control_action(
             return None, f"set_phase_duration value must be positive: {duration!r}"
         return duration, None
     if action.action_type == "set_program":
+        if action.value is None:
+            return None, "set_program value must be non-empty"
         program = str(action.value).strip()
         if not program:
             return None, "set_program value must be non-empty"

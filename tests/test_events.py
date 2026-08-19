@@ -1,8 +1,11 @@
 """events.csv 事件日志测试（IB W3 Day 2）。"""
 import csv
 
+import pytest
+
 from algorithms.fixed_time import FixedTimeAlgorithm
 from core.types import ControlAction, Scene, SceneMeta
+from engine.events import EventLogger
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
 
@@ -41,3 +44,28 @@ def test_events_csv_lifecycle_and_actions(tmp_path):
     detail = next(r["detail"] for r in rows if r["type"] == "action_applied")
     assert rows[-1]["detail"] == "completed"
     assert "测试动作" in detail
+
+
+@pytest.mark.parametrize(
+    ("internal_name", "contract_name"),
+    [
+        ("fixed_time", "fixed_time"),
+        ("rule_adaptive", "actuated"),
+        ("ca_maxpressure", "ca_maxpressure"),
+    ],
+)
+def test_events_csv_algorithm_uses_external_contract_name(
+    tmp_path, internal_name, contract_name
+):
+    events = tmp_path / f"{internal_name}.csv"
+    logger = EventLogger(
+        events,
+        run_id="run-1",
+        intersection_id="1",
+        algorithm=internal_name,
+    )
+    logger.log(0, "run_start", "started", status="running")
+    logger.save()
+
+    rows = list(csv.DictReader(events.open(encoding="utf-8")))
+    assert rows[0]["algorithm"] == contract_name

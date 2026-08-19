@@ -26,6 +26,15 @@ ALGORITHM_FACTORIES = {
     "ca_maxpressure": CAMaxPressureAlgorithm,
 }
 
+TERMINAL_STATUSES = frozenset({
+    RunStatus.COMPLETED,
+    RunStatus.STOPPED,
+    RunStatus.ENDED_EARLY,
+    RunStatus.DISCONNECTED,
+    RunStatus.INTERRUPTED,
+    RunStatus.FAILED,
+})
+
 
 class RunService:
     """Run simulations through one worker to protect the global TraCI client."""
@@ -47,6 +56,50 @@ class RunService:
 
     def submit(self, request: RunRequest) -> RunResult:
         """Queue a validated request and return its isolated run identity."""
+        request, artifacts, stop_event, queued = self._prepare(request)
+        self._executor.submit(self._execute, request, artifacts, stop_event)
+        return queued
+
+    def run_sync(self, request: RunRequest) -> RunResult:
+        """Execute one request synchronously through the same internal path."""
+        request, artifacts, stop_event, _ = self._prepare(request)
+        return self._execute(request, artifacts, stop_event)
+
+    def get(self, run_id: str) -> RunResult | None:
+        with self._lock:
+            return self._records.get(run_id)
+
+    def stop(self, run_id: str) -> bool:
+        with self._lock:
+            result = self._records.get(run_id)
+            stop_event = self._stops.get(run_id)
+        if stop_event is None or result is None or result.status in TERMINAL_STATUSES:
+            return False
+        stop_event.set()
+        return True
+
+    def shutdown(self, wait: bool = True) -> None:
+        self._executor.shutdown(wait=wait)
+
+    def _create_artifacts(self, request: RunRequest) -> RunArtifacts:
+        root = request.output_root or self.output_root
+        for _ in range(5):
+            try:
+                return RunArtifacts.create(
+                    root,
+                    request.intersection_id,
+                    request.algorithm,
+                    request.flow_multiplier,
+                    request.seed,
+                )
+            except FileExistsError:
+                continue
+        raise FileExistsError("could not allocate a collision-free run directory")
+
+    def _prepare(
+        self,
+        request: RunRequest,
+    ) -> tuple[RunRequest, RunArtifacts, threading.Event, RunResult]:
         self._validate(request)
         artifacts = self._create_artifacts(request)
         stop_event = threading.Event()
@@ -59,41 +112,7 @@ class RunService:
         with self._lock:
             self._records[artifacts.run_id] = queued
             self._stops[artifacts.run_id] = stop_event
-        self._executor.submit(self._execute, request, artifacts, stop_event)
-        return queued
-
-    def run_sync(self, request: RunRequest) -> RunResult:
-        """Execute one request synchronously through the same internal path."""
-        self._validate(request)
-        artifacts = self._create_artifacts(request)
-        stop_event = threading.Event()
-        with self._lock:
-            self._stops[artifacts.run_id] = stop_event
-        return self._execute(request, artifacts, stop_event)
-
-    def get(self, run_id: str) -> RunResult | None:
-        with self._lock:
-            return self._records.get(run_id)
-
-    def stop(self, run_id: str) -> bool:
-        with self._lock:
-            stop_event = self._stops.get(run_id)
-        if stop_event is None:
-            return False
-        stop_event.set()
-        return True
-
-    def shutdown(self, wait: bool = True) -> None:
-        self._executor.shutdown(wait=wait)
-
-    def _create_artifacts(self, request: RunRequest) -> RunArtifacts:
-        return RunArtifacts.create(
-            request.output_root or self.output_root,
-            request.intersection_id,
-            request.algorithm,
-            request.flow_multiplier,
-            request.seed,
-        )
+        return request, artifacts, stop_event, queued
 
     def _execute(
         self,
@@ -134,6 +153,17 @@ class RunService:
                 state_channel=state_channel,
             )
             runner.run(request.steps, stop_event=stop_event)
+            if not artifacts.metadata.exists():
+                now = datetime.now(timezone.utc).isoformat()
+                artifacts.write_metadata(
+                    RunStatus.FAILED.value,
+                    "runner did not write run metadata",
+                    [],
+                    started_at=now,
+                    ended_at=now,
+                    sumo_version="unknown",
+                    requested_steps=request.steps,
+                )
         except Exception as exc:
             if not artifacts.metadata.exists():
                 now = datetime.now(timezone.utc).isoformat()
@@ -169,31 +199,4 @@ class RunService:
 
     @staticmethod
     def _validate(request: RunRequest) -> None:
-        try:
-            intersection = int(request.intersection_id)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("intersection_id must be an integer in 1..20") from exc
-        if not 1 <= intersection <= 20:
-            raise ValueError("intersection_id must be in 1..20")
-        if request.algorithm not in ALGORITHM_FACTORIES:
-            raise ValueError(f"unknown algorithm: {request.algorithm}")
-        if request.steps <= 0:
-            raise ValueError("steps must be > 0")
-        if request.flow_multiplier <= 0:
-            raise ValueError("flow_multiplier must be > 0")
-        if request.seed < 0:
-            raise ValueError("seed must be >= 0")
-        if request.edge_delay_steps < 0:
-            raise ValueError("edge_delay_steps must be >= 0")
-        if request.algorithm_params and request.algorithm != "ca_maxpressure":
-            raise ValueError("algorithm_params are supported only for ca_maxpressure")
-        allowed_params = {
-            "overflow_occupancy_threshold",
-            "prediction_weight",
-            "base_green",
-        }
-        unknown_params = set(request.algorithm_params) - allowed_params
-        if unknown_params:
-            raise ValueError(
-                f"unknown CA-MP parameters: {sorted(unknown_params)}"
-            )
+        request.__post_init__()

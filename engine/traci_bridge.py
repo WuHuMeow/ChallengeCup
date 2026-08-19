@@ -291,11 +291,7 @@ class TraCIBridge:
         )
         phase_obj = program.phases[current_phase]
         phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
-        elapsed = (
-            traci.trafficlight.getPhaseDuration(self.tls_id)
-            - traci.trafficlight.getNextSwitch(self.tls_id)
-            + traci.simulation.getTime()
-        )
+        elapsed = traci.trafficlight.getSpentDuration(self.tls_id)
 
         queues: List[QueueState] = []
         flows: dict[str, float] = {}

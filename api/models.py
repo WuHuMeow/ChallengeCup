@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from core.run_models import RunRequest, RunResult, VariantSpec
+from core.run_models import RunRequest, RunResult, RunStatus, VariantSpec
 from core.types import (
     ControlAction,
     JointState,
@@ -36,7 +36,7 @@ class VariantSpecModel(BaseModel):
 
 
 class RunRequestModel(BaseModel):
-    intersection_id: str
+    intersection_id: str = Field(pattern=r"^(?:[1-9]|1[0-9]|20)$")
     algorithm: Literal["fixed_time", "actuated", "ca_maxpressure"]
     steps: int = Field(default=36000, gt=0)
     flow_multiplier: float = Field(default=1.0, gt=0)
@@ -63,7 +63,7 @@ class RunRequestModel(BaseModel):
 
 class RunResultModel(BaseModel):
     run_id: str
-    status: str
+    status: RunStatus
     reason: str
     run_dir: str
     summary: dict[str, Any] | None = None
@@ -72,7 +72,7 @@ class RunResultModel(BaseModel):
     def from_domain(cls, result: RunResult) -> "RunResultModel":
         return cls(
             run_id=result.run_id,
-            status=result.status.value,
+            status=result.status,
             reason=result.reason,
             run_dir=str(result.run_dir),
             summary=result.summary,
@@ -81,8 +81,8 @@ class RunResultModel(BaseModel):
 
 class QueueStateModel(BaseModel):
     direction: str
-    queue_length: float
-    waiting_time: float
+    queue_length: float = Field(ge=0)
+    waiting_time: float = Field(ge=0)
     vehicle_count: int = Field(ge=0)
     capacity: float = Field(default=0.0, ge=0)
 
@@ -179,7 +179,7 @@ class ControlActionModel(BaseModel):
     tls_id: str
     action_type: str
     value: Any
-    reason: str
+    reason: str = ""
 
     @classmethod
     def from_domain(cls, action: ControlAction) -> "ControlActionModel":
