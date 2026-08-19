@@ -172,8 +172,12 @@ class SceneValidator:
                     lane_ids.append(lane_id)
                     edge_lanes[edge_id][index if index is not None else lane_id.rsplit("_", 1)[-1]] = lane_id
         tls = net.findall("tlLogic")
-        tls_ids = tuple(sorted(tls_id for tls_id in (tls_item.get("id") for tls_item in tls) if tls_id))
-        tls_set = set(tls_ids)
+        tls_by_id: dict[str, list[ET.Element]] = {}
+        for program in tls:
+            tls_id = program.get("id")
+            if tls_id:
+                tls_by_id.setdefault(tls_id, []).append(program)
+        tls_ids = tuple(sorted(tls_by_id))
         if not tls_ids:
             warnings.append("missing TLS program")
         for program in tls:
@@ -195,7 +199,8 @@ class SceneValidator:
             from_lane, to_lane = connection.get("fromLane"), connection.get("toLane")
             if tls_id is None:
                 continue
-            if tls_id not in tls_set:
+            programs = tls_by_id.get(tls_id)
+            if programs is None:
                 warnings.append(f"controlled connection references unknown TLS {tls_id}")
                 continue
             if (
@@ -205,6 +210,21 @@ class SceneValidator:
                 or to_lane not in edge_lanes[to_edge]
             ):
                 warnings.append("controlled movement has invalid incoming/outgoing lane reference")
+                continue
+            try:
+                link_index = int(connection.get("linkIndex", ""))
+            except ValueError:
+                warnings.append("controlled movement has invalid linkIndex")
+                continue
+            if link_index < 0:
+                warnings.append("controlled movement has invalid linkIndex")
+                continue
+            if any(
+                not (state := phase.get("state")) or link_index >= len(state)
+                for program in programs
+                for phase in program.findall("phase")
+            ):
+                warnings.append("controlled movement is not covered by every TLS phase state")
                 continue
             movements += 1
         if movements == 0:
@@ -234,34 +254,41 @@ class SceneValidator:
             for vtype in root.findall("vType")
             if vtype.get("id")
         }
-        if flow is not None:
-            for item in list(flow.findall("flow")) + list(flow.findall("vehicle")):
+        roots = tuple(candidate for candidate in (flow, route) if candidate is not None)
+        named_routes = {
+            route_element.get("id"): route_element
+            for root in roots
+            for route_element in root.findall(".//route")
+            if route_element.get("id")
+        }
+        for route_element in named_routes.values():
+            cls._validate_route_edges(
+                route_element.get("edges", ""), edges, connections, warnings
+            )
+        for root, source_name in ((flow, "flow"), (route, "route")):
+            if root is None:
+                continue
+            for item in (*root.findall(".//flow"), *root.findall(".//vehicle")):
                 item_type = item.get("type")
                 if item_type and item_type not in vtypes:
-                    warnings.append(f"flow references unknown vehicle type {item_type}")
-                for attr in ("from", "to"):
-                    edge = item.get(attr)
-                    if edge and edge not in edges:
-                        warnings.append(f"flow references unknown edge {edge}")
-        if route is not None:
-            named_routes = {
-                route_element.get("id"): route_element
-                for route_element in route.findall("route")
-                if route_element.get("id")
-            }
-            for vehicle in route.findall("vehicle"):
-                item_type = vehicle.get("type")
-                if item_type and item_type not in vtypes:
-                    warnings.append(f"route references unknown vehicle type {item_type}")
-                route_element = vehicle.find("route")
-                if route_element is not None:
-                    cls._validate_route_edges(route_element.get("edges", ""), edges, connections, warnings)
-                elif vehicle.get("route") not in named_routes:
                     warnings.append(
-                        f"vehicle references unknown named route {vehicle.get('route', '')}"
+                        f"{source_name} references unknown vehicle type {item_type}"
                     )
-            for route_element in route.findall("route"):
-                cls._validate_route_edges(route_element.get("edges", ""), edges, connections, warnings)
+                if source_name == "flow":
+                    for attr in ("from", "to"):
+                        edge = item.get(attr)
+                        if edge and edge not in edges:
+                            warnings.append(f"flow references unknown edge {edge}")
+                inline_route = item.find("route")
+                named_route = item.get("route")
+                if inline_route is not None:
+                    cls._validate_route_edges(
+                        inline_route.get("edges", ""), edges, connections, warnings
+                    )
+                elif named_route and named_route not in named_routes:
+                    warnings.append(
+                        f"{source_name} references unknown named route {named_route}"
+                    )
 
     @staticmethod
     def _validate_route_edges(raw_edges: str, edges: set[str], connections: set[tuple[str, str]], warnings: list[str]) -> None:
@@ -314,5 +341,5 @@ class SceneValidator:
         try:
             if not parse_timing_excel(path):
                 warnings.append("timing workbook has no timing plans")
-        except (OSError, ValueError, ImportError, IndexError, KeyError) as exc:
+        except Exception as exc:
             warnings.append(f"invalid timing workbook: {exc}")

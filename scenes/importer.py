@@ -31,18 +31,30 @@ class SceneImporter:
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.copytree(source, destination)
+            package_manifest = SceneManifest(
+                scene_id=manifest.scene_id,
+                source_files=self._package_source_files(manifest, source),
+                sha256=manifest.sha256,
+                step_length=manifest.step_length,
+                tls_ids=manifest.tls_ids,
+                lane_ids=manifest.lane_ids,
+                movement_count=manifest.movement_count,
+                validation_status=manifest.validation_status,
+                warnings=manifest.warnings,
+            )
             (destination / "manifest.json").write_text(
                 json.dumps(
                     {
-                        "scene_id": manifest.scene_id,
-                        "source_files": dict(manifest.source_files),
-                        "sha256": dict(manifest.sha256),
-                        "step_length": manifest.step_length,
-                        "tls_ids": list(manifest.tls_ids),
-                        "lane_ids": list(manifest.lane_ids),
-                        "movement_count": manifest.movement_count,
-                        "validation_status": manifest.validation_status,
-                        "warnings": list(manifest.warnings),
+                        "scene_id": package_manifest.scene_id,
+                        "source_files": dict(package_manifest.source_files),
+                        "sha256": dict(package_manifest.sha256),
+                        "step_length": package_manifest.step_length,
+                        "tls_ids": list(package_manifest.tls_ids),
+                        "lane_ids": list(package_manifest.lane_ids),
+                        "movement_count": package_manifest.movement_count,
+                        "validation_status": package_manifest.validation_status,
+                        "warnings": list(package_manifest.warnings),
+                        "source_provenance": dict(manifest.source_files),
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -54,4 +66,18 @@ class SceneImporter:
             if destination.exists():
                 shutil.rmtree(destination)
             raise
-        return manifest
+        return package_manifest
+
+    def _package_source_files(
+        self, manifest: SceneManifest, source_root: Path
+    ) -> dict[str, str]:
+        package_paths: dict[str, str] = {}
+        for key, provenance_path in manifest.source_files.items():
+            provenance = Path(provenance_path)
+            source_file = (
+                provenance
+                if provenance.is_absolute()
+                else self.validator.repository_root / provenance
+            )
+            package_paths[key] = source_file.resolve().relative_to(source_root).as_posix()
+        return package_paths
