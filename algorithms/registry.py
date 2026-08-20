@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from algorithms.base import BaseControlAlgorithm
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.capacity_aware_max_pressure import CapacityAwareMaxPressureAlgorithm
 from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
@@ -86,7 +86,7 @@ def _build_registry() -> AlgorithmRegistry:
         AlgorithmSpec(
             "capacity_aware_maxpressure",
             "Capacity-Aware MaxPressure",
-            CAMaxPressureAlgorithm,
+            CapacityAwareMaxPressureAlgorithm,
             True,
             ("ca_maxpressure",),
         )

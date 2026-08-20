@@ -26,7 +26,11 @@ class CloudPolicy:
         self.alpha: float = cfg.get("ewma_alpha", 0.3)
         self.horizon: int = cfg.get("prediction_horizon", 300)
         self.update_interval: int = cfg.get("cloud_update_interval", 600)
+        self.configured_prediction_weight: float = float(
+            cfg.get("prediction_weight", 0.15)
+        )
         self._prev_predicted: dict[str, float] = {}
+        self._prev_hourly_flow: dict[str, float] = {}
         self._last_params: Optional[dict] = None
         self._last_dispatch_step: int = -10**9
 
@@ -55,10 +59,15 @@ class CloudPolicy:
         """EWMA 流量预测：predicted(t+1) = α × observed(t) + (1-α) × predicted(t)。"""
         predicted: dict[str, float] = {}
         for direction, observed in state.flows.items():
-            prev = self._prev_predicted.get(direction, observed)
-            predicted[direction] = self.alpha * observed + (1 - self.alpha) * prev
+            prev = self._prev_hourly_flow.get(direction, observed)
+            hourly_flow = self.alpha * observed + (1 - self.alpha) * prev
+            predicted[direction] = hourly_flow * self.horizon / 3600.0
 
         self._prev_predicted = predicted
+        self._prev_hourly_flow = {
+            direction: vehicles * 3600.0 / self.horizon
+            for direction, vehicles in predicted.items()
+        }
 
         return PredictionResult(
             horizon_steps=self.horizon,
@@ -117,5 +126,6 @@ class CloudPolicy:
     def reset(self) -> None:
         """重置预测状态，用于新场景或重复实验。"""
         self._prev_predicted = {}
+        self._prev_hourly_flow = {}
         self._last_params = None
         self._last_dispatch_step = -10**9

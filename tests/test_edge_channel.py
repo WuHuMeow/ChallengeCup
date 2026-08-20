@@ -1,6 +1,6 @@
-"""EdgeChannel V2X 消息过滤与延迟测试（IB W2，PDF 加分项）。"""
+"""EdgeChannel V2X message envelope, expiry and direction tests."""
 from core.types import JointState, QueueState
-from engine.edge_channel import EdgeChannel
+from engine.edge_channel import EdgeChannel, EdgeMessage
 
 
 def _state(step: int, directions=("north", "south")) -> JointState:
@@ -13,30 +13,46 @@ def _state(step: int, directions=("north", "south")) -> JointState:
     )
 
 
-def test_one_step_delay():
-    ch = EdgeChannel(delay_steps=1)
-    ch.send(_state(0))
-    assert ch.receive() is None  # 延迟未满
-    ch.send(_state(1))
-    got = ch.receive()
-    assert got is not None and got.step == 0  # 收到 1 步前的消息
+def _message(step: int, directions=("north", "south"), expires_at: float = 30.0):
+    return EdgeMessage(
+        run_id="run-42",
+        simulation_time=float(step),
+        sent_at=float(step),
+        expires_at=expires_at,
+        payload_version="joint-state.v1",
+        payload=_state(step, directions),
+    )
 
 
-def test_zero_delay_passthrough():
-    ch = EdgeChannel(delay_steps=0)
-    ch.send(_state(5))
-    assert ch.receive().step == 5
+def test_message_sent_at_simulation_time_10_with_delay_2_arrives_at_12():
+    """Changing release timing from simulation time plus delay must fail this contract."""
+    ch = EdgeChannel(delay_seconds=2.0)
+    ch.send(_message(10))
+
+    assert ch.receive(now=11.9) is None
+    got = ch.receive(now=12.0)
+    assert got is not None and got.payload.step == 10
+    assert (got.run_id, got.simulation_time, got.sent_at, got.expires_at) == (
+        "run-42", 10.0, 10.0, 30.0,
+    )
+    assert got.payload_version == "joint-state.v1"
 
 
-def test_direction_filter():
-    ch = EdgeChannel(delay_steps=0, allowed_directions=["north"])
-    ch.send(_state(0, directions=("north", "south")))
-    got = ch.receive()
-    assert [q.direction for q in got.queues] == ["north"]
-    assert list(got.flows.keys()) == ["north"]
+def test_expired_message_is_dropped():
+    """Delivering an expired cloud state would allow stale traffic control."""
+    ch = EdgeChannel(delay_seconds=0.0)
+    ch.send(_message(10, expires_at=11.0))
+
+    assert ch.receive(now=11.0) is None
+    assert [event.event_type for event in ch.events] == ["message_expired"]
 
 
-def test_no_filter_keeps_all():
-    ch = EdgeChannel(delay_steps=0)
-    ch.send(_state(0))
-    assert len(ch.receive().queues) == 2
+def test_disallowed_direction_is_rejected_with_an_event_record():
+    """Silently filtering a forbidden direction would hide a channel-contract violation."""
+    ch = EdgeChannel(delay_seconds=0.0, allowed_directions=["north"])
+    ch.send(_message(10, directions=("north", "south")))
+
+    assert ch.receive(now=10.0) is None
+    assert [(event.event_type, event.detail) for event in ch.events] == [
+        ("message_rejected", "disallowed_direction=south"),
+    ]

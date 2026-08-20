@@ -15,7 +15,7 @@ from core.run_models import RunStatus
 from core.types import ControlAction, SafetyEvent, Scene
 from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
-from engine.edge_channel import EdgeChannel
+from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.events import EventLogger
 from engine.safety import SafetyObservationCollector
 from engine.traci_bridge import TraCIBridge, traci
@@ -83,6 +83,9 @@ class SimulationRunner:
         self._terminal_reason = ""
         self._sumo_version_value = "unknown"
         self._last_simulation_time = 0.0
+        self._channel_run_id = (
+            artifacts.run_id if artifacts is not None else f"runner-{id(self)}"
+        )
         self.safety_collector = SafetyObservationCollector(
             artifacts.run_id if artifacts is not None else ""
         )
@@ -262,6 +265,7 @@ class SimulationRunner:
                             "movement_capacity_inputs",
                             None,
                         ),
+                        algorithm_manifest=self.algorithm.manifest,
                     )
                 except Exception as exc:
                     cleanup_errors.append(exc)
@@ -279,8 +283,21 @@ class SimulationRunner:
             raw_state = self.bridge.get_state()
             control_state = raw_state
             if self.state_channel is not None:
-                self.state_channel.send(raw_state)
-                control_state = self.state_channel.receive()
+                simulation_time = float(raw_state.timestamp)
+                self.state_channel.send(EdgeMessage(
+                    run_id=self._channel_run_id,
+                    simulation_time=simulation_time,
+                    sent_at=simulation_time,
+                    expires_at=simulation_time + 60.0,
+                    payload_version="joint-state.v1",
+                    payload=raw_state,
+                ))
+                message = self.state_channel.receive(now=simulation_time)
+                control_state = message.payload if message is not None else None
+                if self.event_logger:
+                    for event in self.state_channel.events:
+                        self.event_logger.log(step, event.event_type, event.detail)
+                    self.state_channel.events.clear()
             if control_state is None:
                 actions: List[ControlAction] = []
                 if self.event_logger:

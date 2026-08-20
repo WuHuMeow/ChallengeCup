@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.capacity_aware_max_pressure import CapacityAwareMaxPressureAlgorithm
 from core.types import ControlAction, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel
@@ -20,6 +21,7 @@ _VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" 
 class CountingAlgorithm(FixedTimeAlgorithm):
     def __init__(self):
         self.steps: list[int] = []
+        self.resolved_timing_plan = None
 
     def step(self, state):
         self.steps.append(state.step)
@@ -47,12 +49,29 @@ def test_delayed_channel_waits_without_stopping_simulation(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
     runner = SimulationRunner(
         make_scene(), algorithm, bridge=MockBridge(), artifacts=artifacts,
-        state_channel=EdgeChannel(delay_steps=2),
+        state_channel=EdgeChannel(delay_seconds=0.2),
     )
     runner.run(5)
     assert algorithm.steps == [0, 1, 2]
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
     assert [row["type"] for row in events].count("channel_wait") == 2
+
+
+def test_runner_consumes_an_edge_message_before_calling_the_algorithm(tmp_path):
+    """Removing the envelope adapter would make EdgeChannel reject the bare JointState."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(),
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.0),
+    )
+
+    runner.run(2)
+
+    assert algorithm.steps == [0, 1]
 
 
 def test_successful_run_writes_completed_metadata(tmp_path):
@@ -66,6 +85,22 @@ def test_successful_run_writes_completed_metadata(tmp_path):
     assert payload["started_at"].endswith("+00:00")
     assert payload["ended_at"].endswith("+00:00")
     assert payload["sumo_version"]
+
+
+def test_capacity_aware_run_metadata_records_the_frozen_prediction_manifest(tmp_path):
+    """Dropping algorithm provenance would leave prediction units unauditable in a real run."""
+    artifacts = RunArtifacts.create(tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42)
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(),
+        bridge=MockBridge(),
+        artifacts=artifacts,
+    ).run(1)
+
+    manifest = json.loads(artifacts.metadata.read_text(encoding="utf-8"))["algorithm_manifest"]
+    assert manifest["prediction_enabled"] is False
+    assert manifest["horizon_seconds"] == 300.0
+    assert manifest["prediction_weight"] == 0.15
 
 
 class _StartRecordingBridge(MockBridge):

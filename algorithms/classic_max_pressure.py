@@ -25,14 +25,7 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
         ]
         if not green_phases:
             return []
-        pressures = {
-            phase.phase_index: sum(
-                movement.saturation_rate
-                * (movement.queue_vehicles - movement.downstream_queue_vehicles)
-                for movement in phase.movements
-            )
-            for phase in green_phases
-        }
+        pressures = self.score_breakdown(state)
         target = max(
             green_phases,
             key=lambda phase: (
@@ -70,6 +63,18 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
                 reason=f"classic_maxpressure target={target} pressure={pressures[target]:g}",
             )
         ]
+
+    def score_breakdown(self, state: JointState) -> dict[int, float]:
+        """Return the original unnormalised movement pressure for each green phase."""
+        return {
+            phase.phase_index: sum(
+                movement.saturation_rate
+                * (movement.queue_vehicles - movement.downstream_queue_vehicles)
+                for movement in phase.movements
+            )
+            for phase in state.phase_movements
+            if any(signal in phase.signal_state for signal in "Gg")
+        }
 
     def reset(self) -> None:
         self.current_target_phase = None

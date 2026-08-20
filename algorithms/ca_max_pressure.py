@@ -1,4 +1,9 @@
-"""Phase-aware Capacity-Aware MaxPressure (CA-MP) control."""
+"""Legacy phase-state CA-MP controller retained for compatibility.
+
+The registered capacity-aware algorithm uses the movement-level layered
+ablations in ``capacity_aware_max_pressure``. This module remains only for
+older callers that provide ``PhaseTrafficState`` rather than movement state.
+"""
 
 from __future__ import annotations
 

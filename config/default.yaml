@@ -60,6 +60,8 @@ algorithms:
     queue_threshold: 5
 
   ca_maxpressure:
+    # Prediction is an M4 ablation and remains off unless explicitly selected.
+    prediction_enabled: false
     # 溢出门控阈值：进口道占用率超过此值时强制放行
     overflow_occupancy_threshold: 0.9
     # 云端下发参数默认值
