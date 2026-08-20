@@ -82,7 +82,7 @@ def test_algorithm_endpoint_exposes_canonical_registry(client):
     ]
     assert [item["key"] for item in payload["optional"]] == ["actuated"]
     classic = payload["formal"][1]
-    assert classic["available"] is False
+    assert classic["available"] is True
     assert "aliases" not in classic
 
 

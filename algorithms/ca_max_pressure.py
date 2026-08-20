@@ -291,3 +291,14 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
     @property
     def name(self) -> str:
         return "capacity_aware_maxpressure"
+
+    @property
+    def manifest(self) -> dict[str, object]:
+        payload = super().manifest
+        payload["enhancements"] = (
+            "capacity_normalization",
+            "spillback_gating",
+            "cloud_prediction",
+            "dynamic_green",
+        )
+        return payload

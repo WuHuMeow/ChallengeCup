@@ -7,6 +7,7 @@ from typing import Callable
 
 from algorithms.base import BaseControlAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 
@@ -67,12 +68,6 @@ class AlgorithmRegistry:
         self._read_only = True
 
 
-def _classic_unavailable_factory(**_: object) -> BaseControlAlgorithm:
-    raise AlgorithmUnavailableError(
-        "classic_maxpressure is registered but unavailable until Task 9"
-    )
-
-
 def _build_registry() -> AlgorithmRegistry:
     registry = AlgorithmRegistry()
     registry.register(
@@ -82,11 +77,9 @@ def _build_registry() -> AlgorithmRegistry:
         AlgorithmSpec(
             "classic_maxpressure",
             "Classic MaxPressure",
-            _classic_unavailable_factory,
+            ClassicMaxPressureAlgorithm,
             True,
             (),
-            available=False,
-            unavailable_reason="Independent implementation is delivered by Task 9.",
         )
     )
     registry.register(

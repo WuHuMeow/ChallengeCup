@@ -8,6 +8,9 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from core.types import Scene, SceneMeta
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
+
+
+_VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
 from engine.traci_bridge import TraCIBridge, traci
 
 
@@ -164,7 +167,7 @@ class _FatalStateBridge(MockBridge):
 def _scene() -> Scene:
     meta = SceneMeta(
         intersection_id="1", name="t",
-        sumo_net="x.net.xml", sumo_rou="x.rou.xml", sumo_flow="x.flow.xml",
+        sumo_net=_VALID_NET, sumo_rou="x.rou.xml", sumo_flow="x.flow.xml",
         sumo_turn="x.turn.xml", sumo_cfg="x.sumocfg", timing_xlsx="x.xlsx",
     )
     return Scene(meta=meta)

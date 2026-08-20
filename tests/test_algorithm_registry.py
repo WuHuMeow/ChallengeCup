@@ -1,11 +1,11 @@
 import pytest
 
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.registry import (
     AlgorithmRegistry,
     AlgorithmSpec,
-    AlgorithmUnavailableError,
     get_algorithm_registry,
 )
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
@@ -37,16 +37,18 @@ def test_built_in_factories_keep_distinct_algorithm_identities():
         CAMaxPressureAlgorithm,
     )
     assert isinstance(registry.get("actuated").factory(), RuleAdaptiveAlgorithm)
-    with pytest.raises(AlgorithmUnavailableError, match="Task 9"):
-        registry.get("classic_maxpressure").factory()
+    assert isinstance(
+        registry.get("classic_maxpressure").factory(),
+        ClassicMaxPressureAlgorithm,
+    )
 
 
-def test_classic_is_explicitly_unavailable_until_implemented():
+def test_classic_is_explicitly_available_as_an_independent_baseline():
     classic = get_algorithm_registry().get("classic_maxpressure")
 
     assert classic.formal is True
-    assert classic.available is False
-    assert classic.unavailable_reason
+    assert classic.available is True
+    assert classic.unavailable_reason == ""
 
 
 def test_registry_rejects_duplicate_aliases():

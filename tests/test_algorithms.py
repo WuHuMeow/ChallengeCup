@@ -4,6 +4,7 @@ from algorithms.base import BaseControlAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
+from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from core.types import (
     ControlAction,
     JointState,
@@ -50,6 +51,7 @@ def test_all_algorithms_implement_interface():
     algorithms: List[BaseControlAlgorithm] = [
         FixedTimeAlgorithm(),
         RuleAdaptiveAlgorithm(),
+        ClassicMaxPressureAlgorithm(),
         CAMaxPressureAlgorithm(),
     ]
     for algo in algorithms:
@@ -61,7 +63,6 @@ def test_all_algorithms_implement_interface():
 
 def test_fixed_time_returns_list():
     algo = FixedTimeAlgorithm()
-    algo.init(_make_scene())
     result = algo.step(_make_state())
     assert isinstance(result, list)
 
@@ -90,11 +91,13 @@ def test_algorithm_names_unique():
     names = [
         FixedTimeAlgorithm().name,
         RuleAdaptiveAlgorithm().name,
+        ClassicMaxPressureAlgorithm().name,
         CAMaxPressureAlgorithm().name,
     ]
     assert names == [
         "fixed_time",
         "actuated",
+        "classic_maxpressure",
         "capacity_aware_maxpressure",
     ]
 

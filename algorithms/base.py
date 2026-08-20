@@ -5,6 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from core.types import ControlAction, JointState, Scene
 
@@ -38,3 +39,8 @@ class BaseControlAlgorithm(ABC):
     def name(self) -> str:
         """算法名称，用于实验报告和对比。"""
         ...
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        """Return immutable-at-read-time algorithm provenance for run metadata."""
+        return {"name": self.name}
