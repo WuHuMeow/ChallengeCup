@@ -102,6 +102,7 @@ def test_event_logger_writes_machine_readable_safety_fields(tmp_path):
     logger.log_safety(
         SafetyEvent(
             run_id="run-1",
+            step=12,
             simulation_seconds=1.25,
             event_type="collision",
             entity_ids=("veh-a", "veh-b"),
@@ -113,6 +114,7 @@ def test_event_logger_writes_machine_readable_safety_fields(tmp_path):
 
     row = next(csv.DictReader(events.open(encoding="utf-8")))
     assert row["type"] == "collision"
+    assert row["step"] == "12"
     assert row["simulation_seconds"] == "1.25"
     assert row["entity_ids"] == '["veh-a", "veh-b"]'
     assert row["source"] == "sumo_collision"
@@ -123,6 +125,7 @@ def test_event_logger_rejects_safety_event_from_another_run(tmp_path):
     logger = EventLogger(tmp_path / "events.csv", run_id="run-1")
     event = SafetyEvent(
         run_id="run-2",
+        step=10,
         simulation_seconds=1.0,
         event_type="teleport",
         entity_ids=("veh-a",),

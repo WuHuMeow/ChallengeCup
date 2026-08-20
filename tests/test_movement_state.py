@@ -64,8 +64,8 @@ def test_controlled_links_build_phase_movements_with_positive_capacities():
     assert movement.incoming_capacity == 10.0
     assert movement.downstream_capacity == 8.0
     assert movement.downstream_occupancy == 0.25
-    assert movement.turn_ratio == 0.6
-    assert movement.saturation_rate == pytest.approx(0.3)
+    assert movement.turn_ratio == 1.0
+    assert movement.saturation_rate == pytest.approx(0.5)
 
 
 def test_builder_caches_topology_but_refreshes_measurements():
@@ -109,3 +109,37 @@ def test_uniform_turn_ratio_counts_unique_movements_across_phases():
     assert phases[0].movements[0].turn_ratio == 0.5
     assert phases[1].movements[0].turn_ratio == 0.5
     assert phases[2].movements[0].turn_ratio == 0.5
+
+
+def test_configured_turn_ratios_are_normalized_per_incoming_lane():
+    bridge = FakeMovementBridge()
+    bridge.controlled_links = tuple(
+        (("in_0", outgoing, f":via_{index}"),)
+        for index, outgoing in enumerate(
+            ("out_a_0", "out_a_1", "out_b_0", "out_c_0")
+        )
+    )
+    bridge.queues.update({"out_a_1": 0.0, "out_c_0": 0.0})
+    bridge.program = SimpleNamespace(
+        phases=(SimpleNamespace(state="GGGG", duration=30.0),)
+    )
+    raw = {
+        "out_a_0": 0.3,
+        "out_a_1": 0.4,
+        "out_b_0": 0.4,
+        "out_c_0": 0.3,
+    }
+    bridge.get_turn_ratio = lambda incoming, outgoing: raw[outgoing]
+    bridge.get_lane_length = lambda lane: 75.0
+    bridge.get_lane_occupancy = lambda lane: 0.0
+
+    phase = MovementStateBuilder.from_traci(bridge, "tls0")[0]
+    ratios = {movement.key.outgoing_lane: movement.turn_ratio for movement in phase.movements}
+
+    assert sum(ratios.values()) == pytest.approx(1.0)
+    assert ratios == {
+        "out_a_0": pytest.approx(3 / 14),
+        "out_a_1": pytest.approx(4 / 14),
+        "out_b_0": pytest.approx(4 / 14),
+        "out_c_0": pytest.approx(3 / 14),
+    }

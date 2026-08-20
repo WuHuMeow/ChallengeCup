@@ -72,6 +72,7 @@ def test_is_complete_requires_every_nonempty_artifact(tmp_path):
         "tripinfo.xml",
         "stats.xml",
         "traj.xml",
+        "collisions.xml",
         "summary.json",
     )
     for name in required:
@@ -111,6 +112,7 @@ def _write_completed_matrix_run(
         "simulation_log.csv",
         "tripinfo.xml",
         "traj.xml",
+        "collisions.xml",
         "summary.json",
     ):
         (run_dir / name).write_text("x", encoding="utf-8")

@@ -131,6 +131,9 @@ class SimulationRunner:
 
         try:
             self.bridge.start()
+            self.safety_collector.set_conflict_definitions(
+                getattr(self.bridge, "conflict_definitions", ())
+            )
             self._sumo_version_value = self._sumo_version()
             self.algorithm.init(self.scene)
             if self.event_logger:
@@ -201,6 +204,7 @@ class SimulationRunner:
                     self.artifacts.tripinfo,
                     self.artifacts.stats,
                     self.artifacts.trajectory,
+                    self.artifacts.collisions,
                 )
                 if all(
                     path.exists() and path.stat().st_size > 0
@@ -233,6 +237,7 @@ class SimulationRunner:
                     self.artifacts.tripinfo,
                     self.artifacts.stats,
                     self.artifacts.trajectory,
+                    self.artifacts.collisions,
                     self.artifacts.queues,
                     self.artifacts.summary,
                 ]

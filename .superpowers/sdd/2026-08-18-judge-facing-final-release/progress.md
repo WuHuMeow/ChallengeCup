@@ -296,3 +296,31 @@
 - Task 8 自审修复第 1 轮：真实 fixed_time 冒烟的 4 条红灯记录均发生在相位同一步由红转绿，确认为误报；另发现最后一个仿真步的安全状态未刷新。回归 RED `3 failed, 18 passed`，修复前后相位双重校验与终态补采后为 `21 passed`。
 - Task 8 修复后真实冒烟：路口 1、fixed_time、100 步、seed 42 完成；run_id `67e3a3add44f`，`red_light=0`，急减速和潜在冲突观察事件继续落盘。
 - Task 8 自审修复验证：扩展聚焦 `70 passed in 2.15s`；全量 `392 passed in 89.63s`；系统 Python 3.14.7 compileall 与 diff check 均为 exit 0；保护输入保持不变。
+
+## Task 8 review fix round 1
+
+- 状态：独立审查未通过，修复第 1 轮进行中；保持 Task 8，不开始 Task 9。
+- 审查结论：0 项 Critical、7 项 Important、2 项 Minor；其中未完成车辆 raw output 分离按计划属于 Task 13，本轮不越界修改，其余 8 项均为 Task 8 开放问题。
+- 开放 1：按每条 incoming lane 对唯一合法 movement 的 turn ratio 归一化；官方场景 19 的 `-E2.41_0` 当前比例和为 1.4，且其余场景也存在比例和不为 1。
+- 开放 2：为动作拒绝增加结构化 reason code，不能把 TLS ID/索引等普通参数错误记成非法相位转换；同时从真实前后信号状态独立检测绿到绿非法跳转。
+- 开放 3：红灯检测排除黄色，并使用 `speed * elapsed + margin` 的跨线窗口覆盖 1.0 秒和 0.1 秒步长。
+- 开放 4：从 `.net.xml` 的 junction `request/foes` 建立冲突 movement 对，并对连续 potential-conflict 按 episode 去重。
+- 开放 5：增加 run-scoped `collisions.xml`，使用 `traci.simulation.getCollisions()` 保留 collider/victim 配对。
+- 开放 6：区分 teleport starting/ending，同一车辆同一 episode 只计一次。
+- 开放 7：`SafetyEvent` 保存真实 simulation step，避免 0.1 秒场景的 `1.2 s` 被错误记录为 step 1。
+- 开放 8：成功 `set_program` 后原子重建 movement builder，避免 program 切换后拓扑过期。
+- Task 8 fix round 1/5：严格执行逐项 TDD RED/GREEN；修复后必须重新运行计划聚焦、扩展聚焦、全量测试、20 场景 movement 预检、100 步真实 RunService 冒烟、Python 3.14.7 compileall、保护输入校验和原审查者 scoped 复审。
+- TDD RED 1：movement 比例、碰撞配对/原始文件、teleport episode、结构化拒绝原因、真实 step、黄灯/动态跨线窗口、foes 冲突去重和 program 重建共 `33 failed, 29 passed`。
+- TDD GREEN 1：实现首轮修复后同组测试为 `62 passed`；扩展聚焦为 `114 passed`。
+- 全量回归 1：`399 passed, 4 failed`；4 项均为旧实验完成性夹具未生成新增必需的 `collisions.xml`，更新完整产物夹具后相关回归 `32 passed`。
+- TDD RED/GREEN 2：为无 internal-link 网络、无几何交点的 foes、真实合法 phase 图、当前 phase 查询失败、program 重建回滚及切换后观测边界增加行为测试；失败均按预期复现，最小修复后的边界回归通过。
+- 官方 `.net.xml` 冲突预检：20/20 场景均从 junction `request/foes` 生成非空冲突定义；路口 11 无 internal links，使用进口停止线到出口起点的只读几何回退。
+- 2026-08-20 接续验证：计划聚焦 `58 passed in 1.75s`；扩展聚焦 `119 passed in 3.01s`；全量 `408 passed in 77.33s`。
+- 2026-08-20 加严 20 场景预检在场景 13 发现 request/foes 到 TLS link 的索引映射缺口：`junction/request@index` 按 `intLanes` 编号，而该场景受控 `connection@linkIndex` 为 `0,2..9`，当前实现错误假定两者恒等，导致涉及实际 linkIndex 9 的 5 个 foes 对未生成并可能错配其他定义。
+- Task 8 fix round 1 补充 RED/GREEN：先用场景 13 风格网络夹具证明 request 内部车道索引必须映射回受控 linkIndex，再做最小修复；完成后重跑聚焦、全量、20 场景全部可映射 foes 覆盖、真实 RunService 冒烟及保护输入校验。
+- Task 8 request/linkIndex TDD：新增两段内部连接链且 request 索引 `0,1` 对应受控 linkIndex `7,9` 的行为夹具；修复前 `1 failed, 30 deselected`，最小映射修复后 `1 passed, 30 deselected`，相关聚焦 `55 passed`。
+- Task 8 控制器最终验证：计划聚焦 `59 passed in 1.73s`；扩展聚焦 `120 passed in 2.98s`；全量 `409 passed in 86.28s`。
+- Task 8 真实 20 场景 TraCI 预检：20/20 均启动成功，全部 movement 容量为正、每条 incoming lane 的 turn ratio 和为 1、每场景冲突定义非空；独立映射的 797 个 request/foes 对与 797 个 `ConflictDefinition` 完全一致，所有 SUMO 输出均重定向到 `.t8-controller-preflight-final` 的 run-scoped 目录。
+- Task 8 真实 RunService 冒烟：路口 1、`fixed_time`、100 步、seed 42，run_id `a9aaca9ee48b`，状态 `completed`，终态 100.0 秒；`collisions.xml` 2064 bytes、`events.csv` 4730 bytes，安全事件 step 均与真实步对应，`red_light=0`、`illegal_transition=0`，急减速 27、潜在冲突 9 作为观察事件保留。
+- Task 8 最终兼容/保护校验：系统 Python 3.14.7 `compileall` exit 0；`git diff --check` exit 0；`赛题资料.7z` SHA-256 仍为 `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`；官方数据仍为 163 个 Git 跟踪文件且保护路径无 diff。
+- Task 8 fix round 1 状态：实现与控制器验证完成，等待提交及原审查者 scoped 复审；保持 Task 8，不开始 Task 9。

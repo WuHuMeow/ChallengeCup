@@ -6,7 +6,12 @@ from pathlib import Path
 from uuid import uuid4
 
 
-RAW_SUMO_OUTPUT_NAMES = ("tripinfo.xml", "stats.xml", "traj.xml")
+RAW_SUMO_OUTPUT_NAMES = (
+    "tripinfo.xml",
+    "stats.xml",
+    "traj.xml",
+    "collisions.xml",
+)
 STABLE_OUTPUT_NAMES = (
     "metrics.csv",
     "simulation_log.csv",
@@ -97,6 +102,10 @@ class RunArtifacts:
     @property
     def trajectory(self) -> Path:
         return self.run_dir / "traj.xml"
+
+    @property
+    def collisions(self) -> Path:
+        return self.run_dir / "collisions.xml"
 
     @property
     def queues(self) -> Path:

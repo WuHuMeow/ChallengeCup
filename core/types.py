@@ -176,6 +176,27 @@ class SafetyVehicleState:
             _require_number("distance_to_tls_m", self.distance_to_tls_m, minimum=0)
 
 
+@dataclass(frozen=True)
+class CollisionRecord:
+    """One raw SUMO collision with collider/victim roles preserved."""
+
+    collider_id: str
+    victim_id: str
+    collider_type: str = ""
+    victim_type: str = ""
+    collider_speed_mps: float | None = None
+    victim_speed_mps: float | None = None
+    collision_type: str = ""
+    lane_id: str = ""
+    position_m: float | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("collider_speed_mps", "victim_speed_mps", "position_m"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_number(name, value, minimum=0)
+
+
 @dataclass
 class JointState:
     """云-边-端协同的联合状态，作为算法 step() 的输入。
@@ -196,8 +217,12 @@ class JointState:
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
     phase_states: List[PhaseTrafficState] = field(default_factory=list)
     phase_movements: tuple[PhaseMovementState, ...] = ()
+    legal_phase_transitions: tuple[tuple[int, int], ...] = ()
     safety_vehicles: tuple[SafetyVehicleState, ...] = ()
+    collisions: tuple[CollisionRecord, ...] = ()
     collision_vehicle_ids: tuple[str, ...] = ()
+    starting_teleport_vehicle_ids: tuple[str, ...] = ()
+    ending_teleport_vehicle_ids: tuple[str, ...] = ()
     teleport_vehicle_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -221,6 +246,26 @@ class JointState:
             )
         self.phase_movements = phase_movements
         try:
+            legal_phase_transitions = tuple(
+                tuple(transition) for transition in self.legal_phase_transitions
+            )
+        except TypeError as exc:
+            raise ValueError("legal_phase_transitions must be iterable") from exc
+        if not all(
+            len(transition) == 2
+            and all(
+                isinstance(phase_index, int)
+                and not isinstance(phase_index, bool)
+                and phase_index >= 0
+                for phase_index in transition
+            )
+            for transition in legal_phase_transitions
+        ):
+            raise ValueError(
+                "legal_phase_transitions must contain non-negative integer pairs"
+            )
+        self.legal_phase_transitions = legal_phase_transitions
+        try:
             safety_vehicles = tuple(self.safety_vehicles)
         except TypeError as exc:
             raise ValueError("safety_vehicles must be iterable") from exc
@@ -232,7 +277,18 @@ class JointState:
                 "safety_vehicles must contain only SafetyVehicleState values"
             )
         self.safety_vehicles = safety_vehicles
+        try:
+            collisions = tuple(self.collisions)
+        except TypeError as exc:
+            raise ValueError("collisions must be iterable") from exc
+        if not all(isinstance(collision, CollisionRecord) for collision in collisions):
+            raise ValueError("collisions must contain only CollisionRecord values")
+        self.collisions = collisions
         self.collision_vehicle_ids = tuple(self.collision_vehicle_ids)
+        self.starting_teleport_vehicle_ids = tuple(
+            self.starting_teleport_vehicle_ids
+        )
+        self.ending_teleport_vehicle_ids = tuple(self.ending_teleport_vehicle_ids)
         self.teleport_vehicle_ids = tuple(self.teleport_vehicle_ids)
 
 
@@ -259,6 +315,7 @@ class ActionResult:
     action: ControlAction
     accepted: bool
     detail: str
+    reason_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -266,6 +323,7 @@ class SafetyEvent:
     """One run-scoped observed or derived safety event."""
 
     run_id: str
+    step: int
     simulation_seconds: float
     event_type: str
     entity_ids: tuple[str, ...]
@@ -274,6 +332,7 @@ class SafetyEvent:
     detail: str = ""
 
     def __post_init__(self) -> None:
+        _require_number("step", self.step, minimum=0)
         _require_number("simulation_seconds", self.simulation_seconds, minimum=0)
         _require_number("confidence", self.confidence, minimum=0, maximum=1)
         object.__setattr__(self, "entity_ids", tuple(self.entity_ids))

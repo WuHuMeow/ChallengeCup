@@ -49,21 +49,12 @@ class MovementStateBuilder:
 
     def snapshot(self) -> tuple[PhaseMovementState, ...]:
         phases = []
-        outgoing_counts: dict[str, int] = {}
-        for key in self.movement_keys:
-            outgoing_counts[key.incoming_lane] = (
-                outgoing_counts.get(key.incoming_lane, 0) + 1
-            )
+        turn_ratios = self._normalized_turn_ratios()
 
         for phase in self._topology:
             movements = []
             for key in phase.movements:
-                turn_ratio = self.bridge.get_turn_ratio(
-                    key.incoming_lane,
-                    key.outgoing_lane,
-                )
-                if turn_ratio is None:
-                    turn_ratio = 1.0 / outgoing_counts[key.incoming_lane]
+                turn_ratio = turn_ratios[key]
                 occupancy = float(
                     self.bridge.get_lane_occupancy(key.outgoing_lane)
                 )
@@ -97,6 +88,33 @@ class MovementStateBuilder:
                 )
             )
         return tuple(phases)
+
+    def _normalized_turn_ratios(self) -> dict[MovementKey, float]:
+        """Normalize configured or observed weights over each lane's legal moves."""
+        by_incoming: dict[str, list[MovementKey]] = {}
+        for key in self.movement_keys:
+            by_incoming.setdefault(key.incoming_lane, []).append(key)
+
+        normalized: dict[MovementKey, float] = {}
+        for keys in by_incoming.values():
+            raw = {
+                key: self.bridge.get_turn_ratio(
+                    key.incoming_lane,
+                    key.outgoing_lane,
+                )
+                for key in keys
+            }
+            weights = {
+                key: max(0.0, float(value)) if value is not None else 0.0
+                for key, value in raw.items()
+            }
+            total = sum(weights.values())
+            if total <= 0:
+                uniform = 1.0 / len(keys)
+                normalized.update({key: uniform for key in keys})
+                continue
+            normalized.update({key: weights[key] / total for key in keys})
+        return normalized
 
     @property
     def capacity_inputs(self) -> dict[str, float]:

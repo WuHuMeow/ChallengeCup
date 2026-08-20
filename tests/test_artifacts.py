@@ -15,6 +15,7 @@ def test_run_artifacts_create_collision_safe_layout(tmp_path):
     assert first.metrics.name == "metrics.csv"
     assert first.events.name == "events.csv"
     assert first.tripinfo.name == "tripinfo.xml"
+    assert first.collisions.name == "collisions.xml"
     assert first.summary.name == "summary.json"
     assert first.figures.name == "figures"
 
@@ -30,6 +31,7 @@ def test_required_output_contract_is_shared_by_runners_and_checker():
         "tripinfo.xml",
         "stats.xml",
         "traj.xml",
+        "collisions.xml",
         "summary.json",
     )
     assert RunArtifacts.required_output_names() == expected

@@ -121,14 +121,20 @@ class MockBridge:
         """Validate and record control actions without contacting SUMO."""
         results: list[ActionResult] = []
         for action in actions:
-            _, error = validate_control_action(
+            _, reason_code, error = validate_control_action(
                 action,
                 self.tls_id,
                 phase_count=self.phase_count,
                 program_ids=self.program_ids,
+                current_phase=self._current_step % self.phase_count,
+                allowed_phase_targets={
+                    (self._current_step + 1) % self.phase_count
+                },
             )
             if error is not None:
-                results.append(ActionResult(action, False, error))
+                results.append(
+                    ActionResult(action, False, error, reason_code or "")
+                )
                 continue
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",

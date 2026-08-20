@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -19,6 +20,7 @@ from defusedxml import ElementTree as ET
 
 from core.types import (
     ActionResult,
+    CollisionRecord,
     ControlAction,
     JointState,
     PhaseTrafficState,
@@ -29,6 +31,7 @@ from core.types import (
 from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.movement_state import MovementStateBuilder
+from engine.safety import ConflictDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,7 @@ class TraCIBridge:
         self._turn_ratios: dict[tuple[str, str], float] = {}
         self._observed_turn_counts: Counter[tuple[str, str]] = Counter()
         self._approach_lanes_by_vehicle: dict[str, str] = {}
+        self._conflict_definitions: tuple[ConflictDefinition, ...] = ()
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -136,6 +140,8 @@ class TraCIBridge:
                 self.artifacts.stats.resolve().as_posix(),
                 "--fcd-output",
                 self.artifacts.trajectory.resolve().as_posix(),
+                "--collision-output",
+                self.artifacts.collisions.resolve().as_posix(),
             ])
             if self._config_has_queue_output():
                 cmd.extend([
@@ -168,6 +174,7 @@ class TraCIBridge:
         self._turn_ratios = {}
         self._observed_turn_counts.clear()
         self._approach_lanes_by_vehicle.clear()
+        self._conflict_definitions = ()
 
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
@@ -185,6 +192,7 @@ class TraCIBridge:
         logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
         self._load_edge_mapping()
         self._load_turn_ratios()
+        self._load_conflict_definitions()
         self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
 
     def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
@@ -278,6 +286,321 @@ class TraCIBridge:
             )
         return tuple(dict.fromkeys(candidates))
 
+    def _network_file_path(self) -> Path | None:
+        try:
+            root = ET.parse(self.sumo_cfg).getroot()
+        except (OSError, ET.ParseError):
+            return None
+        node = root.find("./input/net-file")
+        value = node.get("value") if node is not None else None
+        if not value:
+            return None
+        path = Path(value.split(",", 1)[0])
+        return path if path.is_absolute() else (self.sumo_cfg.parent / path).resolve()
+
+    def _load_conflict_definitions(self) -> None:
+        """Load network foe pairs and path distances to geometric conflicts."""
+        self._conflict_definitions = ()
+        if self.tls_id is None:
+            return
+        path = self._network_file_path()
+        if path is None or not path.exists():
+            return
+        try:
+            root = ET.parse(path).getroot()
+        except (OSError, ET.ParseError) as exc:
+            logger.warning("network conflict data unavailable (%s): %s", path, exc)
+            return
+
+        junction = next(
+            (
+                candidate
+                for candidate in root.iter("junction")
+                if candidate.get("id") == self.tls_id
+            ),
+            None,
+        )
+        if junction is None:
+            return
+        requests = {
+            int(request.get("index", "-1")): request.get("foes", "")
+            for request in junction.findall("request")
+            if request.get("index", "").isdigit()
+        }
+        internal_lanes = junction.get("intLanes", "").split()
+        lane_shapes = {
+            lane.get("id", ""): self._parse_shape(lane.get("shape", ""))
+            for lane in root.iter("lane")
+            if lane.get("id")
+        }
+        lane_locations = {
+            lane.get("id", ""): (edge.get("id", ""), lane.get("index", ""))
+            for edge in root.iter("edge")
+            for lane in edge.findall("lane")
+            if lane.get("id")
+        }
+        connections = tuple(root.iter("connection"))
+        successors: dict[tuple[str, str], tuple[str, ...]] = {}
+        for connection in connections:
+            via = connection.get("via", "")
+            source = (connection.get("from", ""), connection.get("fromLane", ""))
+            if via:
+                successors[source] = successors.get(source, ()) + (via,)
+
+        link_shapes: dict[int, tuple[tuple[float, float], ...]] = {}
+        link_indices_by_internal_lane: dict[str, set[int]] = {}
+        for connection in connections:
+            if connection.get("tl") != self.tls_id:
+                continue
+            raw_index = connection.get("linkIndex", "")
+            via = connection.get("via", "")
+            if not raw_index.isdigit():
+                continue
+            link_index = int(raw_index)
+            path_lanes = []
+            current_lane = via
+            while current_lane and current_lane not in path_lanes:
+                path_lanes.append(current_lane)
+                location = lane_locations.get(current_lane)
+                next_lanes = successors.get(location, ()) if location else ()
+                current_lane = next_lanes[0] if len(next_lanes) == 1 else ""
+            for lane_id in path_lanes:
+                link_indices_by_internal_lane.setdefault(lane_id, set()).add(link_index)
+
+            shape = ()
+            for lane_id in path_lanes:
+                lane_shape = lane_shapes.get(lane_id, ())
+                if not lane_shape:
+                    continue
+                shape += lane_shape[1:] if shape and shape[-1] == lane_shape[0] else lane_shape
+            if not shape:
+                incoming_lane = (
+                    f"{connection.get('from')}_{connection.get('fromLane')}"
+                )
+                outgoing_lane = (
+                    f"{connection.get('to')}_{connection.get('toLane')}"
+                )
+                incoming_shape = lane_shapes.get(incoming_lane, ())
+                outgoing_shape = lane_shapes.get(outgoing_lane, ())
+                if incoming_shape and outgoing_shape:
+                    shape = (incoming_shape[-1], outgoing_shape[0])
+            if shape:
+                link_shapes[link_index] = shape
+
+        if internal_lanes:
+            request_link_indices = {
+                request_index: link_indices_by_internal_lane.get(
+                    internal_lanes[request_index], set()
+                )
+                for request_index in requests
+                if request_index < len(internal_lanes)
+            }
+        else:
+            request_link_indices = {
+                request_index: {request_index}
+                for request_index in requests
+                if request_index in link_shapes
+            }
+
+        definitions = []
+        for first_index, foes in requests.items():
+            for second_index in requests:
+                if second_index <= first_index:
+                    continue
+                bit_index = len(foes) - 1 - second_index
+                if bit_index < 0 or foes[bit_index] != "1":
+                    continue
+                for first_link_index in request_link_indices.get(first_index, set()):
+                    first_shape = link_shapes.get(first_link_index)
+                    if first_shape is None:
+                        continue
+                    for second_link_index in request_link_indices.get(second_index, set()):
+                        second_shape = link_shapes.get(second_link_index)
+                        if second_shape is None or first_link_index == second_link_index:
+                            continue
+                        offsets = self._polyline_intersection_offsets(
+                            first_shape,
+                            second_shape,
+                        )
+                        if offsets is None:
+                            continue
+                        definitions.append(
+                            ConflictDefinition(
+                                first_link_index,
+                                second_link_index,
+                                offsets[0],
+                                offsets[1],
+                            )
+                        )
+        self._conflict_definitions = tuple(definitions)
+
+    @staticmethod
+    def _parse_shape(raw: str) -> tuple[tuple[float, float], ...]:
+        points = []
+        for token in raw.split():
+            try:
+                x, y = token.split(",", 1)
+                points.append((float(x), float(y)))
+            except (TypeError, ValueError):
+                return ()
+        return tuple(points)
+
+    @staticmethod
+    def _polyline_intersection_offsets(
+        first: tuple[tuple[float, float], ...],
+        second: tuple[tuple[float, float], ...],
+    ) -> tuple[float, float] | None:
+        first_prefix = 0.0
+        closest: tuple[float, float, float] | None = None
+        for first_start, first_end in zip(first, first[1:]):
+            first_length = math.dist(first_start, first_end)
+            second_prefix = 0.0
+            for second_start, second_end in zip(second, second[1:]):
+                second_length = math.dist(second_start, second_end)
+                parameters = TraCIBridge._segment_intersection_parameters(
+                    first_start,
+                    first_end,
+                    second_start,
+                    second_end,
+                )
+                if parameters is not None:
+                    first_parameter, second_parameter = parameters
+                    return (
+                        first_prefix + first_parameter * first_length,
+                        second_prefix + second_parameter * second_length,
+                    )
+                first_parameter, second_parameter, distance_squared = (
+                    TraCIBridge._segment_closest_parameters(
+                        first_start,
+                        first_end,
+                        second_start,
+                        second_end,
+                    )
+                )
+                candidate = (
+                    distance_squared,
+                    first_prefix + first_parameter * first_length,
+                    second_prefix + second_parameter * second_length,
+                )
+                if closest is None or candidate < closest:
+                    closest = candidate
+                second_prefix += second_length
+            first_prefix += first_length
+        return (closest[1], closest[2]) if closest is not None else None
+
+    @staticmethod
+    def _segment_closest_parameters(
+        first_start: tuple[float, float],
+        first_end: tuple[float, float],
+        second_start: tuple[float, float],
+        second_end: tuple[float, float],
+    ) -> tuple[float, float, float]:
+        first = (
+            first_end[0] - first_start[0],
+            first_end[1] - first_start[1],
+        )
+        second = (
+            second_end[0] - second_start[0],
+            second_end[1] - second_start[1],
+        )
+        delta = (
+            first_start[0] - second_start[0],
+            first_start[1] - second_start[1],
+        )
+
+        def dot(left: tuple[float, float], right: tuple[float, float]) -> float:
+            return left[0] * right[0] + left[1] * right[1]
+
+        def clamp(value: float) -> float:
+            return min(1.0, max(0.0, value))
+
+        first_length_squared = dot(first, first)
+        second_length_squared = dot(second, second)
+        if first_length_squared <= 1e-12 and second_length_squared <= 1e-12:
+            first_parameter = second_parameter = 0.0
+        elif first_length_squared <= 1e-12:
+            first_parameter = 0.0
+            second_parameter = clamp(dot(second, delta) / second_length_squared)
+        else:
+            first_delta = dot(first, delta)
+            if second_length_squared <= 1e-12:
+                second_parameter = 0.0
+                first_parameter = clamp(-first_delta / first_length_squared)
+            else:
+                cross = dot(first, second)
+                second_delta = dot(second, delta)
+                denominator = (
+                    first_length_squared * second_length_squared
+                    - cross * cross
+                )
+                first_parameter = (
+                    clamp(
+                        (cross * second_delta - first_delta * second_length_squared)
+                        / denominator
+                    )
+                    if abs(denominator) > 1e-12
+                    else 0.0
+                )
+                second_parameter = (
+                    cross * first_parameter + second_delta
+                ) / second_length_squared
+                if second_parameter < 0:
+                    second_parameter = 0.0
+                    first_parameter = clamp(
+                        -first_delta / first_length_squared
+                    )
+                elif second_parameter > 1:
+                    second_parameter = 1.0
+                    first_parameter = clamp(
+                        (cross - first_delta) / first_length_squared
+                    )
+        first_point = (
+            first_start[0] + first_parameter * first[0],
+            first_start[1] + first_parameter * first[1],
+        )
+        second_point = (
+            second_start[0] + second_parameter * second[0],
+            second_start[1] + second_parameter * second[1],
+        )
+        return (
+            first_parameter,
+            second_parameter,
+            (first_point[0] - second_point[0]) ** 2
+            + (first_point[1] - second_point[1]) ** 2,
+        )
+
+    @staticmethod
+    def _segment_intersection_parameters(
+        first_start: tuple[float, float],
+        first_end: tuple[float, float],
+        second_start: tuple[float, float],
+        second_end: tuple[float, float],
+    ) -> tuple[float, float] | None:
+        first_dx = first_end[0] - first_start[0]
+        first_dy = first_end[1] - first_start[1]
+        second_dx = second_end[0] - second_start[0]
+        second_dy = second_end[1] - second_start[1]
+        denominator = first_dx * second_dy - first_dy * second_dx
+        if abs(denominator) <= 1e-9:
+            return None
+        delta_x = second_start[0] - first_start[0]
+        delta_y = second_start[1] - first_start[1]
+        first_parameter = (
+            delta_x * second_dy - delta_y * second_dx
+        ) / denominator
+        second_parameter = (
+            delta_x * first_dy - delta_y * first_dx
+        ) / denominator
+        if (
+            -1e-9 <= first_parameter <= 1 + 1e-9
+            and -1e-9 <= second_parameter <= 1 + 1e-9
+        ):
+            return (
+                min(1.0, max(0.0, first_parameter)),
+                min(1.0, max(0.0, second_parameter)),
+            )
+        return None
+
     @staticmethod
     def _lane_edge_id(lane_id: str) -> str:
         edge_id, separator, lane_index = lane_id.rpartition("_")
@@ -368,6 +691,10 @@ class TraCIBridge:
         if self._movement_state_builder is None:
             return None
         return dict(self._movement_state_builder.capacity_inputs)
+
+    @property
+    def conflict_definitions(self) -> tuple[ConflictDefinition, ...]:
+        return self._conflict_definitions
 
     def close(self) -> None:
         """关闭 SUMO 仿真进程；可重复调用，未加载时为 no-op。"""
@@ -461,6 +788,13 @@ class TraCIBridge:
             if self._movement_state_builder is not None
             else ()
         )
+        collisions = self._simulation_collisions()
+        starting_teleports = self._simulation_vehicle_ids(
+            "getStartingTeleportIDList"
+        )
+        ending_teleports = self._simulation_vehicle_ids(
+            "getEndingTeleportIDList"
+        )
         return JointState(
             step=step,
             timestamp=simulation_time,
@@ -475,14 +809,26 @@ class TraCIBridge:
             arrival_history=list(self._arrival_window),
             phase_states=self._build_phase_states(program, controlled_links),
             phase_movements=phase_movements,
+            legal_phase_transitions=self._legal_phase_transitions(program),
             safety_vehicles=safety_vehicles,
-            collision_vehicle_ids=self._simulation_vehicle_ids(
-                "getCollidingVehiclesIDList"
+            collisions=collisions,
+            collision_vehicle_ids=tuple(
+                sorted(
+                    {
+                        vehicle_id
+                        for collision in collisions
+                        for vehicle_id in (
+                            collision.collider_id,
+                            collision.victim_id,
+                        )
+                    }
+                )
             ),
+            starting_teleport_vehicle_ids=starting_teleports,
+            ending_teleport_vehicle_ids=ending_teleports,
             teleport_vehicle_ids=tuple(
                 sorted(
-                    set(self._simulation_vehicle_ids("getStartingTeleportIDList"))
-                    | set(self._simulation_vehicle_ids("getEndingTeleportIDList"))
+                    set(starting_teleports) | set(ending_teleports)
                 )
             ),
         )
@@ -613,6 +959,47 @@ class TraCIBridge:
         ):
             return ()
 
+    @staticmethod
+    def _simulation_collisions() -> tuple[CollisionRecord, ...]:
+        try:
+            collisions = traci.simulation.getCollisions()
+        except (
+            AttributeError,
+            traci.exceptions.TraCIException,
+            traci.exceptions.FatalTraCIError,
+        ):
+            return ()
+        return tuple(
+            CollisionRecord(
+                collider_id=str(collision.collider),
+                victim_id=str(collision.victim),
+                collider_type=str(getattr(collision, "colliderType", "")),
+                victim_type=str(getattr(collision, "victimType", "")),
+                collider_speed_mps=float(collision.colliderSpeed),
+                victim_speed_mps=float(collision.victimSpeed),
+                collision_type=str(getattr(collision, "collisionType", "")),
+                lane_id=str(getattr(collision, "lane", "")),
+                position_m=float(collision.pos),
+            )
+            for collision in collisions
+        )
+
+    @staticmethod
+    def _legal_phase_transitions(program: object) -> tuple[tuple[int, int], ...]:
+        phases = tuple(program.phases)
+        if not phases:
+            return ()
+        transitions = []
+        for phase_index, phase in enumerate(phases):
+            configured = tuple(getattr(phase, "next", ()) or ())
+            targets = (
+                tuple(int(target) for target in configured)
+                if configured
+                else ((phase_index + 1) % len(phases),)
+            )
+            transitions.extend((phase_index, target) for target in targets)
+        return tuple(dict.fromkeys(transitions))
+
     def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
         """将算法输出的控制动作写入 SUMO。
 
@@ -625,50 +1012,89 @@ class TraCIBridge:
         """
         results: list[ActionResult] = []
         for action in actions:
-            value, error = validate_control_action(
+            value, reason_code, error = validate_control_action(
                 action,
                 self.tls_id,
             )
             if error is not None:
-                results.append(ActionResult(action, False, error))
+                results.append(ActionResult(action, False, error, reason_code or ""))
                 continue
+            active_program = ""
             if action.action_type in {"set_phase", "set_program"}:
                 try:
-                    phase_count, program_ids = self._control_action_domain()
+                    (
+                        phase_count,
+                        program_ids,
+                        current_phase,
+                        allowed_phase_targets,
+                        active_program,
+                    ) = self._control_action_domain()
                 except RuntimeError as exc:
                     results.append(
                         ActionResult(
                             action,
                             False,
                             f"control domain unavailable: {exc}",
+                            "control_domain_unavailable",
                         )
                     )
                     continue
-                value, error = validate_control_action(
+                value, reason_code, error = validate_control_action(
                     action,
                     self.tls_id,
                     phase_count=phase_count,
                     program_ids=program_ids,
+                    current_phase=(
+                        current_phase
+                        if action.action_type == "set_phase"
+                        else None
+                    ),
+                    allowed_phase_targets=(
+                        allowed_phase_targets
+                        if action.action_type == "set_phase"
+                        else None
+                    ),
                 )
                 if error is not None:
-                    results.append(ActionResult(action, False, error))
+                    results.append(
+                        ActionResult(action, False, error, reason_code or "")
+                    )
                     continue
             if action.action_type == "set_phase":
                 traci.trafficlight.setPhase(action.tls_id, value)
             elif action.action_type == "set_phase_duration":
                 traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
+                previous_builder = self._movement_state_builder
                 traci.trafficlight.setProgram(action.tls_id, value)
+                try:
+                    replacement = MovementStateBuilder(self, action.tls_id)
+                except Exception as exc:
+                    traci.trafficlight.setProgram(action.tls_id, active_program)
+                    self._movement_state_builder = previous_builder
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            f"movement topology rebuild failed: {exc}",
+                            "topology_rebuild_failed",
+                        )
+                    )
+                    continue
+                self._movement_state_builder = replacement
             results.append(ActionResult(action, True, "applied"))
         return results
 
-    def _control_action_domain(self) -> tuple[int, set[str]]:
+    def _control_action_domain(
+        self,
+    ) -> tuple[int, set[str], int, set[int], str]:
         """Return the active phase count and available programs from SUMO."""
         try:
             programs = list(traci.trafficlight.getAllProgramLogics(self.tls_id))
             if not programs:
                 raise RuntimeError("no signal programs returned")
             active_program = traci.trafficlight.getProgram(self.tls_id)
+            current_phase = int(traci.trafficlight.getPhase(self.tls_id))
         except RuntimeError:
             raise
         except (traci.exceptions.TraCIException, traci.exceptions.FatalTraCIError) as exc:
@@ -685,6 +1111,13 @@ class TraCIBridge:
         return (
             len(active_logic.phases),
             {str(program.programID) for program in programs},
+            current_phase,
+            {
+                target
+                for source, target in self._legal_phase_transitions(active_logic)
+                if source == current_phase
+            },
+            str(active_program),
         )
 
     def get_lane_capacity(self, lane_id: str) -> float:

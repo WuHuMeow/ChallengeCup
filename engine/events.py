@@ -129,7 +129,7 @@ class EventLogger:
                 f"logger run_id {self.run_id!r}"
             )
         self.log(
-            int(event.simulation_seconds),
+            event.step,
             event.event_type,
             event.detail,
             simulation_seconds=event.simulation_seconds,

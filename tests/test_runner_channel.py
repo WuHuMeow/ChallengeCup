@@ -204,6 +204,7 @@ class _OutputBridge(MockBridge):
         )
         self.artifacts.stats.write_text("<summary/>", encoding="utf-8")
         self.artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
+        self.artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
         super().close()
 
 
