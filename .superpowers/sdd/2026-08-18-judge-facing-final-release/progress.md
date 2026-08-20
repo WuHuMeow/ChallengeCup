@@ -276,3 +276,5 @@
 - 最终验证：聚焦 `87 passed in 60.24s`；全量 `367 passed in 86.35s`；系统 Python 3.14.7 compileall exit 0；SUMO/jtrrouter 1.27.1；diff check 通过。
 - 保护输入：压缩包 SHA-256 不变并保持未跟踪/未暂存；官方数据仍为 163 个 Git 跟踪文件且无任务差异。
 - 修复提交：`e5e9d44` (`fix: close disturbance validation gaps`)。
+- Task 7 fix round 3/5：3 项 ADDRESSED，0 项开放；未发现新的 Critical、Important 或 Minor 问题；提交范围 `e0411e5..314fe00`。
+- Task 7：完成（提交范围 `6e3d148..314fe00`，独立复审 clean；聚焦 `87 passed`，全量 `367 passed`）。
