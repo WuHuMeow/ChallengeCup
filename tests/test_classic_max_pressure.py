@@ -33,11 +33,14 @@ def _state() -> JointState:
             PhaseMovementState(1, "rG", (_movement(6, 1, 2),), 30),
             PhaseMovementState(2, "rr", (_movement(100, 0, 10),), 3),
         ),
+        legal_phase_transitions=((0, 1),),
     )
 
 
 def test_classic_pressure_uses_downstream_queue_and_service_rate():
-    actions = ClassicMaxPressureAlgorithm().step(_state())
+    state = _state()
+    state.elapsed_phase_time = 30.0
+    actions = ClassicMaxPressureAlgorithm().step(state)
 
     assert actions[0].action_type == "set_phase"
     assert actions[0].value == 1
@@ -50,7 +53,32 @@ def test_classic_pressure_breaks_equal_scores_by_current_phase_then_index():
     )
     state.phase_movements = (state.phase_movements[0], equal)
 
-    assert ClassicMaxPressureAlgorithm().step(state)[0].value == 0
+    algorithm = ClassicMaxPressureAlgorithm()
+
+    assert algorithm.step(state) == []
+    assert algorithm.current_target_phase == 0
+    assert algorithm.decision_history == [0]
+
+
+def test_classic_pressure_waits_for_the_legal_transition_phase_to_expire():
+    state = _state()
+    state.current_phase = 2
+    state.elapsed_phase_time = 2.0
+    state.phase_movements = (
+        state.phase_movements[0],
+        state.phase_movements[1],
+        PhaseMovementState(2, "rr", (), 3),
+    )
+    state.legal_phase_transitions = ((2, 1),)
+    algorithm = ClassicMaxPressureAlgorithm()
+
+    assert algorithm.step(state) == []
+
+    state.elapsed_phase_time = 3.0
+    actions = algorithm.step(state)
+    assert [(action.action_type, action.value) for action in actions] == [
+        ("set_phase", 1)
+    ]
 
 
 def test_classic_pressure_does_not_use_capacity_prediction_or_spillback():

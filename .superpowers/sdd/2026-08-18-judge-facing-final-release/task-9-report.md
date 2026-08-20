@@ -96,3 +96,58 @@ This means two full-suite invocations occurred rather than the requested one.
 - The final full suite is clean. The only concern is the additional early full
   suite invocation described above; it was needed to locate a stale test that
   contradicted the new required registry availability.
+
+## Review Fix Round 1
+
+### Root cause and correction
+
+- Fixed-time resolution stopped at provenance: `FixedTimeAlgorithm.step()`
+  emitted no action, so SUMO retained the network program. Excel resolution
+  also combined timings into blank-state phases. The resolver now expands each
+  official Excel phase into green, yellow, and all-red executable phases using
+  the source network's signal states. The fixed controller installs that frozen
+  definition once via the existing `set_program` action channel.
+- `set_program` now accepts a validated program-definition payload. The TraCI
+  bridge creates the corresponding Logic, installs it with `setProgramLogic`,
+  activates it, and rebuilds movement topology; MockBridge accepts the same
+  payload contract.
+- `SimulationRunner` resolves the algorithm before starting the bridge.
+- Classic MaxPressure preserves the raw pressure formula and decisions, but
+  emits a phase action only for a non-current, directly legal target after the
+  current phase's nominal duration has elapsed.
+
+### TDD evidence
+
+1. RED:
+   `pytest tests/test_fixed_time_plan.py tests/test_classic_max_pressure.py tests/test_algorithms.py tests/test_traci_outputs.py tests/test_runner_channel.py -q -p no:cacheprovider --basetemp=.t9c\\pytest-red`
+   yielded `6 failed, 63 passed`: blank Excel states, no fixed action, self and
+   early classic actions, undefined program payload, and late runner init.
+2. GREEN for the focused group after minimal implementation: `69 passed`.
+3. RED for the non-deprecated program-definition API was one failing bridge
+   test; GREEN used `setProgramLogic` and the same focused group again passed
+   `69 passed` without warnings.
+
+### Execution evidence
+
+- Direct real TraCI route 1 fixed-time check, seed 42: the installation action
+  was accepted; active program ID equaled `manifest["timing_plan"]["program_id"]`;
+  all 12 active `(duration, state)` phases exactly matched the frozen plan; the
+  simulation reached 100.0 seconds.
+- Route 1 classic direct TraCI check, seed 42, 100 steps: 100 decisions,
+  independent targets `{0, 2, 4}`, 1 applied legal transition, 0 rejections.
+- `RunService` 100-step artifacts: fixed run `8e121a4ff6f8` and classic run
+  `4fcab75a29f3` both completed. Each recorded one applied action, zero rejected
+  actions, and zero `illegal_transition` events.
+- Resolver preflight: all 20 official scenes resolved from `official_excel`,
+  each with a source hash, program ID, and non-empty executable states.
+
+### Final verification
+
+- `pytest -q -p no:cacheprovider --basetemp=.t9c\\pytest-full-final`:
+  `424 passed in 122.74s`, no warnings.
+- Runner/service focused tests: `34 passed in 11.85s`.
+- System Python: `Python 3.14.7`; `compileall -q algorithms core scenes engine`
+  passed. `git diff --check` passed.
+- Protected inputs unchanged: archive SHA-256 remains
+  `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`;
+  `data/intersection_data` remains 163 tracked files with no diff.

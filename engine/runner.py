@@ -130,12 +130,12 @@ class SimulationRunner:
         last_step = 0
 
         try:
+            self.algorithm.init(self.scene)
             self.bridge.start()
             self.safety_collector.set_conflict_definitions(
                 getattr(self.bridge, "conflict_definitions", ())
             )
             self._sumo_version_value = self._sumo_version()
-            self.algorithm.init(self.scene)
             if self.event_logger:
                 self.event_logger.log(
                     0,

@@ -15,19 +15,38 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
         self.use_excel_timing = use_excel_timing
         self.scene: Scene | None = None
         self.resolved_timing_plan: ResolvedTimingPlan | None = None
+        self._program_applied = False
         self._resolver = FixedTimePlanResolver()
 
     def init(self, scene: Scene) -> None:
         self.scene = scene
         self.resolved_timing_plan = self._resolver.resolve(scene)
+        self._program_applied = False
 
     def step(self, state: JointState) -> list[ControlAction]:
-        """固定配时不输出控制动作，完全依赖 SUMO 当前程序。"""
-        return []
+        """Install the frozen plan once through the shared action channel."""
+        if self.resolved_timing_plan is None or self._program_applied:
+            return []
+        self._program_applied = True
+        return [
+            ControlAction(
+                tls_id=state.tls_id,
+                action_type="set_program",
+                value={
+                    "program_id": self.resolved_timing_plan.program_id,
+                    "phases": [
+                        {"duration": phase.duration, "state": phase.state}
+                        for phase in self.resolved_timing_plan.phases
+                    ],
+                },
+                reason="install frozen fixed-time plan",
+            )
+        ]
 
     def reset(self) -> None:
         self.scene = None
         self.resolved_timing_plan = None
+        self._program_applied = False
 
     @property
     def name(self) -> str:

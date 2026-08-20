@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import math
 from pathlib import Path
 from typing import Any, Mapping
 import xml.etree.ElementTree as ET
@@ -61,14 +62,11 @@ class FixedTimePlanResolver:
                 period_name = get_default_period_name(sorted(periods))
                 timing = periods[period_name]
                 self._validate_excel_phases(timing.phases)
-                phases = tuple(
-                    TimingPhase(
-                        duration=phase.green_time + phase.yellow_time + phase.red_time,
-                        state="",
-                    )
-                    for phase in timing.phases
+                phases = self._excel_phases(
+                    timing.phases,
+                    self._network_signal_states(Path(scene.meta.sumo_net)),
                 )
-                self._validate_phases(phases)
+                self._validate_phases(phases, require_states=True)
                 return self._resolved(
                     "official_excel",
                     excel_path,
@@ -151,6 +149,48 @@ class FixedTimePlanResolver:
         self._validate_phases(phases, require_states=True)
         return self._resolved("source_net_xml", path, str(program_id), phases)
 
+    def _network_signal_states(self, path: Path) -> tuple[list[str], list[str], int]:
+        """Read one source program's executable green/yellow states for Excel timing."""
+        root = ET.parse(path).getroot()
+        programs = sorted(
+            root.findall("tlLogic"),
+            key=lambda logic: (logic.get("id", ""), logic.get("programID", "")),
+        )
+        if not programs:
+            raise FixedTimePlanError("source network contains no tlLogic for Excel timing")
+        states = [phase.get("state", "") for phase in programs[0].findall("phase")]
+        if not states or any(not state for state in states):
+            raise FixedTimePlanError("source network has no executable signal states")
+        state_lengths = {len(state) for state in states}
+        if len(state_lengths) != 1:
+            raise FixedTimePlanError("source network signal states have inconsistent lengths")
+        greens = [state for state in states if any(signal in state for signal in "Gg")]
+        yellows = [state for state in states if any(signal in state for signal in "Yy")]
+        if not greens or not yellows:
+            raise FixedTimePlanError("source network lacks green or yellow signal states")
+        return greens, yellows, state_lengths.pop()
+
+    @staticmethod
+    def _excel_phases(
+        excel_phases: list[object],
+        signal_states: tuple[list[str], list[str], int],
+    ) -> tuple[TimingPhase, ...]:
+        """Expand each Excel phase into green, yellow, and all-red SUMO phases."""
+        greens, yellows, state_length = signal_states
+        expanded: list[TimingPhase] = []
+        for position, phase in enumerate(
+            sorted(excel_phases, key=lambda item: getattr(item, "phase_index"))
+        ):
+            green = float(getattr(phase, "green_time"))
+            yellow = float(getattr(phase, "yellow_time"))
+            all_red = float(getattr(phase, "red_time"))
+            expanded.append(TimingPhase(green, greens[position % len(greens)]))
+            if yellow > 0:
+                expanded.append(TimingPhase(yellow, yellows[position % len(yellows)]))
+            if all_red > 0:
+                expanded.append(TimingPhase(all_red, "r" * state_length))
+        return tuple(expanded)
+
     @staticmethod
     def _validate_program_id(program_id: object) -> None:
         if not isinstance(program_id, str) or not program_id.strip():
@@ -162,8 +202,11 @@ class FixedTimePlanResolver:
     ) -> None:
         if not phases:
             raise FixedTimePlanError("timing plan contains no phases")
+        state_lengths = {len(phase.state) for phase in phases if phase.state}
+        if require_states and len(state_lengths) != 1:
+            raise FixedTimePlanError("timing plan signal states have inconsistent lengths")
         for phase in phases:
-            if phase.duration <= 0:
+            if not math.isfinite(phase.duration) or phase.duration <= 0:
                 raise FixedTimePlanError("timing plan has a non-positive phase duration")
             if require_states and not phase.state:
                 raise FixedTimePlanError("timing plan has a phase without signal state")

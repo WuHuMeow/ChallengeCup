@@ -136,6 +136,8 @@ class MockBridge:
                     ActionResult(action, False, error, reason_code or "")
                 )
                 continue
+            if action.action_type == "set_program" and isinstance(action.value, dict):
+                self.program_ids.add(str(action.value["program_id"]))
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",
                 action.tls_id,

@@ -68,6 +68,40 @@ def test_successful_run_writes_completed_metadata(tmp_path):
     assert payload["sumo_version"]
 
 
+class _StartRecordingBridge(MockBridge):
+    def __init__(self):
+        super().__init__()
+        self.start_calls = 0
+
+    def start(self):
+        self.start_calls += 1
+        super().start()
+
+
+def test_invalid_fixed_plan_fails_before_starting_the_bridge(tmp_path):
+    invalid_net = tmp_path / "invalid.net.xml"
+    invalid_net.write_text("<net/>", encoding="utf-8")
+    scene = Scene(
+        SceneMeta(
+            intersection_id="invalid",
+            name="invalid",
+            sumo_net=invalid_net,
+            sumo_rou=tmp_path / "routes.rou.xml",
+            sumo_flow=tmp_path / "flow.xml",
+            sumo_turn=tmp_path / "turn.xml",
+            sumo_cfg=tmp_path / "run.sumocfg",
+            timing_xlsx=tmp_path / "timing.xlsx",
+        )
+    )
+    bridge = _StartRecordingBridge()
+    artifacts = RunArtifacts.create(tmp_path, "invalid", "fixed_time", 1.0, 42)
+
+    with pytest.raises(ValueError, match="timing plan"):
+        SimulationRunner(scene, FixedTimeAlgorithm(), bridge=bridge, artifacts=artifacts).run(1)
+
+    assert bridge.start_calls == 0
+
+
 def test_invalid_action_is_logged_and_does_not_stop_run(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "invalid", 1.0, 42)
     SimulationRunner(

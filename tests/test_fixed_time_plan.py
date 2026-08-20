@@ -7,7 +7,7 @@ import pytest
 
 from algorithms.fixed_time_plan import FixedTimePlanError, FixedTimePlanResolver
 from algorithms.fixed_time import FixedTimeAlgorithm
-from core.types import Scene, SceneMeta
+from core.types import JointState, Scene, SceneMeta
 
 
 def _scene(tmp_path: Path, *, config: dict | None = None) -> Scene:
@@ -82,6 +82,50 @@ def test_fixed_time_plan_uses_official_excel_before_network_plan(tmp_path):
     ).replace("\\", "/")
     assert resolved.source_sha256
     assert resolved.program_id == "excel:morning"
+    assert [(phase.duration, phase.state) for phase in resolved.phases] == [
+        (30.0, "Gr"),
+        (3.0, "yr"),
+        (2.0, "rr"),
+    ]
+
+
+def test_fixed_time_step_installs_the_frozen_program_once(tmp_path):
+    scene_plan = tmp_path / "standardized-timing.json"
+    scene_plan.write_text(
+        json.dumps(
+            {
+                "program_id": "standardized",
+                "phases": [
+                    {"duration": 31, "state": "Gr"},
+                    {"duration": 3, "state": "yr"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    algorithm = FixedTimeAlgorithm()
+    algorithm.init(_scene(tmp_path, config={"timing_plan": scene_plan}))
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls0",
+        current_phase=0,
+        current_phase_name="phase_0",
+        elapsed_phase_time=0.0,
+    )
+
+    actions = algorithm.step(state)
+
+    assert len(actions) == 1
+    assert actions[0].action_type == "set_program"
+    assert actions[0].value == {
+        "program_id": "standardized",
+        "phases": [
+            {"duration": 31.0, "state": "Gr"},
+            {"duration": 3.0, "state": "yr"},
+        ],
+    }
+    assert algorithm.step(state) == []
 
 
 def test_fixed_time_rejects_scene_without_a_legal_plan(tmp_path):

@@ -622,6 +622,46 @@ def test_valid_actions_are_applied_and_not_rejected():
     set_program.assert_called_once_with("tls", "program_1")
 
 
+def test_plan_backed_program_is_defined_then_activated():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    programs = [SimpleNamespace(programID="program_0", phases=[object()])]
+    action = ControlAction(
+        "tls",
+        "set_program",
+        {
+            "program_id": "frozen",
+            "phases": [
+                {"duration": 30.0, "state": "Gr"},
+                {"duration": 3.0, "state": "yr"},
+            ],
+        },
+    )
+    with (
+        patch.object(traci.trafficlight, "getAllProgramLogics", return_value=programs),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
+        patch.object(traci.trafficlight, "getPhase", return_value=0),
+        patch.object(traci.trafficlight, "Phase", side_effect=lambda duration, state: (duration, state)),
+        patch.object(
+            traci.trafficlight,
+            "Logic",
+            side_effect=lambda program_id, logic_type, phase_index, phases: SimpleNamespace(
+                programID=program_id, phases=phases
+            ),
+        ),
+        patch.object(traci.trafficlight, "setProgramLogic") as define,
+        patch.object(traci.trafficlight, "setProgram") as set_program,
+        patch("engine.traci_bridge.MovementStateBuilder", return_value=object()),
+    ):
+        result = bridge.apply_actions([action])[0]
+
+    assert result.accepted is True
+    assert define.call_args.args[0] == "tls"
+    assert define.call_args.args[1].programID == "frozen"
+    assert define.call_args.args[1].phases == [(30.0, "Gr"), (3.0, "yr")]
+    set_program.assert_called_once_with("tls", "frozen")
+
+
 def test_successful_program_switch_rebuilds_movement_topology():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"

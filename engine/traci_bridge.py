@@ -1039,34 +1039,43 @@ class TraCIBridge:
                         )
                     )
                     continue
-                value, reason_code, error = validate_control_action(
-                    action,
-                    self.tls_id,
-                    phase_count=phase_count,
-                    program_ids=program_ids,
-                    current_phase=(
-                        current_phase
-                        if action.action_type == "set_phase"
-                        else None
-                    ),
-                    allowed_phase_targets=(
-                        allowed_phase_targets
-                        if action.action_type == "set_phase"
-                        else None
-                    ),
-                )
-                if error is not None:
-                    results.append(
-                        ActionResult(action, False, error, reason_code or "")
+                if not isinstance(value, dict):
+                    value, reason_code, error = validate_control_action(
+                        action,
+                        self.tls_id,
+                        phase_count=phase_count,
+                        program_ids=program_ids,
+                        current_phase=(
+                            current_phase
+                            if action.action_type == "set_phase"
+                            else None
+                        ),
+                        allowed_phase_targets=(
+                            allowed_phase_targets
+                            if action.action_type == "set_phase"
+                            else None
+                        ),
                     )
-                    continue
+                    if error is not None:
+                        results.append(
+                            ActionResult(action, False, error, reason_code or "")
+                        )
+                        continue
             if action.action_type == "set_phase":
                 traci.trafficlight.setPhase(action.tls_id, value)
             elif action.action_type == "set_phase_duration":
                 traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
                 previous_builder = self._movement_state_builder
-                traci.trafficlight.setProgram(action.tls_id, value)
+                program_id = value["program_id"] if isinstance(value, dict) else value
+                if isinstance(value, dict):
+                    phases = [
+                        traci.trafficlight.Phase(phase["duration"], phase["state"])
+                        for phase in value["phases"]
+                    ]
+                    logic = traci.trafficlight.Logic(program_id, 0, 0, phases)
+                    traci.trafficlight.setProgramLogic(action.tls_id, logic)
+                traci.trafficlight.setProgram(action.tls_id, program_id)
                 try:
                     replacement = MovementStateBuilder(self, action.tls_id)
                 except Exception as exc:

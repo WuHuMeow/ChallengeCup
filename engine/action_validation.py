@@ -1,6 +1,7 @@
 """Shared validation for traffic-signal control actions."""
 
 import math
+from collections.abc import Mapping
 
 from core.types import ControlAction
 
@@ -69,6 +70,8 @@ def validate_control_action(
             )
         return duration, None, None
     if action.action_type == "set_program":
+        if isinstance(action.value, Mapping):
+            return _validate_program_definition(action.value)
         if action.value is None:
             return None, "program_empty", "set_program value must be non-empty"
         program = str(action.value).strip()
@@ -82,3 +85,39 @@ def validate_control_action(
         "unknown_action_type",
         f"unknown action_type: {action.action_type!r}",
     )
+
+
+def _validate_program_definition(
+    payload: Mapping[object, object],
+) -> tuple[object | None, str | None, str | None]:
+    program_id = payload.get("program_id")
+    if not isinstance(program_id, str) or not program_id.strip():
+        return None, "program_empty", "set_program definition needs a program_id"
+    phases = payload.get("phases")
+    if not isinstance(phases, (list, tuple)) or not phases:
+        return None, "program_phases_empty", "set_program definition needs phases"
+    normalized_phases: list[dict[str, object]] = []
+    state_length: int | None = None
+    for phase in phases:
+        if not isinstance(phase, Mapping):
+            return None, "invalid_program_phase", "set_program phases must be mappings"
+        try:
+            duration = float(phase.get("duration"))
+        except (TypeError, ValueError):
+            return None, "invalid_program_duration", "set_program phase duration must be numeric"
+        state = phase.get("state")
+        if not math.isfinite(duration) or duration <= 0:
+            return None, "invalid_program_duration", "set_program phase duration must be positive and finite"
+        if not isinstance(state, str) or not state:
+            return None, "invalid_program_state", "set_program phase state must be non-empty"
+        if any(signal not in "rRgGyYoOu" for signal in state):
+            return None, "invalid_program_state", "set_program phase state has an unsupported signal"
+        if state_length is None:
+            state_length = len(state)
+        elif len(state) != state_length:
+            return None, "invalid_program_state", "set_program phase states must have equal length"
+        normalized_phases.append({"duration": duration, "state": state})
+    return {
+        "program_id": program_id.strip(),
+        "phases": normalized_phases,
+    }, None, None

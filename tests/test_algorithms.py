@@ -18,15 +18,17 @@ from typing import List
 
 
 def _make_scene() -> Scene:
+    data_dir = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1"
+    sumo_dir = data_dir / "sumo工程"
     meta = SceneMeta(
         intersection_id="1",
         name="test",
-        sumo_net=Path("dummy.net.xml"),
-        sumo_rou=Path("dummy.rou.xml"),
-        sumo_flow=Path("dummy.flow.xml"),
-        sumo_turn=Path("dummy.turn.xml"),
-        sumo_cfg=Path("dummy.sumocfg"),
-        timing_xlsx=Path("dummy.xlsx"),
+        sumo_net=sumo_dir / "demo_1.net.xml",
+        sumo_rou=sumo_dir / "demo_1.rou.xml",
+        sumo_flow=sumo_dir / "demo_1.flow.xml",
+        sumo_turn=sumo_dir / "demo_1.turn.xml",
+        sumo_cfg=sumo_dir / "demo_1.sumocfg",
+        timing_xlsx=data_dir / "路口数据" / "demo_1流量和交叉口配时方案.xlsx",
     )
     return Scene(meta=meta)
 
@@ -63,8 +65,10 @@ def test_all_algorithms_implement_interface():
 
 def test_fixed_time_returns_list():
     algo = FixedTimeAlgorithm()
+    algo.init(_make_scene())
     result = algo.step(_make_state())
     assert isinstance(result, list)
+    assert algo.resolved_timing_plan is not None
 
 
 def test_rule_adaptive_returns_control_actions():
