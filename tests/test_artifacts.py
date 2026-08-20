@@ -65,3 +65,28 @@ def test_write_metadata_is_atomic_and_structured(tmp_path):
     assert payload["final_simulation_time"] == 3600.0
     assert payload["step_length"] == 0.1
     assert payload["configured_end_time"] == 3600.0
+
+
+def test_run_metadata_records_movement_capacity_inputs(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+
+    artifacts.write_metadata(
+        "completed",
+        "",
+        [],
+        started_at="start",
+        ended_at="end",
+        sumo_version="1.27.1",
+        movement_capacity_inputs={
+            "vehicle_length_m": 5.0,
+            "minimum_gap_m": 2.5,
+            "capacity_spacing_m": 7.5,
+        },
+    )
+
+    payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+    assert payload["movement_capacity_inputs"] == {
+        "vehicle_length_m": 5.0,
+        "minimum_gap_m": 2.5,
+        "capacity_spacing_m": 7.5,
+    }

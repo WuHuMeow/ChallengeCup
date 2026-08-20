@@ -2,6 +2,7 @@ import json
 import threading
 from dataclasses import replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
@@ -47,6 +48,11 @@ class EdgeMappingRunner(SimulationRunner):
 
     def run(self, steps, stop_event=None):
         controlled_lanes = ["-E1_0", "-E1_1", "E0_0"]
+        controlled_links = ((('-E1_0', 'E1_0', ':via'),),)
+        program = SimpleNamespace(
+            programID="0",
+            phases=(SimpleNamespace(state="G", duration=30.0),),
+        )
         with (
             patch.object(traci, "start"),
             patch.object(traci.trafficlight, "getIDList", return_value=["tls"]),
@@ -55,6 +61,15 @@ class EdgeMappingRunner(SimulationRunner):
                 "getControlledLanes",
                 return_value=controlled_lanes,
             ),
+            patch.object(
+                traci.trafficlight,
+                "getControlledLinks",
+                return_value=controlled_links,
+            ),
+            patch.object(
+                traci.trafficlight, "getAllProgramLogics", return_value=[program]
+            ),
+            patch.object(traci.trafficlight, "getProgram", return_value="0"),
             patch.object(traci.trafficlight, "setProgram"),
         ):
             self.bridge.start()

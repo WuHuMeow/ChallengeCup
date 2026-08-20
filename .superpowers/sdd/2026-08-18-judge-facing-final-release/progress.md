@@ -278,3 +278,18 @@
 - 修复提交：`e5e9d44` (`fix: close disturbance validation gaps`)。
 - Task 7 fix round 3/5：3 项 ADDRESSED，0 项开放；未发现新的 Critical、Important 或 Minor 问题；提交范围 `e0411e5..314fe00`。
 - Task 7：完成（提交范围 `6e3d148..314fe00`，独立复审 clean；聚焦 `87 passed`，全量 `367 passed`）。
+
+## Task 8 implementation
+
+- 状态：进行中；从提交 `9ba0a61` 开始，先执行 movement 状态、安全事件和指标单位的 TDD RED。
+- TODOLIST 8/24：实现 movement 到合法 phase 的映射与正容量快照，采集碰撞、红灯违规、非法相位转换、急减速、瞬移和潜在冲突，并严格分离完成/未完成车辆；燃油固定为 ml、CO2 固定为 g。
+- Task 8 旧基线：`tests/test_movements.py tests/test_metrics.py tests/test_traci_outputs.py tests/test_vehicles.py` 为 `46 passed`。
+- TDD RED/GREEN 1：接口骨架后的行为级 RED 为 `11 failed, 18 passed`；实现 movement 拓扑缓存/动态快照、六类安全事件、完成车辆指标和体积燃油开关后为 `29 passed`。
+- TDD RED/GREEN 2：真实 TraCI、事件和元数据接线 RED 为 `5 failed, 28 passed`；接入精确仿真时间、安全快照、turn.xml、runner 事件与容量参数后为 `33 passed`。
+- TDD RED/GREEN 3：占有率单位、车辆观测转向、内部车道红灯穿越和不可变安全字段 RED 为 `4 failed, 34 passed`；修复后相关回归为 `42 passed`。
+- 单位裁定：本机 SUMO 1.27.1 文档确认 `CO2_abs` 为 mg，汇总除以 1000 转为 g；运行命令显式设置 `--emissions.volumetric-fuel true`，将 `fuel_abs` 冻结为 ml。
+- 真实 SUMO movement 预检：20/20 官方场景均可启动并读取 movement 快照；所有含绿灯相位均有 movement，所有 movement 的进口与下游容量均大于零。
+- TDD RED/GREEN 4：唯一 movement 比例回退、缺失信号状态和跨 run_id 事件保护为 `3 failed, 19 passed`，最小修复后为 `22 passed`。
+- 计划指定聚焦验证：`tests/test_movement_state.py tests/test_safety_metrics.py tests/test_traci_outputs.py tests/test_vehicles.py` 为 `40 passed in 1.76s`。
+- 全量验证：首次发现 3 个旧 TraCI 启动替身未镜像新 movement 查询，补全真实结构后全量为 `389 passed in 90.79s`。
+- 真实 RunService 冒烟：路口 1、fixed_time、100 步、seed 42 完成；run_id `43745c374ed1`，容量参数与 events.csv 安全字段落盘，tripinfo 非空。

@@ -17,6 +17,7 @@ from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
 from engine.edge_channel import EdgeChannel
 from engine.events import EventLogger
+from engine.safety import SafetyObservationCollector
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.metrics import compute_metrics
 from experiments.summary import write_run_summary
@@ -82,6 +83,10 @@ class SimulationRunner:
         self._terminal_reason = ""
         self._sumo_version_value = "unknown"
         self._last_simulation_time = 0.0
+        self.safety_collector = SafetyObservationCollector(
+            artifacts.run_id if artifacts is not None else ""
+        )
+        self._previous_safety_state = None
 
         if bridge is not None:
             self.bridge = bridge
@@ -117,6 +122,7 @@ class SimulationRunner:
         steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
+        self._previous_safety_state = None
         started_at = datetime.now(timezone.utc).isoformat()
         status = RunStatus.RUNNING
         reason = ""
@@ -244,6 +250,11 @@ class SimulationRunner:
                             "configured_end_time",
                             None,
                         ),
+                        movement_capacity_inputs=getattr(
+                            self.bridge,
+                            "movement_capacity_inputs",
+                            None,
+                        ),
                     )
                 except Exception as exc:
                     cleanup_errors.append(exc)
@@ -287,6 +298,15 @@ class SimulationRunner:
                             f"detail={result.detail}"
                         ),
                     )
+            safety_events = self.safety_collector.observe(
+                self._previous_safety_state,
+                raw_state,
+                tuple(action_results),
+            )
+            self._previous_safety_state = raw_state
+            if self.event_logger:
+                for safety_event in safety_events:
+                    self.event_logger.log_safety(safety_event)
             sim_time = self.bridge.step()
         except traci.exceptions.FatalTraCIError as exc:
             logger.error("TraCI connection closed: %s; closing gracefully", exc)

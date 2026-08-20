@@ -1,6 +1,7 @@
 """TraCI 断线韧性测试（IB W3）：FatalTraCIError 优雅退出与自动重连。"""
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
@@ -67,6 +68,11 @@ def test_start_clears_discovery_state_before_repopulating(tmp_path):
         assert current_bridge._inbound_lanes is None
         current_bridge._inbound_lanes = ["new_inbound"]
 
+    program = SimpleNamespace(
+        programID="0",
+        phases=(SimpleNamespace(state="G", duration=30.0),),
+    )
+
     with (
         patch.object(traci, "start"),
         patch.object(
@@ -75,6 +81,15 @@ def test_start_clears_discovery_state_before_repopulating(tmp_path):
         patch.object(
             traci.trafficlight, "getControlledLanes", return_value=["new_lane"]
         ),
+        patch.object(
+            traci.trafficlight,
+            "getControlledLinks",
+            return_value=((('new_lane', 'out_lane', ':via'),),),
+        ),
+        patch.object(
+            traci.trafficlight, "getAllProgramLogics", return_value=[program]
+        ),
+        patch.object(traci.trafficlight, "getProgram", return_value="0"),
         patch.object(
             TraCIBridge,
             "_load_edge_mapping",
@@ -100,12 +115,27 @@ def test_start_activates_variant_signal_program(tmp_path):
         encoding="utf-8",
     )
     bridge = TraCIBridge(config, additional_files=[signal])
+    program = SimpleNamespace(
+        programID="variant_x1.1",
+        phases=(SimpleNamespace(state="G", duration=10.0),),
+    )
 
     with (
         patch.object(traci, "start"),
         patch.object(traci.trafficlight, "getIDList", return_value=["new_tls"]),
         patch.object(
             traci.trafficlight, "getControlledLanes", return_value=["new_lane"]
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getControlledLinks",
+            return_value=((('new_lane', 'out_lane', ':via'),),),
+        ),
+        patch.object(
+            traci.trafficlight, "getAllProgramLogics", return_value=[program]
+        ),
+        patch.object(
+            traci.trafficlight, "getProgram", return_value="variant_x1.1"
         ),
         patch.object(traci.trafficlight, "setProgram") as set_program,
         patch.object(TraCIBridge, "_load_edge_mapping"),

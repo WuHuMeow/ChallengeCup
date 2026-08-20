@@ -127,6 +127,7 @@ class RunArtifacts:
         final_simulation_time: float | None = None,
         step_length: float | None = None,
         configured_end_time: float | None = None,
+        movement_capacity_inputs: dict[str, float] | None = None,
     ) -> None:
         """Atomically replace run metadata with the current terminal state."""
         payload = {
@@ -144,6 +145,7 @@ class RunArtifacts:
             "final_simulation_time": final_simulation_time,
             "step_length": step_length,
             "configured_end_time": configured_end_time,
+            "movement_capacity_inputs": movement_capacity_inputs,
             "generated_files": [
                 Path(path).name for path in generated_files if Path(path).exists()
             ],

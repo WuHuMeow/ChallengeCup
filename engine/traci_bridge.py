@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import sys
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -23,10 +23,12 @@ from core.types import (
     JointState,
     PhaseTrafficState,
     QueueState,
+    SafetyVehicleState,
     VehicleState,
 )
 from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
+from engine.movement_state import MovementStateBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +89,10 @@ class TraCIBridge:
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
+        self._movement_state_builder: MovementStateBuilder | None = None
+        self._turn_ratios: dict[tuple[str, str], float] = {}
+        self._observed_turn_counts: Counter[tuple[str, str]] = Counter()
+        self._approach_lanes_by_vehicle: dict[str, str] = {}
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -124,6 +130,8 @@ class TraCIBridge:
                 "true",
                 "--device.emissions.probability",
                 "1",
+                "--emissions.volumetric-fuel",
+                "true",
                 "--summary-output",
                 self.artifacts.stats.resolve().as_posix(),
                 "--fcd-output",
@@ -156,6 +164,10 @@ class TraCIBridge:
         self._controlled_lanes = []
         self._inbound_lanes = None
         self.lane_directions = {}
+        self._movement_state_builder = None
+        self._turn_ratios = {}
+        self._observed_turn_counts.clear()
+        self._approach_lanes_by_vehicle.clear()
 
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
@@ -172,6 +184,8 @@ class TraCIBridge:
         self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
         logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
         self._load_edge_mapping()
+        self._load_turn_ratios()
+        self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
 
     def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
         """Activate deterministic variant programs loaded from additional files."""
@@ -222,6 +236,138 @@ class TraCIBridge:
             logger.info("进口道筛选: %d/%d 车道", len(inbound), len(self._controlled_lanes))
         else:
             logger.warning("edge_mapping 无进口边命中，回退 getControlledLanes")
+
+    def _load_turn_ratios(self) -> None:
+        """Load edgeRelation probabilities without modifying source files."""
+        self._turn_ratios = {}
+        for path in self._turn_file_candidates():
+            if not path.exists():
+                continue
+            try:
+                root = ET.parse(path).getroot()
+            except (OSError, ET.ParseError) as exc:
+                logger.warning("turn ratio file unavailable (%s): %s", path, exc)
+                return
+            for relation in root.iter("edgeRelation"):
+                incoming = relation.get("from")
+                outgoing = relation.get("to")
+                probability = relation.get("probability")
+                if not incoming or not outgoing or probability is None:
+                    continue
+                try:
+                    value = float(probability)
+                except ValueError:
+                    continue
+                if 0 <= value <= 1:
+                    self._turn_ratios[(incoming, outgoing)] = value
+            return
+
+    def _turn_file_candidates(self) -> tuple[Path, ...]:
+        filename = f"{self.sumo_cfg.stem}.turn.xml"
+        candidates = [self.sumo_cfg.parent / filename]
+        match = re.search(r"demo_(\d+)", self.sumo_cfg.stem)
+        if match:
+            from core.config import get_config
+
+            data_root = Path(get_config().path("paths.data_root"))
+            candidates.append(
+                data_root
+                / match.group(1)
+                / "sumo工程"
+                / f"demo_{match.group(1)}.turn.xml"
+            )
+        return tuple(dict.fromkeys(candidates))
+
+    @staticmethod
+    def _lane_edge_id(lane_id: str) -> str:
+        edge_id, separator, lane_index = lane_id.rpartition("_")
+        return edge_id if separator and lane_index.isdigit() else lane_id
+
+    def get_turn_ratio(
+        self,
+        incoming_lane: str,
+        outgoing_lane: str,
+    ) -> float | None:
+        configured = self._turn_ratios.get(
+            (
+                self._lane_edge_id(incoming_lane),
+                self._lane_edge_id(outgoing_lane),
+            )
+        )
+        if configured is not None:
+            return configured
+        observed = self._observed_turn_counts[(incoming_lane, outgoing_lane)]
+        total = sum(
+            count
+            for (candidate_incoming, _), count in self._observed_turn_counts.items()
+            if candidate_incoming == incoming_lane
+        )
+        return observed / total if total else None
+
+    def _record_turn_observations(
+        self,
+        observations: tuple[SafetyVehicleState, ...],
+    ) -> None:
+        if self._movement_state_builder is None:
+            return
+        movements = set(self._movement_state_builder.movement_keys)
+        incoming_lanes = {movement.incoming_lane for movement in movements}
+        outgoing_lanes = {movement.outgoing_lane for movement in movements}
+        active_vehicle_ids = {observation.vehicle_id for observation in observations}
+        for observation in observations:
+            if observation.lane_id in incoming_lanes:
+                self._approach_lanes_by_vehicle[observation.vehicle_id] = (
+                    observation.lane_id
+                )
+                continue
+            incoming_lane = self._approach_lanes_by_vehicle.get(
+                observation.vehicle_id
+            )
+            if incoming_lane is None:
+                continue
+            if observation.lane_id in outgoing_lanes:
+                movement = (incoming_lane, observation.lane_id)
+                if any(
+                    key.incoming_lane == movement[0]
+                    and key.outgoing_lane == movement[1]
+                    for key in movements
+                ):
+                    self._observed_turn_counts[movement] += 1
+                self._approach_lanes_by_vehicle.pop(observation.vehicle_id, None)
+            elif not observation.lane_id.startswith(":"):
+                self._approach_lanes_by_vehicle.pop(observation.vehicle_id, None)
+        for vehicle_id in set(self._approach_lanes_by_vehicle) - active_vehicle_ids:
+            self._approach_lanes_by_vehicle.pop(vehicle_id, None)
+
+    def get_controlled_links(self, tls_id: str) -> object:
+        return traci.trafficlight.getControlledLinks(tls_id)
+
+    def get_signal_program(self, tls_id: str) -> object:
+        programs = traci.trafficlight.getAllProgramLogics(tls_id)
+        active_program = traci.trafficlight.getProgram(tls_id)
+        return next(
+            (
+                candidate
+                for candidate in programs
+                if candidate.programID == active_program
+            ),
+            programs[0],
+        )
+
+    def get_lane_length(self, lane_id: str) -> float:
+        return float(traci.lane.getLength(lane_id))
+
+    def get_lane_halting_number(self, lane_id: str) -> float:
+        return float(traci.lane.getLastStepHaltingNumber(lane_id))
+
+    def get_lane_occupancy(self, lane_id: str) -> float:
+        return float(traci.lane.getLastStepOccupancy(lane_id)) / 100.0
+
+    @property
+    def movement_capacity_inputs(self) -> dict[str, float] | None:
+        if self._movement_state_builder is None:
+            return None
+        return dict(self._movement_state_builder.capacity_inputs)
 
     def close(self) -> None:
         """关闭 SUMO 仿真进程；可重复调用，未加载时为 no-op。"""
@@ -277,18 +423,10 @@ class TraCIBridge:
         if self.tls_id is None:
             raise RuntimeError("TraCIBridge 尚未 start()")
 
-        step = int(traci.simulation.getTime())
+        simulation_time = float(traci.simulation.getTime())
+        step = int(round(simulation_time / self.step_length))
         current_phase = traci.trafficlight.getPhase(self.tls_id)
-        programs = traci.trafficlight.getAllProgramLogics(self.tls_id)
-        active_program = traci.trafficlight.getProgram(self.tls_id)
-        program = next(
-            (
-                candidate
-                for candidate in programs
-                if candidate.programID == active_program
-            ),
-            programs[0],
-        )
+        program = self.get_signal_program(self.tls_id)
         phase_obj = program.phases[current_phase]
         phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
         elapsed = traci.trafficlight.getSpentDuration(self.tls_id)
@@ -314,9 +452,18 @@ class TraCIBridge:
             # 流量近似：当前车辆数 × 3600（后续可改为检测器计数）
             flows[direction] = float(vehicle_count) * 3600.0
 
+        controlled_links = traci.trafficlight.getControlledLinks(self.tls_id)
+        vehicle_ids = list(traci.vehicle.getIDList())
+        safety_vehicles = self._collect_safety_vehicles(vehicle_ids)
+        self._record_turn_observations(safety_vehicles)
+        phase_movements = (
+            self._movement_state_builder.snapshot()
+            if self._movement_state_builder is not None
+            else ()
+        )
         return JointState(
             step=step,
-            timestamp=float(step),
+            timestamp=simulation_time,
             tls_id=self.tls_id,
             current_phase=current_phase,
             current_phase_name=phase_name,
@@ -324,11 +471,19 @@ class TraCIBridge:
             queues=queues,
             flows=flows,
             detector_values={},
-            vehicles=self._collect_vehicles(list(traci.vehicle.getIDList())),
+            vehicles=self._collect_vehicles(vehicle_ids),
             arrival_history=list(self._arrival_window),
-            phase_states=self._build_phase_states(
-                program,
-                traci.trafficlight.getControlledLinks(self.tls_id),
+            phase_states=self._build_phase_states(program, controlled_links),
+            phase_movements=phase_movements,
+            safety_vehicles=safety_vehicles,
+            collision_vehicle_ids=self._simulation_vehicle_ids(
+                "getCollidingVehiclesIDList"
+            ),
+            teleport_vehicle_ids=tuple(
+                sorted(
+                    set(self._simulation_vehicle_ids("getStartingTeleportIDList"))
+                    | set(self._simulation_vehicle_ids("getEndingTeleportIDList"))
+                )
             ),
         )
 
@@ -371,9 +526,7 @@ class TraCIBridge:
             )
             occupancies = []
             for lane in outgoing_lanes:
-                occupancy = float(traci.lane.getLastStepOccupancy(lane))
-                if occupancy > 1.0:
-                    occupancy /= 100.0
+                occupancy = self.get_lane_occupancy(lane)
                 occupancies.append(min(1.0, max(0.0, occupancy)))
 
             states.append(
@@ -409,6 +562,56 @@ class TraCIBridge:
                          speed=traci.vehicle.getSpeed(v))
             for v in ids
         ]
+
+    def _collect_safety_vehicles(
+        self,
+        ids: List[str],
+    ) -> tuple[SafetyVehicleState, ...]:
+        observations = []
+        for vehicle_id in ids:
+            try:
+                next_tls = traci.vehicle.getNextTLS(vehicle_id)
+                next_signal = next_tls[0] if next_tls else None
+                observations.append(
+                    SafetyVehicleState(
+                        vehicle_id=vehicle_id,
+                        lane_id=str(traci.vehicle.getLaneID(vehicle_id)),
+                        speed_mps=float(traci.vehicle.getSpeed(vehicle_id)),
+                        position_xy=tuple(
+                            float(value)
+                            for value in traci.vehicle.getPosition(vehicle_id)[:2]
+                        ),
+                        next_tls_id=(
+                            str(next_signal[0]) if next_signal is not None else None
+                        ),
+                        next_tls_link_index=(
+                            int(next_signal[1]) if next_signal is not None else None
+                        ),
+                        distance_to_tls_m=(
+                            float(next_signal[2]) if next_signal is not None else None
+                        ),
+                        next_tls_state=(
+                            str(next_signal[3]) if next_signal is not None else None
+                        ),
+                    )
+                )
+            except (
+                traci.exceptions.TraCIException,
+                traci.exceptions.FatalTraCIError,
+            ):
+                continue
+        return tuple(observations)
+
+    @staticmethod
+    def _simulation_vehicle_ids(method_name: str) -> tuple[str, ...]:
+        try:
+            method = getattr(traci.simulation, method_name)
+            return tuple(sorted(set(str(value) for value in method())))
+        except (
+            traci.exceptions.TraCIException,
+            traci.exceptions.FatalTraCIError,
+        ):
+            return ()
 
     def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
         """将算法输出的控制动作写入 SUMO。

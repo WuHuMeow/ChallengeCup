@@ -4,7 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from core.types import ControlAction
+from core.movements import MovementKey, MovementState, PhaseMovementState
+from core.types import ControlAction, SafetyVehicleState
 from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.mock_bridge import MockBridge
@@ -76,6 +77,7 @@ def test_build_cmd_redirects_all_sumo_outputs(tmp_path):
     )
     assert cmd[cmd.index("--tripinfo-output.write-unfinished") + 1] == "true"
     assert cmd[cmd.index("--device.emissions.probability") + 1] == "1"
+    assert cmd[cmd.index("--emissions.volumetric-fuel") + 1] == "true"
 
 
 def test_build_cmd_redirects_configured_queue_output(tmp_path):
@@ -143,6 +145,110 @@ def test_get_state_uses_spent_duration_after_phase_duration_override():
     get_spent.assert_called_once_with("tls")
     get_total.assert_not_called()
     get_next.assert_not_called()
+
+
+def test_get_state_publishes_precise_movement_and_safety_observations():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    bridge.step_length = 0.1
+    movement = MovementState(MovementKey("in_0", "out_0"), 2, 1, 10, 10, 0.2, 0.5, 1)
+    phase_movement = PhaseMovementState(0, "G", (movement,), 30.0)
+    bridge._movement_state_builder = SimpleNamespace(
+        snapshot=lambda: (phase_movement,),
+        movement_keys=(MovementKey("in_0", "out_0"),),
+        capacity_inputs={
+            "vehicle_length_m": 5.0,
+            "minimum_gap_m": 2.5,
+            "capacity_spacing_m": 7.5,
+        },
+    )
+    program = SimpleNamespace(
+        programID="program_0",
+        phases=[SimpleNamespace(state="G", duration=30.0, name="green")],
+    )
+    with (
+        patch.object(traci.simulation, "getTime", return_value=1.2),
+        patch.object(traci.simulation, "getCollidingVehiclesIDList", return_value=("crash",)),
+        patch.object(traci.simulation, "getStartingTeleportIDList", return_value=("start",)),
+        patch.object(traci.simulation, "getEndingTeleportIDList", return_value=("end",)),
+        patch.object(traci.trafficlight, "getPhase", return_value=0),
+        patch.object(traci.trafficlight, "getAllProgramLogics", return_value=[program]),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
+        patch.object(traci.trafficlight, "getSpentDuration", return_value=1.2),
+        patch.object(traci.trafficlight, "getControlledLinks", return_value=[]),
+        patch.object(traci.vehicle, "getIDList", return_value=["veh-1"]),
+        patch.object(traci.vehicle, "getLaneID", return_value="in_0"),
+        patch.object(traci.vehicle, "getSpeed", return_value=5.0),
+        patch.object(traci.vehicle, "getPosition", return_value=(1.0, 2.0)),
+        patch.object(traci.vehicle, "getNextTLS", return_value=(("tls", 3, 12.0, "r"),)),
+    ):
+        state = bridge.get_state()
+
+    assert state.step == 12
+    assert state.timestamp == 1.2
+    assert state.phase_movements == (phase_movement,)
+    assert state.collision_vehicle_ids == ("crash",)
+    assert state.teleport_vehicle_ids == ("end", "start")
+    assert state.safety_vehicles[0].position_xy == (1.0, 2.0)
+    assert state.safety_vehicles[0].distance_to_tls_m == 12.0
+    assert bridge.movement_capacity_inputs["capacity_spacing_m"] == 7.5
+
+
+def test_turn_ratios_are_read_from_the_scene_turn_file(tmp_path):
+    config = tmp_path / "demo_1.sumocfg"
+    config.write_text("<configuration/>", encoding="utf-8")
+    (tmp_path / "demo_1.turn.xml").write_text(
+        '<edgeRelations><interval begin="0" end="10">'
+        '<edgeRelation from="-E1" to="E3" probability="0.4"/>'
+        "</interval></edgeRelations>",
+        encoding="utf-8",
+    )
+    bridge = TraCIBridge(config)
+
+    bridge._load_turn_ratios()
+
+    assert bridge.get_turn_ratio("-E1_0", "E3_1") == 0.4
+    assert bridge.get_turn_ratio("-E1_0", "E2_0") is None
+
+
+def test_observed_vehicle_turns_fill_missing_turn_relations():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge._movement_state_builder = SimpleNamespace(
+        movement_keys=(
+            MovementKey("in_0", "out_a_0"),
+            MovementKey("in_0", "out_b_0"),
+        )
+    )
+    bridge._record_turn_observations(
+        (
+            SafetyVehicleState("a", "in_0", 5.0, (0.0, 0.0)),
+            SafetyVehicleState("b", "in_0", 5.0, (0.0, 0.0)),
+        )
+    )
+    bridge._record_turn_observations(
+        (
+            SafetyVehicleState("a", ":internal_0", 5.0, (0.0, 0.0)),
+            SafetyVehicleState("b", ":internal_1", 5.0, (0.0, 0.0)),
+        )
+    )
+    bridge._record_turn_observations(
+        (
+            SafetyVehicleState("a", "out_a_0", 5.0, (0.0, 0.0)),
+            SafetyVehicleState("b", "out_b_0", 5.0, (0.0, 0.0)),
+        )
+    )
+
+    assert bridge.get_turn_ratio("in_0", "out_a_0") == 0.5
+    assert bridge.get_turn_ratio("in_0", "out_b_0") == 0.5
+
+
+def test_traci_lane_occupancy_converts_percent_to_fraction():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+
+    with patch.object(traci.lane, "getLastStepOccupancy", return_value=1.0):
+        occupancy = bridge.get_lane_occupancy("out_0")
+
+    assert occupancy == 0.01
 
 
 def test_invalid_phase_returns_rejection_without_calling_traci():

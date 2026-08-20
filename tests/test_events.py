@@ -4,7 +4,14 @@ import csv
 import pytest
 
 from algorithms.fixed_time import FixedTimeAlgorithm
-from core.types import ControlAction, Scene, SceneMeta
+from core.types import (
+    ControlAction,
+    JointState,
+    SafetyEvent,
+    SafetyVehicleState,
+    Scene,
+    SceneMeta,
+)
 from engine.events import EventLogger
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
@@ -87,3 +94,78 @@ def test_simulation_runner_wires_canonical_algorithm_context(tmp_path):
     rows = list(csv.DictReader(events.open(encoding="utf-8")))
     assert {row["algorithm"] for row in rows} == {"fixed_time"}
     assert {row["intersection_id"] for row in rows} == {"1"}
+
+
+def test_event_logger_writes_machine_readable_safety_fields(tmp_path):
+    events = tmp_path / "events.csv"
+    logger = EventLogger(events, run_id="run-1", intersection_id="1", algorithm="fixed_time")
+    logger.log_safety(
+        SafetyEvent(
+            run_id="run-1",
+            simulation_seconds=1.25,
+            event_type="collision",
+            entity_ids=("veh-a", "veh-b"),
+            source="sumo_collision",
+            confidence=1.0,
+        )
+    )
+    logger.save()
+
+    row = next(csv.DictReader(events.open(encoding="utf-8")))
+    assert row["type"] == "collision"
+    assert row["simulation_seconds"] == "1.25"
+    assert row["entity_ids"] == '["veh-a", "veh-b"]'
+    assert row["source"] == "sumo_collision"
+    assert row["confidence"] == "1.0"
+
+
+def test_event_logger_rejects_safety_event_from_another_run(tmp_path):
+    logger = EventLogger(tmp_path / "events.csv", run_id="run-1")
+    event = SafetyEvent(
+        run_id="run-2",
+        simulation_seconds=1.0,
+        event_type="teleport",
+        entity_ids=("veh-a",),
+        source="sumo_teleport",
+        confidence=1.0,
+    )
+
+    with pytest.raises(ValueError, match="run_id"):
+        logger.log_safety(event)
+
+
+class _SafetyBridge(MockBridge):
+    def get_state(self) -> JointState:
+        speed = 15.0 if self._current_step == 0 else 8.0
+        return JointState(
+            step=self._current_step,
+            timestamp=float(self._current_step),
+            tls_id=self.tls_id,
+            current_phase=0,
+            current_phase_name="phase_0",
+            elapsed_phase_time=float(self._current_step),
+            safety_vehicles=(
+                SafetyVehicleState("veh-a", "north", speed, (0.0, 0.0)),
+            ),
+            collision_vehicle_ids=("veh-a",) if self._current_step == 0 else (),
+        )
+
+
+def test_simulation_runner_records_safety_observations(tmp_path):
+    events = tmp_path / "events.csv"
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        output_csv=tmp_path / "metrics.csv",
+        bridge=_SafetyBridge(),
+        events_csv=events,
+    )
+
+    runner.run(2)
+
+    rows = list(csv.DictReader(events.open(encoding="utf-8")))
+    assert [row["type"] for row in rows].count("collision") == 1
+    assert [row["type"] for row in rows].count("harsh_braking") == 1
+    assert next(row for row in rows if row["type"] == "harsh_braking")["source"] == (
+        "derived_speed_delta"
+    )

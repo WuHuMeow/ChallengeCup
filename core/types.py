@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import math
 from pathlib import Path
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Protocol
 
 if TYPE_CHECKING:
@@ -152,6 +153,29 @@ class VehicleState:
     speed: float
 
 
+@dataclass(frozen=True)
+class SafetyVehicleState:
+    """Run-scoped vehicle observation used only for safety derivation."""
+
+    vehicle_id: str
+    lane_id: str
+    speed_mps: float
+    position_xy: tuple[float, float]
+    next_tls_id: str | None = None
+    distance_to_tls_m: float | None = None
+    next_tls_link_index: int | None = None
+    next_tls_state: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_number("speed_mps", self.speed_mps, minimum=0)
+        if len(self.position_xy) != 2:
+            raise ValueError("position_xy must contain x and y")
+        for coordinate in self.position_xy:
+            _require_number("position_xy", coordinate)
+        if self.distance_to_tls_m is not None:
+            _require_number("distance_to_tls_m", self.distance_to_tls_m, minimum=0)
+
+
 @dataclass
 class JointState:
     """云-边-端协同的联合状态，作为算法 step() 的输入。
@@ -172,6 +196,9 @@ class JointState:
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
     phase_states: List[PhaseTrafficState] = field(default_factory=list)
     phase_movements: tuple[PhaseMovementState, ...] = ()
+    safety_vehicles: tuple[SafetyVehicleState, ...] = ()
+    collision_vehicle_ids: tuple[str, ...] = ()
+    teleport_vehicle_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_number("step", self.step, minimum=0)
@@ -193,6 +220,20 @@ class JointState:
                 "phase_movements must contain only PhaseMovementState values"
             )
         self.phase_movements = phase_movements
+        try:
+            safety_vehicles = tuple(self.safety_vehicles)
+        except TypeError as exc:
+            raise ValueError("safety_vehicles must be iterable") from exc
+        if not all(
+            isinstance(vehicle, SafetyVehicleState)
+            for vehicle in safety_vehicles
+        ):
+            raise ValueError(
+                "safety_vehicles must contain only SafetyVehicleState values"
+            )
+        self.safety_vehicles = safety_vehicles
+        self.collision_vehicle_ids = tuple(self.collision_vehicle_ids)
+        self.teleport_vehicle_ids = tuple(self.teleport_vehicle_ids)
 
 
 @dataclass
@@ -218,6 +259,24 @@ class ActionResult:
     action: ControlAction
     accepted: bool
     detail: str
+
+
+@dataclass(frozen=True)
+class SafetyEvent:
+    """One run-scoped observed or derived safety event."""
+
+    run_id: str
+    simulation_seconds: float
+    event_type: str
+    entity_ids: tuple[str, ...]
+    source: str
+    confidence: float
+    detail: str = ""
+
+    def __post_init__(self) -> None:
+        _require_number("simulation_seconds", self.simulation_seconds, minimum=0)
+        _require_number("confidence", self.confidence, minimum=0, maximum=1)
+        object.__setattr__(self, "entity_ids", tuple(self.entity_ids))
 
 
 @dataclass
@@ -256,6 +315,89 @@ class SimulationMetrics:
             value = getattr(self, name)
             if value is not None:
                 _require_number(name, value, minimum=0)
+
+
+@dataclass(frozen=True)
+class MetricSummary:
+    """Completed and unfinished vehicle metrics with explicit units."""
+
+    completed_vehicle_count: int
+    unfinished_vehicle_count: int
+    throughput: int
+    avg_travel_time_seconds: float | None
+    avg_delay_seconds: float | None
+    total_stops: int | None
+    fuel_ml: float | None
+    co2_g: float | None
+    fuel_ml_per_completed: float | None
+    co2_g_per_completed: float | None
+
+    @classmethod
+    def from_tripinfo(
+        cls,
+        completed: Iterable[Mapping[str, object]],
+        unfinished: Iterable[Mapping[str, object]],
+    ) -> "MetricSummary":
+        completed_rows = list(completed)
+        unfinished_rows = list(unfinished)
+        count = len(completed_rows)
+
+        def values(attribute: str) -> list[float] | None:
+            result = []
+            for row in completed_rows:
+                raw = row.get(attribute)
+                if raw is None:
+                    return None
+                try:
+                    numeric = float(raw)
+                except (TypeError, ValueError):
+                    return None
+                if not math.isfinite(numeric) or numeric < 0:
+                    return None
+                result.append(numeric)
+            return result or None
+
+        def emission_values(attribute: str) -> list[float] | None:
+            result = []
+            for row in completed_rows:
+                raw = row.get(attribute)
+                emissions = row.get("emissions")
+                if raw is None and isinstance(emissions, Mapping):
+                    raw = emissions.get(attribute)
+                if raw is None:
+                    return None
+                try:
+                    numeric = float(raw)
+                except (TypeError, ValueError):
+                    return None
+                if not math.isfinite(numeric) or numeric < 0:
+                    return None
+                result.append(numeric)
+            return result or None
+
+        durations = values("duration")
+        delays = values("timeLoss")
+        stops = values("waitingCount")
+        fuels = emission_values("fuel_abs")
+        co2_mg = emission_values("CO2_abs")
+        fuel_ml = sum(fuels) if fuels is not None else None
+        co2_g = sum(co2_mg) / 1000.0 if co2_mg is not None else None
+        return cls(
+            completed_vehicle_count=count,
+            unfinished_vehicle_count=len(unfinished_rows),
+            throughput=count,
+            avg_travel_time_seconds=(
+                sum(durations) / count if durations is not None else None
+            ),
+            avg_delay_seconds=(
+                sum(delays) / count if delays is not None else None
+            ),
+            total_stops=int(sum(stops)) if stops is not None else None,
+            fuel_ml=fuel_ml,
+            co2_g=co2_g,
+            fuel_ml_per_completed=(fuel_ml / count if fuel_ml is not None else None),
+            co2_g_per_completed=(co2_g / count if co2_g is not None else None),
+        )
 
 
 # 用于需要函数式接口的扩展点（如指标回调）。

@@ -2,7 +2,7 @@
 import pytest
 
 from core.movements import PhaseMovementState
-from core.types import JointState, QueueState, VehicleState
+from core.types import JointState, QueueState, SafetyVehicleState, VehicleState
 
 
 def test_queue_state_capacity_defaults_zero():
@@ -68,3 +68,29 @@ def test_joint_state_preserves_movement_phase_state_tuple():
     )
 
     assert state.phase_movements == (phase,)
+
+
+def test_joint_state_normalizes_safety_observations_and_ids_to_tuples():
+    vehicle = SafetyVehicleState("veh", "in_0", 5.0, (0.0, 0.0))
+    vehicles = [vehicle]
+    collisions = ["veh"]
+    teleports = ["other"]
+
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls_0",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        safety_vehicles=vehicles,
+        collision_vehicle_ids=collisions,
+        teleport_vehicle_ids=teleports,
+    )
+    vehicles.clear()
+    collisions.clear()
+    teleports.clear()
+
+    assert state.safety_vehicles == (vehicle,)
+    assert state.collision_vehicle_ids == ("veh",)
+    assert state.teleport_vehicle_ids == ("other",)
