@@ -136,6 +136,12 @@ class SafetyObservationCollector:
             if phase.phase_index == previous.current_phase
             for movement in phase.movements
         }
+        current_active_movements = {
+            movement.key
+            for phase in current.phase_movements
+            if phase.phase_index == current.current_phase
+            for movement in phase.movements
+        }
         teleports = set(current.teleport_vehicle_ids)
         events = []
         for vehicle in current.safety_vehicles:
@@ -143,7 +149,11 @@ class SafetyObservationCollector:
             if prior is None or vehicle.vehicle_id in teleports:
                 continue
             transition = MovementKey(prior.lane_id, vehicle.lane_id)
-            if transition in all_movements and transition not in active_movements:
+            if (
+                transition in all_movements
+                and transition not in active_movements
+                and transition not in current_active_movements
+            ):
                 events.append(
                     self._event(
                         current,
@@ -158,6 +168,8 @@ class SafetyObservationCollector:
             crossed_red_signal = (
                 prior.next_tls_id == previous.tls_id
                 and prior.next_tls_state in {"r", "R"}
+                and self._signal_state(current, prior.next_tls_link_index)
+                in {"r", "R"}
                 and prior.distance_to_tls_m is not None
                 and prior.distance_to_tls_m <= self.red_light_crossing_distance_m
                 and prior.lane_id != vehicle.lane_id
@@ -175,6 +187,22 @@ class SafetyObservationCollector:
                     )
                 )
         return events
+
+    @staticmethod
+    def _signal_state(state: JointState, link_index: int | None) -> str | None:
+        if link_index is None:
+            return None
+        phase = next(
+            (
+                candidate
+                for candidate in state.phase_movements
+                if candidate.phase_index == state.current_phase
+            ),
+            None,
+        )
+        if phase is None or link_index < 0 or link_index >= len(phase.signal_state):
+            return None
+        return phase.signal_state[link_index]
 
     def _potential_conflict_events(
         self,

@@ -151,6 +151,15 @@ class _SafetyBridge(MockBridge):
         )
 
 
+class _FinalStepCollisionBridge(_SafetyBridge):
+    def get_state(self) -> JointState:
+        state = super().get_state()
+        state.collision_vehicle_ids = (
+            ("veh-final",) if self._current_step == 1 else ()
+        )
+        return state
+
+
 def test_simulation_runner_records_safety_observations(tmp_path):
     events = tmp_path / "events.csv"
     runner = SimulationRunner(
@@ -169,3 +178,21 @@ def test_simulation_runner_records_safety_observations(tmp_path):
     assert next(row for row in rows if row["type"] == "harsh_braking")["source"] == (
         "derived_speed_delta"
     )
+
+
+def test_simulation_runner_flushes_safety_from_the_final_step(tmp_path):
+    events = tmp_path / "events.csv"
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        output_csv=tmp_path / "metrics.csv",
+        bridge=_FinalStepCollisionBridge(),
+        events_csv=events,
+    )
+
+    runner.run(1)
+
+    rows = list(csv.DictReader(events.open(encoding="utf-8")))
+    collision = next(row for row in rows if row["type"] == "collision")
+    assert collision["simulation_seconds"] == "1.0"
+    assert collision["entity_ids"] == '["veh-final"]'

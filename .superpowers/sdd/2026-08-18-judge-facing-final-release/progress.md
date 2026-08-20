@@ -293,3 +293,6 @@
 - 计划指定聚焦验证：`tests/test_movement_state.py tests/test_safety_metrics.py tests/test_traci_outputs.py tests/test_vehicles.py` 为 `40 passed in 1.76s`。
 - 全量验证：首次发现 3 个旧 TraCI 启动替身未镜像新 movement 查询，补全真实结构后全量为 `389 passed in 90.79s`。
 - 真实 RunService 冒烟：路口 1、fixed_time、100 步、seed 42 完成；run_id `43745c374ed1`，容量参数与 events.csv 安全字段落盘，tripinfo 非空。
+- Task 8 自审修复第 1 轮：真实 fixed_time 冒烟的 4 条红灯记录均发生在相位同一步由红转绿，确认为误报；另发现最后一个仿真步的安全状态未刷新。回归 RED `3 failed, 18 passed`，修复前后相位双重校验与终态补采后为 `21 passed`。
+- Task 8 修复后真实冒烟：路口 1、fixed_time、100 步、seed 42 完成；run_id `67e3a3add44f`，`red_light=0`，急减速和潜在冲突观察事件继续落盘。
+- Task 8 自审修复验证：扩展聚焦 `70 passed in 2.15s`；全量 `392 passed in 89.63s`；系统 Python 3.14.7 compileall 与 diff check 均为 exit 0；保护输入保持不变。

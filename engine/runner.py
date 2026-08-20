@@ -12,7 +12,7 @@ from typing import List, Optional
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
 from core.run_models import RunStatus
-from core.types import ControlAction, Scene
+from core.types import ControlAction, SafetyEvent, Scene
 from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
 from engine.edge_channel import EdgeChannel
@@ -163,6 +163,8 @@ class SimulationRunner:
                     break
             else:
                 status = RunStatus.COMPLETED
+            if status is not RunStatus.DISCONNECTED:
+                self._flush_final_safety_observation()
         except KeyboardInterrupt:
             status = RunStatus.INTERRUPTED
             reason = "KeyboardInterrupt"
@@ -299,14 +301,10 @@ class SimulationRunner:
                         ),
                     )
             safety_events = self.safety_collector.observe(
-                self._previous_safety_state,
-                raw_state,
-                tuple(action_results),
+                self._previous_safety_state, raw_state, tuple(action_results)
             )
             self._previous_safety_state = raw_state
-            if self.event_logger:
-                for safety_event in safety_events:
-                    self.event_logger.log_safety(safety_event)
+            self._log_safety_events(safety_events)
             sim_time = self.bridge.step()
         except traci.exceptions.FatalTraCIError as exc:
             logger.error("TraCI connection closed: %s; closing gracefully", exc)
@@ -340,6 +338,24 @@ class SimulationRunner:
                 return "continue"
             return "exhausted"
         return "continue"
+
+    def _flush_final_safety_observation(self) -> None:
+        final_state = self.bridge.get_state()
+        safety_events = self.safety_collector.observe(
+            self._previous_safety_state,
+            final_state,
+            (),
+        )
+        self._previous_safety_state = final_state
+        self._log_safety_events(safety_events)
+
+    def _log_safety_events(
+        self,
+        safety_events: tuple[SafetyEvent, ...],
+    ) -> None:
+        if self.event_logger:
+            for safety_event in safety_events:
+                self.event_logger.log_safety(safety_event)
 
     def _sumo_version(self) -> str:
         version = getattr(self.bridge, "sumo_version", None)

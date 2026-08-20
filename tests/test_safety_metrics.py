@@ -120,6 +120,23 @@ def test_lane_transition_against_red_phase_emits_red_light_event():
     assert events[0].source == "derived_lane_transition"
 
 
+def test_lane_transition_after_phase_turns_green_is_not_a_red_light_event():
+    previous = _state(
+        1.0,
+        current_phase=0,
+        vehicles=(_vehicle("veh-a", "east_in", 8.0),),
+    )
+    current = _state(
+        2.0,
+        current_phase=1,
+        vehicles=(_vehicle("veh-a", "east_out", 8.0),),
+    )
+
+    events = SafetyObservationCollector("run-1").observe(previous, current, ())
+
+    assert events == ()
+
+
 def test_red_signal_crossing_into_internal_lane_emits_red_light_event():
     previous = _state(
         1.0,
@@ -143,6 +160,32 @@ def test_red_signal_crossing_into_internal_lane_emits_red_light_event():
 
     assert [event.event_type for event in events] == ["red_light"]
     assert events[0].source == "derived_red_signal_crossing"
+
+
+def test_internal_lane_crossing_after_link_turns_green_is_not_red_light():
+    previous = _state(
+        1.0,
+        current_phase=0,
+        vehicles=(
+            _vehicle(
+                "veh-a",
+                "east_in",
+                8.0,
+                distance_to_tls_m=1.0,
+                next_tls_link_index=1,
+                next_tls_state="r",
+            ),
+        ),
+    )
+    current = _state(
+        2.0,
+        current_phase=1,
+        vehicles=(_vehicle("veh-a", ":tls0_1_0", 8.0),),
+    )
+
+    events = SafetyObservationCollector("run-1").observe(previous, current, ())
+
+    assert events == ()
 
 
 def test_missing_next_signal_state_does_not_fabricate_red_light_event():
