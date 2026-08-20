@@ -338,3 +338,17 @@
 - 控制器 classic 真实冒烟：长审查目录首次因 Windows 派生配置路径过长而在算法启动前失败；改用短目录 `.t9c` 后路口 1、100 步、seed 42，run_id `8b7032241468`，状态 completed，但 action applied 12、action rejected 88、illegal_transition 88，当前实现不能作为有效安全基线。
 - Task 9 独立审查：2 Critical、2 Important、1 Minor。Critical：resolved fixed plan 仅写 manifest、未应用到 SUMO；Runner 在 `bridge.start()` 后才 `algorithm.init()`，非法计划不是启动前失败。Important：classic 每 tick 重发 `set_phase` 且忽略 elapsed time，真实执行大量非法拒绝；删除 fixed_time init 的旧测试使断言空泛。Minor：全量输出含 1 个受保护 cache warning，不是 pristine。
 - Task 9 fix round 1/5 要求：先以行为测试复现 fixed provenance/实际 program 脱节、启动前验证、classic 真实合法执行和非空 fixed init 契约；再做最小修复，重新运行聚焦、全量、20 场景 resolver、fixed/classic 100 步真实 SUMO、Python 3.14.7 compileall、保护输入校验和 scoped re-review。
+
+## Task 9 review fix round 1
+
+- 修复提交：`ca5b003` (`fix: apply frozen fixed timing baselines`)。fixed_time 通过共享 `set_program` 动作安装冻结 program definition，TraCI 使用 `setProgramLogic` 激活并原子重建 movement 拓扑；算法初始化前移到 SUMO 启动之前；classic 仅在非当前、直接合法且当前 phase 已满足 nominal duration 时发出切换动作。
+- TDD RED/GREEN：覆盖空 Excel state、fixed 不发动作、classic 自相位/过早动作、缺失 program payload 与 runner 晚初始化，RED 为 `6 failed, 63 passed`；最小修复后同组 `69 passed`。
+- 实现单元最终验证：全量 `424 passed in 122.74s`、无 warning；20/20 官方场景均解析为 `official_excel`；fixed/classic 各 100 步真实 SUMO 完成且均为 0 rejected、0 illegal transition；系统 Python 3.14.7 compileall 通过。
+- 控制器 fresh 聚焦验证：`tests/test_fixed_time_plan.py tests/test_classic_max_pressure.py tests/test_algorithms.py tests/test_traci_outputs.py tests/test_runner_channel.py` 为 `69 passed in 1.89s`。
+- 控制器 fresh 全量验证：`pytest -q -p no:cacheprovider --basetemp=.t9c/controller-pytest-full` 为 `424 passed in 81.98s`，无 warning。
+- 控制器 20 场景与直接 TraCI：20/20 resolver 均为 `official_excel` 且 hash/program/phases 非空；路口 1 fixed 运行 100 步后 active program ID 和全部 12 个 `(duration, state)` 与冻结 plan 完全一致，1 applied、0 rejected；classic 100 次决策目标覆盖 `{0,2,4}`，1 applied、0 rejected。
+- 控制器 RunService 真实冒烟：fixed run `bbb2b8e36219`、classic run `6c70ae4c0e02`，均为 `completed`、终态 100.0 秒、1 applied、0 rejected、0 `illegal_transition`。
+- 控制器兼容/保护校验：系统 Python 3.14.7 compileall 与 `git diff --check` 均为 exit 0；`赛题资料.7z` SHA-256 仍为 `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`；官方数据仍为 163 个 Git 跟踪文件、232 个磁盘文件且保护路径无 diff。
+- Task 9 fix round 1 scoped 独立复审：原 2 项 Critical、2 项 Important 和 1 项输出质量问题全部 ADDRESSED，0 项开放；未发现新的 Critical/Important breakage，也无 out-of-scope observation。
+- Task 9: fix round 1/5 (5 addressed, 0 open; commits `30f8ca8..ca5b003`).
+- Task 9: complete (commits `8b49d25..ca5b003`, scoped re-review clean; controller focused/full/20-scene/real-SUMO verification clean).
