@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
@@ -86,6 +87,8 @@ class SimulationRunner:
         self._channel_run_id = (
             artifacts.run_id if artifacts is not None else f"runner-{id(self)}"
         )
+        if self.state_channel is not None:
+            self.state_channel.bind_contract(self._channel_run_id, ("joint-state.v1",))
         self.safety_collector = SafetyObservationCollector(
             artifacts.run_id if artifacts is not None else ""
         )
@@ -296,7 +299,12 @@ class SimulationRunner:
                 control_state = message.payload if message is not None else None
                 if self.event_logger:
                     for event in self.state_channel.events:
-                        self.event_logger.log(step, event.event_type, event.detail)
+                        self.event_logger.log(
+                            step,
+                            event.event_type,
+                            event.detail,
+                            simulation_seconds=event.simulation_time,
+                        )
                     self.state_channel.events.clear()
             if control_state is None:
                 actions: List[ControlAction] = []
@@ -306,6 +314,15 @@ class SimulationRunner:
                     )
             else:
                 actions = self.algorithm.step(control_state)
+                if self.event_logger and hasattr(self.algorithm, "audit_record"):
+                    self.event_logger.log(
+                        step,
+                        "algorithm_audit",
+                        json.dumps(
+                            self.algorithm.audit_record(control_state, actions),
+                            sort_keys=True,
+                        ),
+                    )
             action_results = self.bridge.apply_actions(actions) or []
             if self.event_logger:
                 for result in action_results:

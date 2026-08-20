@@ -10,6 +10,7 @@ from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from cloud.cloud_policy import CloudPolicy
 from core.movements import MovementState, PhaseMovementState
 from core.types import ControlAction, JointState
+from scenes.capacity_preflight import validate_capacity_aware_scene
 
 logger = logging.getLogger(__name__)
 
@@ -22,26 +23,28 @@ class CapacityAwareConfig:
     min_green: float
     max_green: float
     overflow_threshold: float
+    layer: str = "custom"
+    safety_boundary: str = "none"
 
     @classmethod
     def m0(cls) -> "CapacityAwareConfig":
-        return cls(False, False, False, 10.0, 30.0, 0.9)
+        return cls(False, False, False, 10.0, 30.0, 0.9, "M0", "none")
 
     @classmethod
     def m1(cls) -> "CapacityAwareConfig":
-        return cls(True, False, False, 10.0, 30.0, 0.9)
+        return cls(True, False, False, 10.0, 30.0, 0.9, "M1", "none")
 
     @classmethod
     def m2(cls) -> "CapacityAwareConfig":
-        return cls(True, True, False, 10.0, 30.0, 0.9)
+        return cls(True, True, False, 10.0, 30.0, 0.9, "M2", "spillback_gate")
 
     @classmethod
     def m3(cls) -> "CapacityAwareConfig":
-        return cls(True, True, False, 10.0, 30.0, 0.9)
+        return cls(True, True, False, 10.0, 30.0, 0.9, "M3", "shared_action_validation")
 
     @classmethod
     def m4(cls) -> "CapacityAwareConfig":
-        return cls(True, True, True, 10.0, 30.0, 0.9)
+        return cls(True, True, True, 10.0, 30.0, 0.9, "M4", "shared_action_validation")
 
     @classmethod
     def default(cls) -> "CapacityAwareConfig":
@@ -159,8 +162,119 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             return {index: score.score for index, score in scores.items()}
         return scores
 
+    def audit_record(
+        self, state: JointState, actions: list[ControlAction] | None = None
+    ) -> dict[str, object]:
+        """Return a JSON-serializable reconstruction of scores and decision."""
+        scores = self._scores(state)
+        phase_scores: dict[str, object] = {}
+        for phase in state.phase_movements:
+            score = scores.get(phase.phase_index)
+            if score is None:
+                continue
+            movements = []
+            for movement in phase.movements:
+                movement_id = _movement_id(movement)
+                blocked_reason = (
+                    "downstream_occupancy_at_or_above_threshold"
+                    if movement_id in score.blocked_movements
+                    else None
+                )
+                raw_pressure = movement.saturation_rate * (
+                    movement.queue_vehicles - movement.downstream_queue_vehicles
+                )
+                normalized_pressure = movement.saturation_rate * (
+                    movement.queue_vehicles / movement.incoming_capacity
+                    - movement.downstream_queue_vehicles / movement.downstream_capacity
+                )
+                movements.append({
+                    "movement_id": movement_id,
+                    "incoming_lane": movement.key.incoming_lane,
+                    "outgoing_lane": movement.key.outgoing_lane,
+                    "queue_vehicles": movement.queue_vehicles,
+                    "downstream_queue_vehicles": movement.downstream_queue_vehicles,
+                    "incoming_capacity": movement.incoming_capacity,
+                    "downstream_capacity": movement.downstream_capacity,
+                    "downstream_occupancy": movement.downstream_occupancy,
+                    "saturation_rate": movement.saturation_rate,
+                    "raw_pressure": raw_pressure,
+                    "normalized_pressure": normalized_pressure,
+                    "pressure": (
+                        None if blocked_reason else (
+                            normalized_pressure if self.config.capacity_normalization else raw_pressure
+                        )
+                    ),
+                    "blocked_reason": blocked_reason,
+                })
+            phase_scores[str(phase.phase_index)] = {
+                "score": score.score,
+                "movement_ids": list(score.movement_ids),
+                "blocked_movements": list(score.blocked_movements),
+                "movements": movements,
+            }
+
+        viable = [
+            phase
+            for phase in state.phase_movements
+            if phase.phase_index in scores
+            and any(
+                movement.queue_vehicles > 0
+                and _movement_id(movement) in scores[phase.phase_index].movement_ids
+                for movement in phase.movements
+            )
+        ]
+        target: int | None = None
+        if not viable:
+            selection_reason = "safe_fallback_all_blocked"
+        else:
+            selected = max(
+                viable,
+                key=lambda phase: (
+                    scores[phase.phase_index].score,
+                    phase.phase_index == state.current_phase,
+                    -phase.phase_index,
+                ),
+            )
+            target = selected.phase_index
+            if actions is None:
+                actions = self.step(state)
+            if target == state.current_phase:
+                selection_reason = "current_phase_selected"
+            elif actions:
+                selection_reason = "highest_viable_pressure"
+            elif target not in {
+                candidate
+                for source, candidate in state.legal_phase_transitions
+                if source == state.current_phase
+            }:
+                selection_reason = "safe_fallback_illegal_target"
+            else:
+                selection_reason = "minimum_green_not_elapsed"
+        return {
+            "layer": self.config.layer,
+            "safety_boundary": self.config.safety_boundary,
+            "phase_scores": phase_scores,
+            "selection_reason": selection_reason,
+            "selected_phase": target,
+            "final_decision": {
+                "action": actions[0].action_type if actions else "no_action",
+                "actions": [
+                    {
+                        "action_type": action.action_type,
+                        "value": action.value,
+                        "reason": action.reason,
+                    }
+                    for action in actions or ()
+                ],
+            },
+        }
+
     def _duration(self, selected: float, scores: dict[int, PhaseScore]) -> float:
-        positive = [max(value.score, 0.0) for value in scores.values()]
+        positive = [
+            value.score
+            for value in scores.values()
+            if isfinite(value.score) and value.score > 0.0
+        ]
         average = sum(positive) / len(positive) if positive else 0.0
         base = self.base_green
         duration = base if selected <= 0.0 or average <= 0.0 else base * selected / average
@@ -211,10 +325,16 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             ControlAction(state.tls_id, "set_phase_duration", duration, f"dynamic_green target={target.phase_index}"),
         ]
 
+    def init(self, scene) -> None:
+        validate_capacity_aware_scene(scene.meta.sumo_net)
+        super().init(scene)
+
     @property
     def manifest(self) -> dict[str, object]:
         return {
             "name": self.name,
+            "layer": self.config.layer,
+            "safety_boundary": self.config.safety_boundary,
             "capacity_normalization": self.config.capacity_normalization,
             "spillback_gate": self.config.spillback_gate,
             "prediction_enabled": self.config.prediction,

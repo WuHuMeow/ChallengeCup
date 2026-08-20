@@ -203,6 +203,31 @@ def test_run_service_injects_frozen_ca_mp_parameters(tmp_path):
     assert algorithm.base_green == 45.0
 
 
+def test_run_service_converts_edge_delay_steps_to_scene_seconds(tmp_path):
+    """Two 0.5-second ticks must delay an edge state until simulation time 1.0."""
+    base_scene = SceneRegistry().get_scene("1")
+    custom_cfg = tmp_path / "half-second.sumocfg"
+    custom_cfg.write_text(
+        "<configuration><time><step-length value='0.5'/></time></configuration>",
+        encoding="utf-8",
+    )
+
+    class CustomRegistry:
+        def get_scene(self, intersection_id):
+            return Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg))
+
+    RecordingRunner.calls = []
+    service = RunService(
+        output_root=tmp_path / "runs", runner_factory=RecordingRunner, registry=CustomRegistry()
+    )
+
+    result = service.run_sync(RunRequest("1", "fixed_time", steps=5, edge_delay_steps=2))
+
+    channel = RecordingRunner.calls[-1]["state_channel"]
+    assert result.status is RunStatus.COMPLETED
+    assert channel.delay_seconds == 1.0
+
+
 def test_run_service_constructs_algorithms_through_injected_registry(tmp_path):
     constructed = []
 

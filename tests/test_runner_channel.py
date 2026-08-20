@@ -74,6 +74,44 @@ def test_runner_consumes_an_edge_message_before_calling_the_algorithm(tmp_path):
     assert algorithm.steps == [0, 1]
 
 
+def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):
+    """Channel rejection evidence must retain envelope time rather than runner step."""
+    bridge = MockBridge(step_length=12.5)
+    bridge._current_step = 1
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.0, allowed_directions=["north"]),
+    )
+
+    runner.run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = next(row for row in events if row["type"] == "message_rejected")
+    assert rejected["detail"] == "disallowed_direction=east"
+    assert rejected["simulation_seconds"] == "12.5"
+
+
+def test_half_second_channel_releases_after_exactly_two_ticks(tmp_path):
+    """A two-step delay is one simulation second, and delivers states 0, 1, 2."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(step_length=0.5),
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=1.0),
+    )
+
+    runner.run(5)
+
+    assert algorithm.steps == [0, 1, 2]
+
+
 def test_successful_run_writes_completed_metadata(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     SimulationRunner(
@@ -101,6 +139,11 @@ def test_capacity_aware_run_metadata_records_the_frozen_prediction_manifest(tmp_
     assert manifest["prediction_enabled"] is False
     assert manifest["horizon_seconds"] == 300.0
     assert manifest["prediction_weight"] == 0.15
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audit = next(json.loads(row["detail"]) for row in events if row["type"] == "algorithm_audit")
+    assert audit["layer"] == "M3"
+    assert audit["safety_boundary"] == "shared_action_validation"
+    assert audit["final_decision"]["action"] == "no_action"
 
 
 class _StartRecordingBridge(MockBridge):
@@ -133,6 +176,35 @@ def test_invalid_fixed_plan_fails_before_starting_the_bridge(tmp_path):
 
     with pytest.raises(ValueError, match="timing plan"):
         SimulationRunner(scene, FixedTimeAlgorithm(), bridge=bridge, artifacts=artifacts).run(1)
+
+    assert bridge.start_calls == 0
+
+
+def test_capacity_aware_invalid_lane_capacity_fails_before_starting_bridge(tmp_path):
+    """Capacity-aware formal validation must name bad lanes before TraCI starts."""
+    net = tmp_path / "invalid-capacity.net.xml"
+    net.write_text(
+        "<net><edge id='in'><lane id='in_0' length='0'/></edge>"
+        "<edge id='out'><lane id='out_0' length='20'/></edge>"
+        "<tlLogic id='tls' type='static' programID='0' offset='0'>"
+        "<phase duration='30' state='G'/></tlLogic>"
+        "<connection from='in' to='out' fromLane='0' toLane='0' tl='tls' linkIndex='0'/>"
+        "</net>",
+        encoding="utf-8",
+    )
+    scene = Scene(SceneMeta(
+        intersection_id="invalid", name="invalid", sumo_net=net,
+        sumo_rou=tmp_path / "routes.rou.xml", sumo_flow=tmp_path / "flow.xml",
+        sumo_turn=tmp_path / "turn.xml", sumo_cfg=tmp_path / "run.sumocfg",
+        timing_xlsx=tmp_path / "timing.xlsx",
+    ))
+    bridge = _StartRecordingBridge()
+    artifacts = RunArtifacts.create(tmp_path, "invalid", "capacity_aware_maxpressure", 1.0, 42)
+
+    with pytest.raises(ValueError, match="in_0"):
+        SimulationRunner(
+            scene, CapacityAwareMaxPressureAlgorithm(), bridge=bridge, artifacts=artifacts
+        ).run(1)
 
     assert bridge.start_calls == 0
 

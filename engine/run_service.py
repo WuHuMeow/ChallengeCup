@@ -12,7 +12,7 @@ from typing import Callable
 
 from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
 from core.run_models import RunRequest, RunResult, RunStatus
-from core.timebase import steps_for_seconds
+from core.timebase import seconds_for_steps, steps_for_seconds
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel
 from engine.runner import SimulationRunner
@@ -129,6 +129,7 @@ class RunService:
         try:
             scene = self.registry.get_scene(request.intersection_id)
             requested_steps = self._requested_steps(request, scene.meta.sumo_cfg)
+            step_length = self._step_length(request, scene.meta.sumo_cfg)
             bundle = VariantGenerator().generate_bundle(
                 scene.meta,
                 request.flow_multiplier,
@@ -138,8 +139,12 @@ class RunService:
             state_channel = None
             if request.edge_delay_steps or request.edge_directions:
                 state_channel = EdgeChannel(
-                    delay_steps=request.edge_delay_steps,
+                    delay_seconds=seconds_for_steps(
+                        request.edge_delay_steps, step_length
+                    ),
                     allowed_directions=list(request.edge_directions) or None,
+                    expected_run_id=artifacts.run_id,
+                    accepted_payload_versions=("joint-state.v1",),
                 )
             runner = self.runner_factory(
                 scene=scene,
@@ -185,15 +190,20 @@ class RunService:
         """Resolve a request's compatibility step count at the scene boundary."""
         if request.steps is not None:
             return request.steps
-        step_length = request.step_length_override
-        if step_length is None:
-            try:
-                root = ET.parse(sumo_cfg).getroot()
-                element = root.find("./time/step-length")
-                step_length = float(element.get("value")) if element is not None else 1.0
-            except (OSError, ET.ParseError, TypeError, ValueError) as exc:
-                raise ValueError(f"invalid SUMO step-length in {sumo_cfg}") from exc
-        return steps_for_seconds(request.duration_seconds, step_length)
+        return steps_for_seconds(
+            request.duration_seconds, RunService._step_length(request, sumo_cfg)
+        )
+
+    @staticmethod
+    def _step_length(request: RunRequest, sumo_cfg: Path) -> float:
+        if request.step_length_override is not None:
+            return float(request.step_length_override)
+        try:
+            root = ET.parse(sumo_cfg).getroot()
+            element = root.find("./time/step-length")
+            return float(element.get("value")) if element is not None else 1.0
+        except (OSError, ET.ParseError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid SUMO step-length in {sumo_cfg}") from exc
 
     def _result_from_artifacts(self, artifacts: RunArtifacts) -> RunResult:
         payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))

@@ -1,4 +1,8 @@
 """EdgeChannel V2X message envelope, expiry and direction tests."""
+import dataclasses
+
+import pytest
+
 from core.types import JointState, QueueState
 from engine.edge_channel import EdgeChannel, EdgeMessage
 
@@ -55,4 +59,62 @@ def test_disallowed_direction_is_rejected_with_an_event_record():
     assert ch.receive(now=10.0) is None
     assert [(event.event_type, event.detail) for event in ch.events] == [
         ("message_rejected", "disallowed_direction=south"),
+    ]
+
+
+def test_stale_run_and_incompatible_payload_version_are_rejected():
+    """A receiver must accept only its active run and supported payload schema."""
+    ch = EdgeChannel(
+        delay_seconds=0.0,
+        expected_run_id="active-run",
+        accepted_payload_versions=["joint-state.v1"],
+    )
+    ch.send(_message(10))
+    ch.send(EdgeMessage(
+        run_id="active-run",
+        simulation_time=11.0,
+        sent_at=11.0,
+        expires_at=30.0,
+        payload_version="joint-state.v2",
+        payload=_state(11),
+    ))
+
+    assert ch.receive(now=11.0) is None
+    assert ch.receive(now=11.0) is None
+    assert [(event.event_type, event.detail) for event in ch.events] == [
+        ("message_rejected", "stale_run_id=run-42"),
+        ("message_rejected", "incompatible_payload_version=joint-state.v2"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("message", "reason"),
+    (
+        (
+            dataclasses.replace(_message(10), payload=_state(11)),
+            "payload_timestamp_mismatch",
+        ),
+        (
+            dataclasses.replace(_message(10), sent_at=11.0),
+            "sent_at_after_simulation_time",
+        ),
+        (
+            dataclasses.replace(_message(10), sent_at=9.0, expires_at=9.0),
+            "expires_at_not_after_sent_at",
+        ),
+        (
+            dataclasses.replace(_message(10), sent_at=9.0, expires_at=10.0),
+            "expires_at_not_after_simulation_time",
+        ),
+    ),
+)
+def test_inconsistent_message_times_are_rejected_before_buffering(message, reason):
+    """Malformed timing envelopes must never become eligible for delivery."""
+    channel = EdgeChannel(delay_seconds=0.0)
+
+    channel.send(message)
+
+    assert channel.receive(now=100.0) is None
+    assert [(event.event_type, event.detail) for event in channel.events] == [
+        ("message_rejected", reason),
     ]

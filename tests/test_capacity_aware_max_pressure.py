@@ -1,4 +1,5 @@
 import dataclasses
+import json
 
 import pytest
 
@@ -144,6 +145,21 @@ def test_dynamic_green_is_clamped_to_the_frozen_layer_limits(state):
     assert duration == 30.0
 
 
+def test_dynamic_green_averages_only_strictly_positive_phase_scores(state):
+    """A zero-score candidate must not dilute a 20-point selected pressure."""
+    scored = {
+        0: type("Score", (), {"score": 20.0})(),
+        1: type("Score", (), {"score": 0.0})(),
+        2: type("Score", (), {"score": -5.0})(),
+    }
+    algorithm = CapacityAwareMaxPressureAlgorithm(
+        CapacityAwareConfig(True, True, False, 10.0, 90.0, 0.9),
+        base_green=30.0,
+    )
+
+    assert algorithm._duration(20.0, scored) == 30.0
+
+
 def test_m3_freezes_the_attributable_config_but_uses_legal_actions(state):
     """Bypassing the existing legal action path would emit a direct illegal action."""
     config = CapacityAwareConfig.m3()
@@ -171,6 +187,24 @@ def test_manifest_records_prediction_units_and_frozen_layer_flags():
     assert manifest["prediction_weight"] == 0.15
     assert manifest["capacity_normalization"] is True
     assert manifest["spillback_gate"] is True
+
+
+def test_m2_m3_have_distinct_boundary_identity_and_serializable_audit(state):
+    """Evidence consumers need the layer boundary and the complete selected decision."""
+    m2 = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m2())
+    m3 = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
+
+    m2_audit = m2.audit_record(state)
+    m3_audit = m3.audit_record(state)
+
+    assert m2.manifest["layer"] == "M2"
+    assert m3.manifest["layer"] == "M3"
+    assert m2.manifest["safety_boundary"] != m3.manifest["safety_boundary"]
+    assert m3_audit["selection_reason"] == "highest_viable_pressure"
+    assert m3_audit["final_decision"]["action"] == "set_phase"
+    assert m3_audit["phase_scores"]["0"]["movements"][0]["movement_id"] == "in_a->out_a"
+    assert m2_audit["phase_scores"]["0"]["movements"][0]["blocked_reason"] is None
+    assert json.loads(json.dumps(m3_audit))["layer"] == "M3"
 
 
 def test_prediction_converts_hourly_flow_to_vehicles_over_the_horizon(state):
