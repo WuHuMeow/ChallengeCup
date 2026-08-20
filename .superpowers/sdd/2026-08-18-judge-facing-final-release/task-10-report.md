@@ -163,3 +163,79 @@ All behavior tests use hand-derived literal expectations and real state/control 
   Result: run ID `f7ad671f045f`, `completed`, `applied=0`, `rejected=0`, `illegal_transition=0`, `channel_wait=2`, and `algorithm_audit=98`; manifest continues to record `layer=M3` and `safety_boundary=shared_action_validation`.
 - Compatibility and integrity:
   `python --version` reported `Python 3.14.7`; `python -m compileall algorithms cloud engine scenes` exited 0; `git diff --check` exited 0. Protected archive SHA-256 remained `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`, with 163 protected tracked files and 232 protected disk files, no protected-path diff or staging.
+
+## Review Fix Round 2
+
+### TDD Evidence
+
+1. RED buffered contract revalidation:
+   `./.venv/Scripts/python.exe -m pytest tests/test_edge_channel.py::test_binding_contract_rejects_stale_message_buffered_while_unbound tests/test_runner_channel.py::test_runner_binding_rejects_prebuffered_message_from_another_run -q -p no:cacheprovider --basetemp=.t10/fix2-red-bind-contract`
+   Result: `2 failed` as expected. A stale envelope accepted while unbound was delivered after the active contract bound, both directly and through Runner.
+2. GREEN buffered contract revalidation:
+   `./.venv/Scripts/python.exe -m pytest tests/test_edge_channel.py::test_binding_contract_rejects_stale_message_buffered_while_unbound tests/test_runner_channel.py::test_runner_binding_rejects_prebuffered_message_from_another_run -q -p no:cacheprovider --basetemp=.t10/fix2-green-bind-contract`
+   Result: `2 passed`. `bind_contract()` purges incompatible buffered messages with `message_rejected`, and `receive()` retains the same contract validation at delivery.
+3. RED effective step length:
+   `./.venv/Scripts/python.exe -m pytest tests/test_run_service.py::test_step_override_drives_effective_sumo_ticks_and_edge_delay -q -p no:cacheprovider --basetemp=.t10/fix2-red-effective-step`
+   Result: `1 failed` as expected. The generated runtime SUMO config still had `step-length=1.0` when the request override was `0.5`.
+4. GREEN effective step length:
+   `./.venv/Scripts/python.exe -m pytest tests/test_run_service.py::test_step_override_drives_effective_sumo_ticks_and_edge_delay -q -p no:cacheprovider --basetemp=.t10/fix2-green-effective-step`
+   Result: `1 passed`. A source 1.0-second cfg with 0.5-second override now runs five 0.5-second ticks, calls the algorithm at `[0, 1, 2]`, and records exactly two channel waits for a two-step delay.
+5. RED M4 snapshot and shared action outcomes:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_m4_audit_reuses_one_prediction_snapshot_and_sums_all_components tests/test_runner_channel.py::test_runner_audit_correlates_shared_rejected_action_result -q -p no:cacheprovider --basetemp=.t10/fix2-red-audit-snapshot`
+   Result: `2 failed` as expected. Audit recomputation advanced EWMA to `525.0` rather than hand-derived `300.0`, and the persisted decision had no `action_results`.
+6. GREEN M4 snapshot and shared action outcomes:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_m4_audit_reuses_one_prediction_snapshot_and_sums_all_components tests/test_runner_channel.py::test_runner_audit_correlates_shared_rejected_action_result -q -p no:cacheprovider --basetemp=.t10/fix2-green-audit-snapshot`
+   Result: `2 passed`. A per-state immutable snapshot performs one prediction update, audit pressure includes normalized and prediction components, and Runner appends actual existing `apply_actions()` results after execution.
+7. RED capacity-aware numeric configuration:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_capacity_config_rejects_nonfinite_and_unsafe_limits tests/test_capacity_aware_max_pressure.py::test_capacity_constructor_overrides_cannot_restore_unsafe_values -q -p no:cacheprovider --basetemp=.t10/fix2-red-config-validation`
+   Result: `20 failed` as expected. Non-finite values, unsafe green limits, out-of-range thresholds, and unsafe constructor overrides were accepted.
+8. GREEN capacity-aware numeric configuration:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_capacity_config_rejects_nonfinite_and_unsafe_limits tests/test_capacity_aware_max_pressure.py::test_capacity_constructor_overrides_cannot_restore_unsafe_values -q -p no:cacheprovider --basetemp=.t10/fix2-green-config-validation`
+   Result: `20 passed`. Construction now requires finite values, `0 < min_green <= max_green`, and `0 <= overflow_threshold <= 1`; override paths validate the same safety constraints.
+9. RED tie attribution:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_audit_explains_equal_score_keep_current_tie tests/test_capacity_aware_max_pressure.py::test_audit_explains_equal_score_smallest_index_tie -q -p no:cacheprovider --basetemp=.t10/fix2-red-tie-reasons`
+   Result: `2 failed` as expected. Equal-score selections were reported only as generic `current_phase_selected` or `highest_viable_pressure`.
+10. GREEN tie attribution:
+    `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_audit_explains_equal_score_keep_current_tie tests/test_capacity_aware_max_pressure.py::test_audit_explains_equal_score_smallest_index_tie -q -p no:cacheprovider --basetemp=.t10/fix2-green-tie-reasons`
+    Result: `2 passed in 0.74s`. Audit now identifies `equal_score_keep_current` and `equal_score_smallest_index` and records current phase, elapsed time, legal targets, candidates, and selected phase.
+11. RED non-finite envelope times:
+    `./.venv/Scripts/python.exe -m pytest tests/test_edge_channel.py::test_non_finite_envelope_times_are_rejected_before_buffering -q -p no:cacheprovider --basetemp=.t10/fix2-red-nonfinite-times-contract`
+    Result: `9 failed in 0.22s` as expected. NaN/infinite times were mislabeled by relation checks, expired later, or were delivered.
+12. GREEN non-finite envelope times:
+    `./.venv/Scripts/python.exe -m pytest tests/test_edge_channel.py::test_non_finite_envelope_times_are_rejected_before_buffering -q -p no:cacheprovider --basetemp=.t10/fix2-green-nonfinite-times`
+    Result: `9 passed in 0.05s`. `simulation_time`, `sent_at`, and `expires_at` now reject NaN, positive infinity, and negative infinity before payload or ordering checks with stable `*_not_finite` reasons.
+
+### Verification
+
+- Expanded focused coverage:
+  `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py tests/test_edge_channel.py tests/test_runner_channel.py tests/test_run_service.py tests/test_cloud.py tests/test_capacity_preflight.py tests/test_algorithms.py -q -p no:cacheprovider --basetemp=.t10/fix2-focused-final`
+  Result: `104 passed in 10.86s`.
+- Official static capacity preflight:
+  `./.venv/Scripts/python.exe -c "from scenes.capacity_preflight import validate_capacity_aware_scene; from scenes.registry import SceneRegistry; scenes = [SceneRegistry().get_scene(str(index)) for index in range(1, 21)]; [validate_capacity_aware_scene(scene.meta.sumo_net) for scene in scenes]; print(f'{len(scenes)}/20 official capacity preflights passed')"`
+  Result: `20/20 official capacity preflights passed`.
+- Full project suite:
+  `./.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=.t10/fix2-full-final`
+  Result: `484 passed in 89.38s (0:01:29)`.
+- Real 100-step RunService/SUMO EdgeMessage smoke:
+  `RunService(output_root=Path('.t10/fix2-real-smoke')).run_sync(RunRequest('1', 'capacity_aware_maxpressure', steps=100, seed=42, edge_delay_steps=2))`
+  Result: run ID `bcf313da0b32`, `completed`, `channel_wait=2`, `action_applied=0`, `action_rejected=0`, `illegal_transition=0`, and `algorithm_audit=98`. The manifest records `layer=M3`, `safety_boundary=shared_action_validation`, `prediction_enabled=false`, `horizon_seconds=300.0`, and `prediction_weight=0.15`; audits contain three phase scores, selection/decision reasons, and final action-result arrays.
+- Python compatibility:
+  `python --version` returned `Python 3.14.7`; `python -m compileall algorithms cloud engine scenes` exited 0.
+- Integrity:
+  `git diff --check` exited 0. The archive SHA-256 is `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`; `data/intersection_data` remains 163 tracked and 232 on-disk files, with clean protected-path worktree and index diffs.
+
+### Files Changed
+
+- Modified `algorithms/capacity_aware_max_pressure.py`, `engine/edge_channel.py`, `engine/runner.py`, `engine/run_service.py`, and `scenes/variant.py`.
+- Modified `tests/test_capacity_aware_max_pressure.py`, `tests/test_edge_channel.py`, `tests/test_runner_channel.py`, and `tests/test_run_service.py`.
+- Appended this Task 10 report section.
+
+### Self Review and Concerns
+
+- Finding 1: binding purges incompatible existing envelopes and delivery revalidates the active contract; direct and Runner behavior tests cover both paths.
+- Finding 2: one request override now controls both generated SUMO runtime config and delay conversion; the test observes actual bridge ticks rather than only arithmetic.
+- Finding 3: `step()` and `audit_record()` share the same immutable decision snapshot, and audit consumes only the current shared `apply_actions()` results. No centralized executor, fallback state machine, or other Task 11 behavior was introduced.
+- Finding 4: both frozen config construction and public constructor overrides reject non-finite/unsafe values before runtime scoring.
+- Finding 5: tie reason strings are deterministic and audit carries all reconstruction context.
+- Finding 6: finite-time rejection precedes payload timestamp and ordering validation, while existing event simulation-time forwarding remains unchanged.
+- No new Critical or Important issue was found in the scoped diff. The real smoke selected safe no-action fallbacks for this short legal phase graph, so rejected-result correlation remains covered by the focused Runner behavior test rather than the smoke.

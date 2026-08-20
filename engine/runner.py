@@ -314,16 +314,20 @@ class SimulationRunner:
                     )
             else:
                 actions = self.algorithm.step(control_state)
-                if self.event_logger and hasattr(self.algorithm, "audit_record"):
-                    self.event_logger.log(
-                        step,
-                        "algorithm_audit",
-                        json.dumps(
-                            self.algorithm.audit_record(control_state, actions),
-                            sort_keys=True,
-                        ),
-                    )
             action_results = self.bridge.apply_actions(actions) or []
+            if (
+                control_state is not None
+                and self.event_logger
+                and hasattr(self.algorithm, "audit_record")
+            ):
+                self.event_logger.log(
+                    step,
+                    "algorithm_audit",
+                    json.dumps(
+                        self.algorithm.audit_record(control_state, action_results),
+                        sort_keys=True,
+                    ),
+                )
             if self.event_logger:
                 for result in action_results:
                     event_type = (

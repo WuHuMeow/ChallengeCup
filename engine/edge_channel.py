@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import deque
+from math import isfinite
 from typing import Deque, Iterable
 
 from core.types import JointState
@@ -64,72 +65,71 @@ class EdgeChannel:
             raise ValueError("EdgeChannel already bound to different payload versions")
         self.expected_run_id = expected_run_id
         self.accepted_payload_versions = versions
+        self._purge_rejected_messages()
 
-    def send(self, message: EdgeMessage) -> None:
-        if not isinstance(message, EdgeMessage):
-            raise TypeError("EdgeChannel.send requires an EdgeMessage")
+    def _record_rejection(self, message: EdgeMessage, detail: str) -> None:
+        self.events.append(EdgeChannelEvent(
+            "message_rejected", detail, message.simulation_time
+        ))
+
+    def _rejection_reason(self, message: EdgeMessage) -> str | None:
+        if not isfinite(message.simulation_time):
+            return "simulation_time_not_finite"
+        if not isfinite(message.sent_at):
+            return "sent_at_not_finite"
+        if not isfinite(message.expires_at):
+            return "expires_at_not_finite"
         if message.simulation_time != message.payload.timestamp:
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                "payload_timestamp_mismatch",
-                message.simulation_time,
-            ))
-            return
+            return "payload_timestamp_mismatch"
         if message.sent_at > message.simulation_time:
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                "sent_at_after_simulation_time",
-                message.simulation_time,
-            ))
-            return
+            return "sent_at_after_simulation_time"
         if message.expires_at <= message.sent_at:
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                "expires_at_not_after_sent_at",
-                message.simulation_time,
-            ))
-            return
+            return "expires_at_not_after_sent_at"
         if message.expires_at <= message.simulation_time:
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                "expires_at_not_after_simulation_time",
-                message.simulation_time,
-            ))
-            return
+            return "expires_at_not_after_simulation_time"
         if self.expected_run_id is not None and message.run_id != self.expected_run_id:
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                f"stale_run_id={message.run_id}",
-                message.simulation_time,
-            ))
-            return
+            return f"stale_run_id={message.run_id}"
         if (
             self.accepted_payload_versions is not None
             and message.payload_version not in self.accepted_payload_versions
         ):
-            self.events.append(EdgeChannelEvent(
-                "message_rejected",
-                f"incompatible_payload_version={message.payload_version}",
-                message.simulation_time,
-            ))
-            return
+            return f"incompatible_payload_version={message.payload_version}"
         if self.allowed_directions is not None:
             directions = {
                 queue.direction for queue in message.payload.queues
             } | set(message.payload.flows)
             forbidden = sorted(directions - self.allowed_directions)
             if forbidden:
-                self.events.append(EdgeChannelEvent(
-                    "message_rejected",
-                    f"disallowed_direction={forbidden[0]}",
-                    message.simulation_time,
-                ))
-                return
+                return f"disallowed_direction={forbidden[0]}"
+        return None
+
+    def _purge_rejected_messages(self) -> None:
+        retained: Deque[EdgeMessage] = deque()
+        for message in self._buffer:
+            reason = self._rejection_reason(message)
+            if reason is None:
+                retained.append(message)
+            else:
+                self._record_rejection(message, reason)
+        self._buffer = retained
+
+    def send(self, message: EdgeMessage) -> None:
+        if not isinstance(message, EdgeMessage):
+            raise TypeError("EdgeChannel.send requires an EdgeMessage")
+        reason = self._rejection_reason(message)
+        if reason is not None:
+            self._record_rejection(message, reason)
+            return
         self._buffer.append(message)
 
     def receive(self, now: float) -> EdgeMessage | None:
         while self._buffer:
             message = self._buffer[0]
+            reason = self._rejection_reason(message)
+            if reason is not None:
+                self._buffer.popleft()
+                self._record_rejection(message, reason)
+                continue
             if now < message.simulation_time + self.delay_seconds:
                 return None
             self._buffer.popleft()

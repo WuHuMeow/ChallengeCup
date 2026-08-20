@@ -118,3 +118,43 @@ def test_inconsistent_message_times_are_rejected_before_buffering(message, reaso
     assert [(event.event_type, event.detail) for event in channel.events] == [
         ("message_rejected", reason),
     ]
+
+
+def test_binding_contract_rejects_stale_message_buffered_while_unbound():
+    """Binding a Runner contract must purge a message accepted before identity existed."""
+    channel = EdgeChannel(delay_seconds=0.0)
+    channel.send(_message(10))
+
+    channel.bind_contract("active-run", ("joint-state.v1",))
+
+    assert channel.receive(now=10.0) is None
+    assert [(event.event_type, event.detail) for event in channel.events] == [
+        ("message_rejected", "stale_run_id=run-42"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    (
+        ("simulation_time", float("nan"), "simulation_time_not_finite"),
+        ("simulation_time", float("inf"), "simulation_time_not_finite"),
+        ("simulation_time", float("-inf"), "simulation_time_not_finite"),
+        ("sent_at", float("nan"), "sent_at_not_finite"),
+        ("sent_at", float("inf"), "sent_at_not_finite"),
+        ("sent_at", float("-inf"), "sent_at_not_finite"),
+        ("expires_at", float("nan"), "expires_at_not_finite"),
+        ("expires_at", float("inf"), "expires_at_not_finite"),
+        ("expires_at", float("-inf"), "expires_at_not_finite"),
+    ),
+)
+def test_non_finite_envelope_times_are_rejected_before_buffering(field, value, reason):
+    """Non-finite time evidence must never become eligible for delivery."""
+    message = dataclasses.replace(_message(10), **{field: value})
+    channel = EdgeChannel(delay_seconds=0.0)
+
+    channel.send(message)
+
+    assert channel.receive(now=100.0) is None
+    assert [(event.event_type, event.detail) for event in channel.events] == [
+        ("message_rejected", reason),
+    ]

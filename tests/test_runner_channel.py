@@ -7,10 +7,14 @@ import pytest
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.capacity_aware_max_pressure import CapacityAwareMaxPressureAlgorithm
-from core.types import ControlAction, Scene, SceneMeta
+from algorithms.capacity_aware_max_pressure import (
+    CapacityAwareConfig,
+    CapacityAwareMaxPressureAlgorithm,
+)
+from core.movements import MovementKey, MovementState, PhaseMovementState
+from core.types import ControlAction, JointState, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
-from engine.edge_channel import EdgeChannel
+from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
 
@@ -34,6 +38,41 @@ class CountingAlgorithm(FixedTimeAlgorithm):
 class InvalidActionAlgorithm(FixedTimeAlgorithm):
     def step(self, state):
         return [ControlAction(state.tls_id, "set_phase", "north", "bad phase")]
+
+
+class RejectedCapacityActionBridge(MockBridge):
+    """Use the existing action validator to reject a legal algorithm target."""
+
+    def get_state(self):
+        return JointState(
+            step=self._current_step,
+            timestamp=float(self._current_step) * self.step_length,
+            tls_id=self.tls_id,
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=30.0,
+            phase_movements=(
+                PhaseMovementState(
+                    0,
+                    "G",
+                    (MovementState(
+                        MovementKey("in_current", "out_current"),
+                        1.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                    ),),
+                    30.0,
+                ),
+                PhaseMovementState(
+                    2,
+                    "G",
+                    (MovementState(
+                        MovementKey("in_target", "out_target"),
+                        5.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                    ),),
+                    30.0,
+                ),
+            ),
+            legal_phase_transitions=((0, 2),),
+        )
 
 
 def make_scene() -> Scene:
@@ -72,6 +111,38 @@ def test_runner_consumes_an_edge_message_before_calling_the_algorithm(tmp_path):
     runner.run(2)
 
     assert algorithm.steps == [0, 1]
+
+
+def test_runner_binding_rejects_prebuffered_message_from_another_run(tmp_path):
+    """A stale pre-bound envelope must not reach the algorithm after Runner binding."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    channel = EdgeChannel(delay_seconds=0.0)
+    stale_state = MockBridge().get_state()
+    stale_state.step = 99
+    channel.send(EdgeMessage(
+        run_id="stale-run",
+        simulation_time=0.0,
+        sent_at=0.0,
+        expires_at=60.0,
+        payload_version="joint-state.v1",
+        payload=stale_state,
+    ))
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(),
+        artifacts=artifacts,
+        state_channel=channel,
+    )
+
+    runner.run(1)
+
+    assert algorithm.steps == [0]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [(row["type"], row["detail"]) for row in events if row["type"] == "message_rejected"] == [
+        ("message_rejected", "stale_run_id=stale-run"),
+    ]
 
 
 def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):
@@ -144,6 +215,27 @@ def test_capacity_aware_run_metadata_records_the_frozen_prediction_manifest(tmp_
     assert audit["layer"] == "M3"
     assert audit["safety_boundary"] == "shared_action_validation"
     assert audit["final_decision"]["action"] == "no_action"
+
+
+def test_runner_audit_correlates_shared_rejected_action_result(tmp_path):
+    """The persisted decision must include the validator result from apply_actions()."""
+    artifacts = RunArtifacts.create(tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42)
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4()),
+        bridge=RejectedCapacityActionBridge(),
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audit = next(json.loads(row["detail"]) for row in events if row["type"] == "algorithm_audit")
+    rejected = next(row for row in events if row["type"] == "action_rejected")
+    outcome = audit["final_decision"]["action_results"][0]
+    assert rejected["detail"].startswith("type=set_phase value=2")
+    assert outcome["action_type"] == "set_phase"
+    assert outcome["value"] == 2
+    assert outcome["accepted"] is False
+    assert outcome["reason_code"] == "illegal_phase_transition"
 
 
 class _StartRecordingBridge(MockBridge):

@@ -207,6 +207,127 @@ def test_m2_m3_have_distinct_boundary_identity_and_serializable_audit(state):
     assert json.loads(json.dumps(m3_audit))["layer"] == "M3"
 
 
+def test_m4_audit_reuses_one_prediction_snapshot_and_sums_all_components(state):
+    """Audit must describe the executed EWMA score, not a second updated forecast."""
+    policy = CloudPolicy()
+    policy.alpha = 0.5
+    policy.horizon = 3600
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4(), policy)
+    low_flow = dataclasses.replace(state, step=9, flows={"in_c": 0.0})
+    high_flow = dataclasses.replace(state, step=10, flows={"in_c": 600.0})
+
+    algorithm.step(low_flow)
+    actions = algorithm.step(high_flow)
+    audit = algorithm.audit_record(high_flow)
+
+    movement = audit["phase_scores"]["1"]["movements"][0]
+    assert actions[0].value == 1
+    assert policy._prev_hourly_flow["in_c"] == 300.0
+    assert movement["prediction_pressure"] == pytest.approx(4.5)
+    assert movement["pressure"] == pytest.approx(
+        movement["normalized_pressure"] + movement["prediction_pressure"]
+    )
+    assert audit["phase_scores"]["1"]["score"] == pytest.approx(
+        sum(component["pressure"] for component in audit["phase_scores"]["1"]["movements"])
+    )
+
+
+@pytest.mark.parametrize(
+    ("min_green", "max_green", "threshold", "message"),
+    (
+        (float("nan"), 30.0, 0.9, "min_green"),
+        (float("inf"), 30.0, 0.9, "min_green"),
+        (-float("inf"), 30.0, 0.9, "min_green"),
+        (0.0, 30.0, 0.9, "min_green"),
+        (-1.0, 30.0, 0.9, "min_green"),
+        (10.0, float("nan"), 0.9, "max_green"),
+        (10.0, float("inf"), 0.9, "max_green"),
+        (10.0, 0.0, 0.9, "max_green"),
+        (31.0, 30.0, 0.9, "min_green"),
+        (10.0, 30.0, float("nan"), "overflow_threshold"),
+        (10.0, 30.0, float("inf"), "overflow_threshold"),
+        (10.0, 30.0, -float("inf"), "overflow_threshold"),
+        (10.0, 30.0, -0.01, "overflow_threshold"),
+        (10.0, 30.0, 1.01, "overflow_threshold"),
+    ),
+)
+def test_capacity_config_rejects_nonfinite_and_unsafe_limits(
+    min_green, max_green, threshold, message
+):
+    """Controller config must be valid before it can influence live movement scoring."""
+    with pytest.raises(ValueError, match=message):
+        CapacityAwareConfig(True, True, False, min_green, max_green, threshold)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        {"overflow_occupancy_threshold": float("nan")},
+        {"overflow_occupancy_threshold": 1.01},
+        {"prediction_weight": float("inf")},
+        {"prediction_weight": -0.1},
+        {"base_green": float("nan")},
+        {"base_green": 0.0},
+    ),
+)
+def test_capacity_constructor_overrides_cannot_restore_unsafe_values(kwargs):
+    """Override paths must honor the same finite, safe controller contract."""
+    with pytest.raises(ValueError):
+        CapacityAwareMaxPressureAlgorithm(**kwargs)
+
+
+def test_audit_explains_equal_score_keep_current_tie(state):
+    """Current phase wins a tied pressure score by the frozen deterministic rule."""
+    tied = dataclasses.replace(
+        state,
+        phase_movements=(
+            state.phase_movements[0],
+            dataclasses.replace(
+                state.phase_movements[1],
+                movements=(_movement("in_c", "out_c", 5, 1, 10, 10),),
+            ),
+        ),
+    )
+
+    audit = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3()).audit_record(tied)
+
+    assert audit["selection_reason"] == "equal_score_keep_current"
+    assert audit["current_phase"] == 0
+    assert audit["elapsed_phase_time"] == 30.0
+    assert audit["legal_targets"] == [1]
+    assert audit["candidate_phases"] == [0, 1]
+    assert audit["selected_phase"] == 0
+
+
+def test_audit_explains_equal_score_smallest_index_tie(state):
+    """Without a tied current phase, the smallest viable phase index wins."""
+    tied = dataclasses.replace(
+        state,
+        current_phase=2,
+        current_phase_name="p2",
+        phase_movements=(
+            state.phase_movements[0],
+            dataclasses.replace(
+                state.phase_movements[1],
+                movements=(_movement("in_c", "out_c", 5, 1, 10, 10),),
+            ),
+            PhaseMovementState(
+                2, "G", (_movement("in_d", "out_d", 1, 0, 10, 10),), 30
+            ),
+        ),
+        legal_phase_transitions=((2, 0), (2, 1)),
+    )
+
+    audit = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3()).audit_record(tied)
+
+    assert audit["selection_reason"] == "equal_score_smallest_index"
+    assert audit["current_phase"] == 2
+    assert audit["elapsed_phase_time"] == 30.0
+    assert audit["legal_targets"] == [0, 1]
+    assert audit["candidate_phases"] == [0, 1, 2]
+    assert audit["selected_phase"] == 0
+
+
 def test_prediction_converts_hourly_flow_to_vehicles_over_the_horizon(state):
     """Using veh/h directly would produce 600 instead of the hand-derived 50 vehicles."""
     policy = CloudPolicy()

@@ -135,6 +135,7 @@ class RunService:
                 request.flow_multiplier,
                 request.variant,
                 artifacts.run_dir / "variants",
+                step_length_override=request.step_length_override,
             )
             state_channel = None
             if request.edge_delay_steps or request.edge_directions:

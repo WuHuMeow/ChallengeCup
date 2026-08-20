@@ -1,17 +1,21 @@
+import csv
 import json
 import threading
+import xml.etree.ElementTree as ET
 from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
 from core.types import Scene
 from scenes.registry import SceneRegistry
 from engine.run_service import RunService
 from engine.runner import SimulationRunner
+from engine.mock_bridge import MockBridge
 from engine.traci_bridge import traci
 
 
@@ -84,6 +88,37 @@ class EdgeMappingRunner(SimulationRunner):
             sumo_version="test",
         )
         return []
+
+
+class TickRecordingAlgorithm(BaseControlAlgorithm):
+    def __init__(self):
+        self.steps = []
+
+    def init(self, scene):
+        self.scene = scene
+
+    def step(self, state):
+        self.steps.append(state.step)
+        return []
+
+    def reset(self):
+        self.steps = []
+
+    @property
+    def name(self):
+        return "fixed_time"
+
+
+class EffectiveStepRunner(SimulationRunner):
+    instances = []
+
+    def __init__(self, **kwargs):
+        self.runtime_cfg = kwargs["sumo_cfg"]
+        step_length = float(
+            ET.parse(self.runtime_cfg).getroot().find("./time/step-length").get("value")
+        )
+        super().__init__(bridge=MockBridge(step_length=step_length), **kwargs)
+        type(self).instances.append(self)
 
 
 def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
@@ -226,6 +261,47 @@ def test_run_service_converts_edge_delay_steps_to_scene_seconds(tmp_path):
     channel = RecordingRunner.calls[-1]["state_channel"]
     assert result.status is RunStatus.COMPLETED
     assert channel.delay_seconds == 1.0
+
+
+def test_step_override_drives_effective_sumo_ticks_and_edge_delay(tmp_path):
+    """A 0.5-second override must change both SUMO ticks and two-step delivery."""
+    base_scene = SceneRegistry().get_scene("1")
+    source_cfg = tmp_path / "source-one-second.sumocfg"
+    source_cfg.write_text(
+        "<configuration><time><step-length value='1.0'/></time></configuration>",
+        encoding="utf-8",
+    )
+
+    class CustomRegistry:
+        def get_scene(self, intersection_id):
+            return Scene(meta=replace(base_scene.meta, sumo_cfg=source_cfg))
+
+    algorithm = TickRecordingAlgorithm()
+    algorithms = AlgorithmRegistry()
+    algorithms.register(
+        AlgorithmSpec("fixed_time", "Fixed Time", lambda: algorithm, True, ())
+    )
+    EffectiveStepRunner.instances = []
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=EffectiveStepRunner,
+        registry=CustomRegistry(),
+        algorithm_registry=algorithms,
+    )
+
+    result = service.run_sync(RunRequest(
+        "1", "fixed_time", steps=5, step_length_override=0.5, edge_delay_steps=2
+    ))
+
+    runner = EffectiveStepRunner.instances[-1]
+    events = list(csv.DictReader(runner.artifacts.events.open(encoding="utf-8")))
+    assert result.status is RunStatus.COMPLETED
+    assert float(
+        ET.parse(runner.runtime_cfg).getroot().find("./time/step-length").get("value")
+    ) == 0.5
+    assert runner.bridge.step_length == 0.5
+    assert algorithm.steps == [0, 1, 2]
+    assert [row["type"] for row in events].count("channel_wait") == 2
 
 
 def test_run_service_constructs_algorithms_through_injected_registry(tmp_path):

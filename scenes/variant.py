@@ -86,6 +86,7 @@ class VariantGenerator:
         scene_meta: SceneMeta,
         route_file: Path,
         output_file: Path,
+        step_length_override: float | None = None,
     ) -> None:
         """Clone config metadata while replacing its sole demand population."""
         tree = ET.parse(scene_meta.sumo_cfg)
@@ -103,6 +104,14 @@ class VariantGenerator:
         routes.set("value", route_file.name)
         for extra in inputs.findall("additional-files"):
             inputs.remove(extra)
+        if step_length_override is not None:
+            time = root.find("time")
+            if time is None:
+                time = ET.SubElement(root, "time")
+            step_length = time.find("step-length")
+            if step_length is None:
+                step_length = ET.SubElement(time, "step-length")
+            step_length.set("value", f"{step_length_override:g}")
         tree.write(output_file, encoding="utf-8", xml_declaration=True)
 
     @staticmethod
@@ -276,6 +285,7 @@ class VariantGenerator:
         flow_multiplier: float,
         spec: VariantSpec | DisturbanceSpec | None,
         output_dir: Path,
+        step_length_override: float | None = None,
     ) -> VariantBundle:
         """Generate a deterministic, source-preserving SUMO variant bundle."""
         scene_meta = self._coerce_meta(scene_meta)
@@ -305,7 +315,12 @@ class VariantGenerator:
         route_file = output_dir / "derived_demand.rou.xml"
         self._derive_routes(scene_meta, flow_file, route_file)
         runtime_config = output_dir / f"{scene_meta.sumo_cfg.stem}_variant.sumocfg"
-        self._write_runtime_config(scene_meta, route_file, runtime_config)
+        self._write_runtime_config(
+            scene_meta,
+            route_file,
+            runtime_config,
+            step_length_override,
+        )
 
         signal_file = output_dir / "signal_program.add.xml"
         self._write_signal_additional(
@@ -344,6 +359,7 @@ class VariantGenerator:
                 "route": route_file.name,
                 "sumocfg": runtime_config.name,
             },
+            "step_length_override": step_length_override,
             "sources": {
                 "flow": {
                     "path": self._manifest_path(scene_meta.sumo_flow, repo_root),
