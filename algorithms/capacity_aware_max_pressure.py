@@ -10,7 +10,7 @@ from typing import Iterable
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from cloud.cloud_policy import CloudPolicy
 from core.movements import MovementState, PhaseMovementState
-from core.types import ActionResult, ControlAction, JointState
+from core.types import ActionResult, ControlAction, JointState, PhaseTrafficState
 from scenes.capacity_preflight import validate_capacity_aware_scene
 
 logger = logging.getLogger(__name__)
@@ -279,6 +279,7 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
         self.max_green = self.config.max_green
         self.overflow_threshold = self.config.overflow_threshold
         self._last_snapshot: _DecisionSnapshot | None = None
+        self._legacy_score_capture: dict[int, float] | None = None
 
     @staticmethod
     def _state_token(state: JointState) -> tuple[int, int, float]:
@@ -306,7 +307,140 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
         )
         return float(min(self.config.max_green, max(self.config.min_green, duration)))
 
+    def phase_pressure(
+        self,
+        phase: PhaseTrafficState,
+        predicted_arrivals: float,
+    ) -> float:
+        """Capture the legacy calculation that the preserved parent path executes."""
+        pressure = super().phase_pressure(phase, predicted_arrivals)
+        if self._legacy_score_capture is not None:
+            self._legacy_score_capture[phase.phase_index] = pressure
+        return pressure
+
+    def _build_legacy_snapshot(self, state: JointState) -> _DecisionSnapshot:
+        """Freeze the one parent legacy decision so audit cannot advance EWMA again."""
+        scores: dict[int, float] = {}
+        pending_target = self.pending_target_phase
+        configured_phase = self._configured_phase
+        self._legacy_score_capture = scores
+        try:
+            actions = tuple(
+                _PlannedAction(
+                    action.tls_id,
+                    action.action_type,
+                    action.value,
+                    action.reason,
+                )
+                for action in super().step(state)
+            )
+        finally:
+            self._legacy_score_capture = None
+
+        phase_scores = tuple(
+            (index, PhaseScore(score, (), ()))
+            for index, score in scores.items()
+        )
+        movement_pressures = tuple((index, ()) for index, _ in phase_scores)
+        phases = list(state.phase_states)
+        by_index = {phase.phase_index: phase for phase in phases}
+        viable = [
+            phase
+            for phase in phases
+            if phase.phase_index in scores and isfinite(scores[phase.phase_index])
+        ]
+        legal_targets = tuple(
+            candidate
+            for source, candidate in state.legal_phase_transitions
+            if source == state.current_phase
+        )
+        selected_phase: int | None = None
+        if not viable:
+            selection_reason = "safe_fallback_all_blocked"
+        else:
+            highest_score = max(scores[phase.phase_index] for phase in viable)
+            tied = tuple(sorted(
+                phase.phase_index
+                for phase in viable
+                if scores[phase.phase_index] == highest_score
+            ))
+            if state.current_phase in tied:
+                selected_phase = state.current_phase
+                selection_reason = (
+                    "equal_score_keep_current"
+                    if len(tied) > 1
+                    else "current_phase_selected"
+                )
+            else:
+                selected_phase = tied[0]
+                selection_reason = (
+                    "equal_score_smallest_index"
+                    if len(tied) > 1
+                    else "highest_viable_pressure"
+                )
+            current = by_index.get(state.current_phase)
+            if pending_target is not None and state.current_phase == pending_target:
+                selected_phase = pending_target
+                selection_reason = "pending_target_reached"
+            elif pending_target is not None and not self._is_green(current):
+                selected_phase = pending_target
+                selection_reason = "pending_target_in_progress"
+            elif self._is_green(current) and state.elapsed_phase_time >= self.max_green:
+                alternatives = [
+                    phase
+                    for phase in viable
+                    if phase.phase_index != state.current_phase
+                ]
+                if alternatives:
+                    highest_alternative = max(
+                        scores[phase.phase_index] for phase in alternatives
+                    )
+                    tied_alternatives = tuple(sorted(
+                        phase.phase_index
+                        for phase in alternatives
+                        if scores[phase.phase_index] == highest_alternative
+                    ))
+                    selected_phase = tied_alternatives[0]
+                    selection_reason = (
+                        "max_green_forced_equal_score_smallest_index"
+                        if len(tied_alternatives) > 1
+                        else "max_green_forced_alternative"
+                    )
+
+        if actions:
+            decision_reason = "dispatch_legacy_phase_state"
+        elif not viable:
+            decision_reason = "safe_fallback_all_blocked"
+        elif (
+            selected_phase == state.current_phase
+            and configured_phase == state.current_phase
+        ):
+            decision_reason = "already_configured"
+        elif (
+            self._is_green(by_index.get(state.current_phase))
+            and state.elapsed_phase_time < self.min_green
+        ):
+            decision_reason = "minimum_green_not_elapsed"
+        else:
+            decision_reason = "legacy_no_action"
+
+        return _DecisionSnapshot(
+            state_token=self._state_token(state),
+            phase_scores=phase_scores,
+            movement_pressures=movement_pressures,
+            current_phase=state.current_phase,
+            elapsed_phase_time=state.elapsed_phase_time,
+            legal_targets=legal_targets,
+            candidate_phases=tuple(phase.phase_index for phase in viable),
+            selected_phase=selected_phase,
+            selection_reason=selection_reason,
+            decision_reason=decision_reason,
+            actions=actions,
+        )
+
     def _build_snapshot(self, state: JointState) -> _DecisionSnapshot:
+        if not state.phase_movements:
+            return self._build_legacy_snapshot(state)
         predicted, weight = self._predicted_arrivals(state)
         phase_scores: list[tuple[int, PhaseScore]] = []
         movement_pressures: list[tuple[int, tuple[_MovementPressure, ...]]] = []
@@ -506,8 +640,6 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
         }
 
     def step(self, state: JointState) -> list[ControlAction]:
-        if not state.phase_movements:
-            return super().step(state)
         snapshot = self._snapshot_for(state)
         logger.info(
             "capacity_maxpressure selection=%s decision=%s target=%s actions=%s",
@@ -521,10 +653,12 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
     def init(self, scene) -> None:
         validate_capacity_aware_scene(scene.meta.sumo_net)
         self._last_snapshot = None
+        self._legacy_score_capture = None
         super().init(scene)
 
     def reset(self) -> None:
         self._last_snapshot = None
+        self._legacy_score_capture = None
         super().reset()
 
     @property

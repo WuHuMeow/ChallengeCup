@@ -10,7 +10,8 @@ from algorithms.capacity_aware_max_pressure import (
 from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from cloud.cloud_policy import CloudPolicy
 from core.movements import MovementKey, MovementState, PhaseMovementState
-from core.types import JointState
+from core.types import JointState, PhaseTrafficState
+from engine.mock_bridge import MockBridge
 
 
 def _movement(
@@ -32,6 +33,21 @@ def _movement(
         downstream_occupancy=occupancy,
         saturation_rate=service_rate,
         turn_ratio=1.0,
+    )
+
+
+def _legacy_phase(index: int, queue: float, lane: str) -> PhaseTrafficState:
+    return PhaseTrafficState(
+        phase_index=index,
+        signal_state="G",
+        nominal_duration=30.0,
+        incoming_lanes=(lane,),
+        outgoing_lanes=(f"{lane}_out",),
+        incoming_queue=queue,
+        incoming_capacity=10.0,
+        outgoing_queue=0.0,
+        outgoing_capacity=10.0,
+        outgoing_occupancy=0.0,
     )
 
 
@@ -230,6 +246,111 @@ def test_m4_audit_reuses_one_prediction_snapshot_and_sums_all_components(state):
     assert audit["phase_scores"]["1"]["score"] == pytest.approx(
         sum(component["pressure"] for component in audit["phase_scores"]["1"]["movements"])
     )
+
+
+def test_legacy_phase_states_share_one_prediction_snapshot():
+    """Legacy state must retain one EWMA update for a state passed to audit."""
+    policy = CloudPolicy()
+    policy.alpha = 0.5
+    policy.horizon = 3600
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4(), policy)
+    phases = [_legacy_phase(0, 1.0, "in_current"), _legacy_phase(1, 10.0, "in_target")]
+    low = JointState(
+        step=9,
+        timestamp=9.0,
+        tls_id="tls_legacy",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=30.0,
+        flows={"in_current": 0.0, "in_target": 0.0},
+        phase_states=phases,
+        phase_movements=(),
+        legal_phase_transitions=((0, 1),),
+    )
+    high = dataclasses.replace(
+        low,
+        step=10,
+        timestamp=10.0,
+        flows={"in_current": 0.0, "in_target": 600.0},
+    )
+
+    algorithm.step(low)
+    algorithm.step(high)
+    algorithm.audit_record(high)
+
+    expected_hourly_ewma = 0.5 * 600.0 + (1.0 - 0.5) * 0.0
+    assert expected_hourly_ewma == 300.0
+    assert policy._prev_hourly_flow["in_target"] == expected_hourly_ewma
+
+
+def test_legacy_phase_states_audit_records_exact_action_and_existing_results():
+    """Legacy audit must serialize the actions and ActionResults actually returned."""
+    legacy_state = JointState(
+        step=10,
+        timestamp=10.0,
+        tls_id="tls_legacy",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=30.0,
+        phase_states=[
+            _legacy_phase(0, 1.0, "in_current"),
+            _legacy_phase(1, 10.0, "in_target"),
+        ],
+        phase_movements=(),
+        legal_phase_transitions=((0, 1),),
+    )
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
+
+    actions = algorithm.step(legacy_state)
+    results = MockBridge(tls_id="tls_legacy").apply_actions(actions)
+    audit = algorithm.audit_record(legacy_state, results)
+
+    assert actions[0].action_type == "set_phase"
+    assert actions[0].value == 1
+    assert actions[1].action_type == "set_phase_duration"
+    assert [result.action for result in results] == actions
+    assert all(result.accepted for result in results)
+    assert audit["final_decision"]["action"] == actions[0].action_type
+    assert [(action["action_type"], action["value"]) for action in audit["final_decision"]["actions"]] == [
+        (action.action_type, action.value) for action in actions
+    ]
+    assert [(result["action_type"], result["value"], result["accepted"]) for result in audit["final_decision"]["action_results"]] == [
+        (result.action.action_type, result.action.value, result.accepted)
+        for result in results
+    ]
+
+
+def test_legacy_phase_states_audit_explains_equal_score_smallest_index_tie():
+    """Without movement state, equal legacy pressure still chooses the smallest index."""
+    legacy_tie = JointState(
+        step=10,
+        timestamp=10.0,
+        tls_id="tls_legacy",
+        current_phase=2,
+        current_phase_name="p2",
+        elapsed_phase_time=30.0,
+        phase_states=[
+            _legacy_phase(0, 10.0, "in_zero"),
+            _legacy_phase(1, 10.0, "in_one"),
+            _legacy_phase(2, 1.0, "in_current"),
+        ],
+        phase_movements=(),
+        legal_phase_transitions=((2, 0), (2, 1)),
+    )
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
+
+    actions = algorithm.step(legacy_tie)
+    audit = algorithm.audit_record(legacy_tie)
+
+    assert actions[0].action_type == "set_phase"
+    assert actions[0].value == 0
+    assert actions[1].action_type == "set_phase_duration"
+    assert audit["selection_reason"] == "equal_score_smallest_index"
+    assert audit["current_phase"] == 2
+    assert audit["elapsed_phase_time"] == 30.0
+    assert audit["legal_targets"] == [0, 1]
+    assert audit["candidate_phases"] == [0, 1, 2]
+    assert audit["selected_phase"] == 0
 
 
 @pytest.mark.parametrize(

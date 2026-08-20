@@ -239,3 +239,46 @@ All behavior tests use hand-derived literal expectations and real state/control 
 - Finding 5: tie reason strings are deterministic and audit carries all reconstruction context.
 - Finding 6: finite-time rejection precedes payload timestamp and ordering validation, while existing event simulation-time forwarding remains unchanged.
 - No new Critical or Important issue was found in the scoped diff. The real smoke selected safe no-action fallbacks for this short legal phase graph, so rejected-result correlation remains covered by the focused Runner behavior test rather than the smoke.
+
+## Review Fix Round 3
+
+### TDD Evidence
+
+1. RED legacy phase-state snapshot, action audit, and tie attribution:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_share_one_prediction_snapshot tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_audit_records_exact_action_and_existing_results tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_audit_explains_equal_score_smallest_index_tie -q -p no:cacheprovider --basetemp=.t10/fix3-red-legacy-snapshot-final`
+   Result: `3 failed in 0.77s` as expected. For `alpha=0.5`, previous `0`, and current `600 veh/h`, `step()` plus `audit_record()` advanced legacy EWMA to `450.0` rather than the independently derived `300.0`; audit recorded `no_action` while `step()` returned `set_phase`; and the equal legacy score audit reported `safe_fallback_all_blocked` rather than `equal_score_smallest_index`.
+2. GREEN legacy phase-state snapshot, action audit, and tie attribution:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_share_one_prediction_snapshot tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_audit_records_exact_action_and_existing_results tests/test_capacity_aware_max_pressure.py::test_legacy_phase_states_audit_explains_equal_score_smallest_index_tie -q -p no:cacheprovider --basetemp=.t10/fix3-green-legacy-snapshot-final`
+   Result: `3 passed in 0.61s`. The legacy fallback now freezes the one parent decision in the same immutable snapshot used by movement state, preserves EWMA at `300.0`, serializes the exact returned actions with actual `MockBridge.apply_actions()` results, and reports deterministic smallest-index tie context.
+
+### Verification
+
+- Expanded focused coverage:
+  `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py tests/test_algorithms.py tests/test_runner_channel.py tests/test_cloud.py tests/test_edge_channel.py tests/test_run_service.py tests/test_capacity_preflight.py -q -p no:cacheprovider --basetemp=.t10/fix3-focused-final`
+  Result: `107 passed in 16.56s`.
+- Official static capacity preflight:
+  `./.venv/Scripts/python.exe -c "from scenes.capacity_preflight import validate_capacity_aware_scene; from scenes.registry import SceneRegistry; scenes = [SceneRegistry().get_scene(str(index)) for index in range(1, 21)]; [validate_capacity_aware_scene(scene.meta.sumo_net) for scene in scenes]; print(f'{len(scenes)}/20 official capacity preflights passed')"`
+  Result: `20/20 official capacity preflights passed`.
+- Full project suite:
+  `./.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=.t10/fix3-full-final`
+  Result: `487 passed in 135.16s (0:02:15)`.
+- Real 100-step RunService/SUMO EdgeMessage smoke:
+  `RunService(output_root=Path('.t10/fix3-real-smoke')).run_sync(RunRequest('1', 'capacity_aware_maxpressure', steps=100, seed=42, edge_delay_steps=2))`
+  Result: run ID `826f71073922`, `completed`, `channel_wait=2`, `action_applied=0`, `action_rejected=0`, `illegal_transition=0`, and `algorithm_audit=98`. The manifest records `layer=M3`, `safety_boundary=shared_action_validation`, `prediction_enabled=false`, `horizon_seconds=300.0`, and `prediction_weight=0.15`; audits record three phase scores, selection/decision reasons, and final action-result arrays.
+- Python compatibility:
+  `python --version` returned `Python 3.14.7`; `python -m compileall algorithms cloud engine scenes` exited 0.
+- Integrity:
+  `git diff --check` exited 0. The archive SHA-256 is `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`; `data/intersection_data` remains 163 tracked and 232 on-disk files, with clean protected-path worktree and index diffs.
+
+### Files Changed
+
+- Modified `algorithms/capacity_aware_max_pressure.py`.
+- Modified `tests/test_capacity_aware_max_pressure.py`.
+- Appended this Task 10 report section.
+
+### Self Review and Concerns
+
+- The movement-state path still builds and reuses its existing `_DecisionSnapshot`; the legacy `phase_states` fallback now does the same by executing the retained parent controller only once while capturing its exact scores and actions.
+- `audit_record()` reads the frozen legacy action list and only serializes the existing ActionResults supplied by Runner or the shared bridge. No centralized executor, fallback state machine, or other Task 11 behavior was added.
+- Legacy score ranking follows the preserved parent tie rule: highest score, then current phase when tied, then smallest index. The audit records current phase, elapsed time, legal targets, candidates, selected phase, and stable selection reason.
+- No new Critical or Important issue was found in the scoped diff. The real smoke continued to select safe no-action movement fallbacks, so the legacy action-result evidence is supplied by the focused shared `MockBridge.apply_actions()` behavior test.
