@@ -12,6 +12,10 @@ from core.run_models import DisturbanceSpec
 if TYPE_CHECKING:
     from core.run_models import VariantBundle
 
+_SYMBOLIC_DEPARTURES = frozenset(
+    {"triggered", "containerTriggered", "split", "begin"}
+)
+
 
 def _network_context(network_file: Path, target: str) -> tuple[str, str, float]:
     """Return the target edge, one reachable continuation, and lane length."""
@@ -101,7 +105,12 @@ def _validate_interval(
     try:
         begin = float(node.get("begin", "nan"))
         end = float(node.get("end", "nan"))
-        if not math.isfinite(begin) or not math.isfinite(end) or end <= begin:
+        if (
+            not math.isfinite(begin)
+            or not math.isfinite(end)
+            or begin < 0
+            or end <= begin
+        ):
             raise ValueError
     except (TypeError, ValueError):
         issues.append(message)
@@ -201,41 +210,56 @@ def validate_variant(bundle: "VariantBundle") -> list[str]:
         for node in root.findall(".//route")
         if node.get("id")
     }
-    demand_ids: list[str] = []
+    runtime_demand_ids: list[str] = []
+    intermediate_demand_ids: list[str] = []
     for path, root in roots:
         is_runtime = path.resolve() != bundle.flow_file.resolve()
         vtypes = runtime_vtypes if is_runtime else intermediate_vtypes
         named_routes = runtime_routes if is_runtime else intermediate_routes
+        calibrator_flows = set(root.findall(".//calibrator/flow"))
         for node in [*root.findall(".//flow"), *root.findall(".//vehicle")]:
             demand_id = node.get("id", "").strip()
             if not demand_id:
                 issues.append("demand must have a non-empty demand ID")
             elif is_runtime:
-                demand_ids.append(demand_id)
+                runtime_demand_ids.append(demand_id)
+            else:
+                intermediate_demand_ids.append(demand_id)
             vehicle_type = node.get("type")
             if vehicle_type and vehicle_type not in vtypes:
                 issues.append(f"unknown vehicle type: {vehicle_type}")
             route_id = node.get("route")
             if route_id and route_id not in named_routes:
                 issues.append(f"missing route: {route_id}")
+            elif node in calibrator_flows and not route_id:
+                issues.append("missing route for calibrator flow")
             if node.tag == "flow":
-                if node.get("begin") is not None or node.get("end") is not None:
+                if (
+                    node in calibrator_flows
+                    or node.get("begin") is not None
+                    or node.get("end") is not None
+                ):
                     _validate_interval(node, issues, "invalid demand interval")
                 for name in ("from", "to"):
                     edge = node.get(name)
                     if edge and edge not in known_edges:
                         issues.append(f"unknown {name} edge: {edge}")
             else:
-                try:
-                    depart = float(node.get("depart", "nan"))
-                    if not math.isfinite(depart) or depart < 0:
-                        raise ValueError
-                except (TypeError, ValueError):
-                    issues.append("invalid vehicle depart")
+                raw_depart = node.get("depart", "")
+                if raw_depart not in _SYMBOLIC_DEPARTURES:
+                    try:
+                        depart = float(raw_depart)
+                        if not math.isfinite(depart) or depart < 0:
+                            raise ValueError
+                    except (TypeError, ValueError):
+                        issues.append("invalid vehicle depart")
         for route in root.findall(".//route"):
             _validate_route_edges(route, known_edges, connections, issues)
         for rerouter in root.findall(".//rerouter"):
-            for edge in rerouter.get("edges", "").split():
+            rerouter_edges = rerouter.get("edges", "").split()
+            if not rerouter_edges:
+                issues.append("rerouter has no edges")
+            for edge in rerouter_edges:
                 if edge not in known_edges:
                     issues.append(f"unknown rerouter edge: {edge}")
         for calibrator in root.findall(".//calibrator"):
@@ -251,7 +275,10 @@ def validate_variant(bundle: "VariantBundle") -> list[str]:
                 issues.append(f"inaccessible lane target: {node.get('lane')}")
         for interval in root.findall(".//interval"):
             _validate_interval(interval, issues, "invalid disturbance interval")
-    if len(demand_ids) != len(set(demand_ids)):
+    if (
+        len(runtime_demand_ids) != len(set(runtime_demand_ids))
+        or len(intermediate_demand_ids) != len(set(intermediate_demand_ids))
+    ):
         issues.append("duplicate demand IDs")
     disturbance = bundle.manifest.get("disturbance")
     if isinstance(disturbance, dict):

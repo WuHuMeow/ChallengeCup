@@ -32,6 +32,15 @@ def _replace_xml_attribute(path: Path, xpath: str, name: str, value: str) -> Non
     tree.write(path, encoding="utf-8", xml_declaration=True)
 
 
+def _remove_xml_attributes(path: Path, xpath: str, *names: str) -> None:
+    tree = ET.parse(path)
+    node = tree.getroot().find(xpath)
+    assert node is not None
+    for name in names:
+        node.attrib.pop(name, None)
+    tree.write(path, encoding="utf-8", xml_declaration=True)
+
+
 def test_disturbance_spec_validates_and_api_round_trips():
     domain = DisturbanceSpec("construction", 10, 20, "E0_0", 1.0)
     model = DisturbanceSpecModel.model_validate(domain.__dict__)
@@ -137,6 +146,7 @@ def test_validate_variant_rejects_broken_additional_references(tmp_path):
         ("route", "missing_route", "missing route"),
         ("id", "", "non-empty demand ID"),
         ("begin", "5", "invalid demand interval"),
+        ("begin", "-1", "invalid demand interval"),
     ],
 )
 def test_validate_variant_rejects_broken_nested_event_flow(
@@ -153,6 +163,37 @@ def test_validate_variant_rejects_broken_nested_event_flow(
         bundle.additional_files[-1], "./calibrator/flow", attribute, value
     )
     assert any(expected in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_nested_event_flow_without_route(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("event_demand", 1, 4, "E0", 0.5),
+        tmp_path / "bundle",
+    )
+    _remove_xml_attributes(bundle.additional_files[-1], "./calibrator/flow", "route")
+
+    assert any("missing route" in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_nested_event_flow_without_interval(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("event_demand", 1, 4, "E0", 0.5),
+        tmp_path / "bundle",
+    )
+    _remove_xml_attributes(
+        bundle.additional_files[-1],
+        "./calibrator/flow",
+        "begin",
+        "end",
+    )
+
+    assert any("invalid demand interval" in issue for issue in validate_variant(bundle))
 
 
 def test_validate_variant_rejects_duplicate_nested_demand_id(tmp_path):
@@ -182,6 +223,18 @@ def test_validate_variant_rejects_duplicate_nested_demand_id(tmp_path):
     assert any("duplicate demand IDs" in issue for issue in validate_variant(bundle))
 
 
+def test_validate_variant_rejects_duplicate_intermediate_flow_id(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    tree = ET.parse(bundle.flow_file)
+    flow = tree.getroot().find("flow")
+    assert flow is not None
+    tree.getroot().append(ET.fromstring(ET.tostring(flow, encoding="unicode")))
+    tree.write(bundle.flow_file, encoding="utf-8", xml_declaration=True)
+
+    assert any("duplicate demand IDs" in issue for issue in validate_variant(bundle))
+
+
 @pytest.mark.parametrize("attribute", ["from", "to"])
 def test_validate_variant_rejects_unknown_intermediate_flow_edge(
     tmp_path, attribute
@@ -195,12 +248,25 @@ def test_validate_variant_rejects_unknown_intermediate_flow_edge(
     )
 
 
-def test_validate_variant_rejects_invalid_runtime_vehicle_depart(tmp_path):
+@pytest.mark.parametrize("depart", ["nan", "inf", "-inf", "-1", "later"])
+def test_validate_variant_rejects_invalid_runtime_vehicle_depart(tmp_path, depart):
     scene = _scene(tmp_path)
     bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
-    _replace_xml_attribute(bundle.route_file, ".//vehicle", "depart", "nan")
+    _replace_xml_attribute(bundle.route_file, ".//vehicle", "depart", depart)
 
     assert any("invalid vehicle depart" in issue for issue in validate_variant(bundle))
+
+
+@pytest.mark.parametrize(
+    "depart",
+    ["triggered", "containerTriggered", "split", "begin"],
+)
+def test_validate_variant_accepts_legal_symbolic_vehicle_depart(tmp_path, depart):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    _replace_xml_attribute(bundle.route_file, ".//vehicle", "depart", depart)
+
+    assert validate_variant(bundle) == []
 
 
 def test_validate_variant_rejects_disconnected_route_edges(tmp_path):
@@ -246,6 +312,19 @@ def test_validate_variant_rejects_broken_disturbance_targets(
     )
     _replace_xml_attribute(bundle.additional_files[-1], xpath, attribute, value)
     assert any(expected in issue for issue in validate_variant(bundle))
+
+
+def test_validate_variant_rejects_empty_rerouter_edges(tmp_path):
+    scene = _scene(tmp_path)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("construction", 1, 4, "E0_0", 0.5),
+        tmp_path / "bundle",
+    )
+    _replace_xml_attribute(bundle.additional_files[-1], "./rerouter", "edges", "")
+
+    assert any("rerouter" in issue for issue in validate_variant(bundle))
 
 
 def test_validate_variant_rejects_runtime_config_with_parent_population(tmp_path):
