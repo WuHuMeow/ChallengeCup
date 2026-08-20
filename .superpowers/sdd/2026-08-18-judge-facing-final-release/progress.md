@@ -360,3 +360,8 @@
 - Ruling: Task 10 可最小修改 `algorithms/classic_max_pressure.py`，只增加计划明确要求的 `score_breakdown()` M0 对照接口 — Task 10 的接口清单要求该方法，但 Files 列表漏列该文件 — if wrong, 仅需把该小接口移回 Task 9 兼容提交并重放 Task 10 对照测试。
 - Ruling: Task 10 必须把现有 `SimulationRunner` 的真实 EdgeChannel 调用迁移到 `EdgeMessage`，不得用 bare `JointState` 生产兼容分支绕过 run/time/version/expiry 合同 — 设计目标要求真实云边逻辑边界而非仅有未消费的数据类 — if wrong, runner 适配可回退为边界 adapter，但消息集成测试需要相应调整。
 - Ruling: Task 10 的 M3 负责冻结可归因配置并继续通过现有共享 action/validation 通道输出动作，不在本任务复制完整 phase transition/fallback executor；该单一安全执行器仍由 Task 11 独占 — 计划的 Task 10 -> Task 11 handoff 明确后者拥有统一写信号路径 — if wrong, Task 11 需提前拆分并重新界定两项任务的审查范围。
+- Task 10 实现提交：`4428ce3` (`feat: layer capacity-aware MaxPressure ablations`)；实现单元聚焦 `46 passed`、全量 `435 passed`、真实 100 步 SUMO completed，系统 Python 3.14.7 compileall 与保护项校验通过。
+- Task 10 控制器验证：聚焦 `46 passed in 1.13s`；全量 `435 passed in 88.22s`、无 warning；带 EdgeMessage 延迟的真实 RunService run `fe7b8c7562e4` completed、2 次 channel wait、0 rejected、0 illegal；M0-M4/default flags、manifest、Python 3.14.7 与保护项均通过。
+- Task 10 独立审查未通过：0 Critical、4 Important、0 Minor；规范 Issues found，质量 Needs fixes。开放项：容量仅在 live movement snapshot 时失败而非 capacity-aware 正式预检；动态绿灯分母把零/负 phase 计入“正压力平均”；EdgeMessage 不校验 active run_id/payload_version；M2/M3 manifest 不可区分且缺少逐 movement 分量、阻塞原因、选择理由和最终动作的可序列化审计记录。
+- Task 10 reviewer `Cannot verify` 经控制器确认成为第 5 个 Important：`RunService` 把 `edge_delay_steps` 原样作为 `delay_seconds`。0.5 秒步长、2-step 延迟、5 tick 行为探针实际只交付 `[0]`，应交付 `[0,1,2]`；必须按实际 step length 换算并增加非 1.0 秒步长覆盖。
+- Task 10 fix round 1/5：已准备派回原实现单元；必须逐项 TDD RED/GREEN，并重跑聚焦、全量、非单位步长 EdgeMessage、真实 SUMO、Python 3.14.7、保护项校验及 scoped 独立复审。保持 Task 10，不开始 Task 11。
