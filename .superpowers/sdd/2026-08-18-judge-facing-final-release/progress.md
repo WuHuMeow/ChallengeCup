@@ -352,3 +352,11 @@
 - Task 9 fix round 1 scoped 独立复审：原 2 项 Critical、2 项 Important 和 1 项输出质量问题全部 ADDRESSED，0 项开放；未发现新的 Critical/Important breakage，也无 out-of-scope observation。
 - Task 9: fix round 1/5 (5 addressed, 0 open; commits `30f8ca8..ca5b003`).
 - Task 9: complete (commits `8b49d25..ca5b003`, scoped re-review clean; controller focused/full/20-scene/real-SUMO verification clean).
+
+## Task 10 implementation
+
+- 状态：进行中；基线为 `ca5be1b`，先为 M0-M4 分层得分、动态绿灯、预测单位/默认关闭和云边消息信封执行逐项 TDD RED。
+- TODOLIST 10/24：将容量感知 MaxPressure 拆为可归因的 M0 经典压力、M1 容量归一化、M2 下游溢出保护、M3 共享安全执行边界和 M4 可选预测；输出逐 phase 得分明细，并冻结带 run/time/version/expiry 的云边消息合同。
+- Ruling: Task 10 可最小修改 `algorithms/classic_max_pressure.py`，只增加计划明确要求的 `score_breakdown()` M0 对照接口 — Task 10 的接口清单要求该方法，但 Files 列表漏列该文件 — if wrong, 仅需把该小接口移回 Task 9 兼容提交并重放 Task 10 对照测试。
+- Ruling: Task 10 必须把现有 `SimulationRunner` 的真实 EdgeChannel 调用迁移到 `EdgeMessage`，不得用 bare `JointState` 生产兼容分支绕过 run/time/version/expiry 合同 — 设计目标要求真实云边逻辑边界而非仅有未消费的数据类 — if wrong, runner 适配可回退为边界 adapter，但消息集成测试需要相应调整。
+- Ruling: Task 10 的 M3 负责冻结可归因配置并继续通过现有共享 action/validation 通道输出动作，不在本任务复制完整 phase transition/fallback executor；该单一安全执行器仍由 Task 11 独占 — 计划的 Task 10 -> Task 11 handoff 明确后者拥有统一写信号路径 — if wrong, Task 11 需提前拆分并重新界定两项任务的审查范围。
