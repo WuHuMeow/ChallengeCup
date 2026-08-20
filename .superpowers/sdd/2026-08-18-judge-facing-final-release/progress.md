@@ -326,3 +326,15 @@
 - Task 8 fix round 1 scoped 独立复审：9 项开放问题全部 ADDRESSED，0 项开放，未发现新的 Critical/Important breakage；未完成车辆 raw output 分离明确保留给 Task 13，不阻塞本任务；审查者只读环境因无可写临时目录未能额外执行 pytest，控制器在同一 HEAD 上的计划聚焦 `59 passed`、扩展聚焦 `120 passed`、全量 `409 passed` 证据继续有效。
 - Task 8: fix round 1/5 (9 addressed, 0 open; commits `76f76d6..335bc3d`).
 - Task 8: complete (commits `9ba0a61..335bc3d`, scoped re-review clean; 20/20 official TraCI preflight and controller verification clean).
+
+## Task 9 implementation and review
+
+- 状态：独立审查未通过，修复第 1 轮准备派回原实现单元；保持 Task 9，不开始 Task 10。
+- TODOLIST 9/24：冻结可追溯且实际生效的 fixed timing baseline，并实现独立、可执行且不混入容量感知增强的 classic MaxPressure。
+- Task 9 基线 `8b49d25`；实现提交 `30f8ca8` (`feat: freeze fixed timing and classic MaxPressure baselines`)。
+- TDD 证据：行为 RED `5 failed, 2 passed`；首轮 GREEN `7 passed`；非法 Excel、来源可移植性和注册表边界补强后聚焦 `28 passed, 1 warning`；实现单元最终全量 `420 passed, 1 warning in 79.94s`，系统 Python 3.14.7 compileall exit 0。
+- 控制器聚焦验证：`tests/test_fixed_time_plan.py tests/test_classic_max_pressure.py tests/test_algorithms.py tests/test_algorithm_registry.py tests/test_api.py` 为 `39 passed in 9.13s`；20/20 官方场景均解析为 `official_excel` 且 source hash、program ID、phase 非空。
+- 控制器 fixed_time 真实冒烟：路口 1、100 步、seed 42，run_id `3e1c8d002d81`，状态 completed；但 resolver 声明 Excel 逻辑 phase 时长 `[43, 37, 37, 43]`，SUMO 实际仍运行 net program `0` 的 6 个 phase `[42, 3, 15, 3, 38, 3]`，证明 provenance 与实际 baseline 脱节。
+- 控制器 classic 真实冒烟：长审查目录首次因 Windows 派生配置路径过长而在算法启动前失败；改用短目录 `.t9c` 后路口 1、100 步、seed 42，run_id `8b7032241468`，状态 completed，但 action applied 12、action rejected 88、illegal_transition 88，当前实现不能作为有效安全基线。
+- Task 9 独立审查：2 Critical、2 Important、1 Minor。Critical：resolved fixed plan 仅写 manifest、未应用到 SUMO；Runner 在 `bridge.start()` 后才 `algorithm.init()`，非法计划不是启动前失败。Important：classic 每 tick 重发 `set_phase` 且忽略 elapsed time，真实执行大量非法拒绝；删除 fixed_time init 的旧测试使断言空泛。Minor：全量输出含 1 个受保护 cache warning，不是 pristine。
+- Task 9 fix round 1/5 要求：先以行为测试复现 fixed provenance/实际 program 脱节、启动前验证、classic 真实合法执行和非空 fixed init 契约；再做最小修复，重新运行聚焦、全量、20 场景 resolver、fixed/classic 100 步真实 SUMO、Python 3.14.7 compileall、保护输入校验和 scoped re-review。
