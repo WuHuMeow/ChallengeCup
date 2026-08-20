@@ -266,3 +266,13 @@
 - 修复提交：`08b7be1` (`fix: validate executable disturbance bundles`)。
 - Task 7 fix round 2/5：3 项 ADDRESSED，3 项开放。仍开放：缺失 route/完整时间字段、负 begin、重复中间 flow ID 和空 rerouter edges 可绕过校验；对应测试覆盖不足；vehicle depart 校验错误拒绝 SUMO 合法符号值。修复范围 `3d5eb1a..0ef4826`。
 - Task 7 fix round 3/5 已派回 `/root/task7_implementer`；必须先用失败测试复现全部剩余边界和合法符号 depart，再做最小修复并重新执行聚焦、全量、真实 SUMO smoke、Python 3.14.7 compileall 与保护输入校验。
+
+## Task 7 review fix round 3
+
+- 状态：修复实现与现场验证完成；保持 Task 7，不开始 Task 8。
+- 校验闭环：拒绝 calibrator flow 缺失 route/区间、负 begin、重复中间 demand ID 和空 rerouter edges。
+- SUMO 1.27.1 schema 裁定：合法符号 depart 为 `triggered`、`containerTriggered`、`split`、`begin`；复审举例中的 `now` 不属于本机版本 `departType`，未接受。
+- TDD RED/GREEN：旧基线重放 `9 failed, 9 passed, 29 deselected`；当前 `tests/test_disturbances.py` 为 `47 passed`。
+- 最终验证：聚焦 `87 passed in 60.24s`；全量 `367 passed in 86.35s`；系统 Python 3.14.7 compileall exit 0；SUMO/jtrrouter 1.27.1；diff check 通过。
+- 保护输入：压缩包 SHA-256 不变并保持未跟踪/未暂存；官方数据仍为 163 个 Git 跟踪文件且无任务差异。
+- 修复提交：`e5e9d44` (`fix: close disturbance validation gaps`)。

@@ -196,3 +196,49 @@
 ### 提交
 
 - `08b7be1` (`fix: validate executable disturbance bundles`)
+
+## Review 修复第 3 轮
+
+### 根因与修复
+
+- calibrator flow 缺少 route、同时缺少 begin/end、负 begin、重复中间 flow ID 和空 rerouter edges 仍可绕过校验；现已分别强制完整引用、非负有限区间、分域 ID 唯一性和非空 rerouter edge 集合。
+- vehicle depart 校验原先只接受数值。系统 SUMO 1.27.1 的 `data/xsd/types/route.xsd` 与 `sumolib.miscutils.SPECIAL_TIME_STRINGS` 均冻结合法符号值为 `triggered`、`containerTriggered`、`split`、`begin`；校验器现在接受这四项，同时继续拒绝负数、非有限数和未知字符串。复审文字中列举的 `now` 不在该版本 schema 中，因此未放宽接受。
+
+### TDD 记录
+
+- RED：在固定旧基线 `e0411e5` 的临时 detached worktree 中仅应用本轮测试补丁，重放全部剩余边界：
+
+  ```powershell
+  & 'D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.venv\Scripts\python.exe' -m pytest tests\test_disturbances.py -q -k "without_route or without_interval or duplicate_intermediate or empty_rerouter or invalid_runtime_vehicle_depart or accepts_legal_symbolic or broken_nested_event_flow" -p no:cacheprovider --basetemp=D:\WorkPlace\t7r3-red-replay
+  # 9 failed, 9 passed, 29 deselected in 16.76s
+  ```
+
+- GREEN：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests\test_disturbances.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r3-controller-green
+  # 47 passed in 40.77s
+  ```
+
+### 最终验证
+
+- 聚焦（含三类真实 TraCI/SUMO 行为 smoke、映射和 queue-output）：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest tests\test_disturbances.py tests\test_variants.py tests\test_run_service.py tests\test_resilience.py tests\test_traci_outputs.py -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r3-controller-focused
+  # 87 passed in 60.24s
+  ```
+
+- 全量：
+
+  ```powershell
+  .\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=D:\WorkPlace\t7r3-controller-full
+  # 367 passed in 86.35s
+  ```
+
+- 系统 Python 3.14.7 `compileall`：exit 0；SUMO 与 jtrrouter 均为 1.27.1；`git diff --check` 通过。
+- 保护输入：`赛题资料.7z` SHA-256 仍为 `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f` 且未跟踪/未暂存；`data/intersection_data` 仍为 163 个 Git 跟踪文件且无差异。
+
+### 提交
+
+- `e5e9d44` (`fix: close disturbance validation gaps`)
