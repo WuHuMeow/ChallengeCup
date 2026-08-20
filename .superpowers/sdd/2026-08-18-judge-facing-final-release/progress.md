@@ -323,4 +323,6 @@
 - Task 8 真实 20 场景 TraCI 预检：20/20 均启动成功，全部 movement 容量为正、每条 incoming lane 的 turn ratio 和为 1、每场景冲突定义非空；独立映射的 797 个 request/foes 对与 797 个 `ConflictDefinition` 完全一致，所有 SUMO 输出均重定向到 `.t8-controller-preflight-final` 的 run-scoped 目录。
 - Task 8 真实 RunService 冒烟：路口 1、`fixed_time`、100 步、seed 42，run_id `a9aaca9ee48b`，状态 `completed`，终态 100.0 秒；`collisions.xml` 2064 bytes、`events.csv` 4730 bytes，安全事件 step 均与真实步对应，`red_light=0`、`illegal_transition=0`，急减速 27、潜在冲突 9 作为观察事件保留。
 - Task 8 最终兼容/保护校验：系统 Python 3.14.7 `compileall` exit 0；`git diff --check` exit 0；`赛题资料.7z` SHA-256 仍为 `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`；官方数据仍为 163 个 Git 跟踪文件且保护路径无 diff。
-- Task 8 fix round 1 状态：实现与控制器验证完成，等待提交及原审查者 scoped 复审；保持 Task 8，不开始 Task 9。
+- Task 8 fix round 1 scoped 独立复审：9 项开放问题全部 ADDRESSED，0 项开放，未发现新的 Critical/Important breakage；未完成车辆 raw output 分离明确保留给 Task 13，不阻塞本任务；审查者只读环境因无可写临时目录未能额外执行 pytest，控制器在同一 HEAD 上的计划聚焦 `59 passed`、扩展聚焦 `120 passed`、全量 `409 passed` 证据继续有效。
+- Task 8: fix round 1/5 (9 addressed, 0 open; commits `76f76d6..335bc3d`).
+- Task 8: complete (commits `9ba0a61..335bc3d`, scoped re-review clean; 20/20 official TraCI preflight and controller verification clean).
