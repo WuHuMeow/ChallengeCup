@@ -1,10 +1,15 @@
 """算法接口契约测试：验证所有算法遵循 BaseControlAlgorithm 接口。"""
 
+import dataclasses
+
+import pytest
+
 from algorithms.base import BaseControlAlgorithm
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
 from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
+from cloud.cloud_policy import CloudPolicy
 from core.types import (
     ControlAction,
     JointState,
@@ -241,3 +246,139 @@ def test_ca_maxpressure_empty_queues_returns_empty():
     )
     actions = algo.step(state)
     assert actions == []
+
+
+def _ca_runtime_state(algorithm: CAMaxPressureAlgorithm):
+    return (
+        algorithm.pending_target_phase,
+        algorithm._configured_phase,
+        algorithm.base_green,
+        algorithm.min_green,
+        algorithm.max_green,
+        dict(algorithm.cloud_policy._prev_predicted),
+        dict(algorithm.cloud_policy._prev_hourly_flow),
+        None
+        if algorithm.cloud_policy._last_params is None
+        else dict(algorithm.cloud_policy._last_params),
+        algorithm.cloud_policy._last_dispatch_step,
+    )
+
+
+def test_ca_mp_decision_plan_is_pure_then_commits_once_for_equivalent_state():
+    """Planning must not pre-arm a transition or advance cloud runtime state."""
+    phases = [
+        _phase(0, 1, 10, 0, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 9, 10, 0, 10, 0.1),
+    ]
+    state = _phase_state(
+        current=0,
+        elapsed=20,
+        phases=phases,
+        flows={"in_0": 0.0, "in_2": 600.0},
+    )
+    equivalent = dataclasses.replace(
+        state, phase_states=list(state.phase_states), flows=dict(state.flows)
+    )
+    algorithm = CAMaxPressureAlgorithm()
+    before_plan = _ca_runtime_state(algorithm)
+
+    plan = algorithm.plan_decision(state)
+    equivalent_plan = algorithm.plan_decision(equivalent)
+
+    assert equivalent_plan is plan
+    assert _ca_runtime_state(algorithm) == before_plan
+    planned_actions = plan.control_actions()
+    algorithm.commit_plan(plan)
+    after_first_commit = _ca_runtime_state(algorithm)
+    algorithm.commit_plan(plan)
+    assert _ca_runtime_state(algorithm) == after_first_commit
+    assert algorithm.pending_target_phase == 2
+    assert [(action.action_type, action.value) for action in planned_actions] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 3.0),
+    ]
+
+
+def test_ca_mp_pending_wait_and_complete_reasons_come_from_planning_branch():
+    """Transition wait and completion must not collapse into one inferred reason."""
+    phases = [
+        _phase(0, 1, 10, 0, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 9, 10, 0, 10, 0.1),
+    ]
+    algorithm = CAMaxPressureAlgorithm()
+    algorithm.step(_phase_state(current=0, elapsed=20, phases=phases))
+    waiting = dataclasses.replace(
+        _phase_state(current=1, elapsed=1, phases=phases),
+        step=101,
+        timestamp=11.0,
+    )
+    complete = dataclasses.replace(waiting, step=102, timestamp=12.0, elapsed_phase_time=3.0)
+
+    waiting_plan = algorithm.plan_decision(waiting)
+    complete_plan = algorithm.plan_decision(complete)
+
+    assert waiting_plan.decision_reason == "pending_transition_wait"
+    assert waiting_plan.control_actions() == []
+    assert complete_plan.decision_reason == "pending_transition_complete"
+    assert complete_plan.control_actions()[0].value == 2
+
+
+def test_ca_mp_commit_rejects_superseded_cross_owner_and_post_reset_plans():
+    """Only the latest plan from the current controller epoch may change runtime state."""
+    phases = [_phase(0, 5, 10, 0, 10, 0.1)]
+    first_state = _phase_state(current=0, elapsed=20, phases=phases)
+    next_state = dataclasses.replace(first_state, step=101, timestamp=11.0)
+    algorithm = CAMaxPressureAlgorithm()
+    old_plan = algorithm.plan_decision(first_state)
+    current_plan = algorithm.plan_decision(next_state)
+
+    with pytest.raises(RuntimeError, match="legacy_plan_superseded"):
+        algorithm.commit_plan(old_plan)
+    with pytest.raises(RuntimeError, match="legacy_plan_cross_owner"):
+        CAMaxPressureAlgorithm().commit_plan(current_plan)
+    algorithm.reset()
+    with pytest.raises(RuntimeError, match="legacy_plan_post_reset"):
+        algorithm.commit_plan(current_plan)
+
+
+def test_ca_mp_preserves_falsy_injected_policy_and_requires_transactions():
+    """Truthiness replacement or late failure would violate injected-policy ownership."""
+
+    class FalsyCloudPolicy(CloudPolicy):
+        def __bool__(self):
+            return False
+
+    class LegacyOnlyPolicy:
+        def predict(self, state):
+            raise AssertionError("legacy prediction API must not be accepted")
+
+        def reset(self):
+            pass
+
+    policy = FalsyCloudPolicy()
+
+    algorithm = CAMaxPressureAlgorithm(cloud_policy=policy)
+
+    assert algorithm.cloud_policy is policy
+    with pytest.raises(TypeError, match="cloud_policy_transactional_contract_missing"):
+        CAMaxPressureAlgorithm(cloud_policy=LegacyOnlyPolicy())
+
+
+def test_ca_mp_keeps_committed_history_while_a_newer_plan_is_pending():
+    """Historical inspection must not invalidate the next live legacy decision."""
+    phases = [_phase(0, 5, 10, 0, 10, 0.1)]
+    committed_state = _phase_state(current=0, elapsed=20, phases=phases)
+    algorithm = CAMaxPressureAlgorithm()
+    committed_plan = algorithm.plan_decision(committed_state)
+    algorithm.commit_plan(committed_plan)
+    newer_state = dataclasses.replace(
+        committed_state, step=101, timestamp=11.0, elapsed_phase_time=21.0
+    )
+    newer_plan = algorithm.plan_decision(newer_state)
+
+    historical_plan = algorithm.plan_decision(dataclasses.replace(committed_state))
+
+    assert historical_plan is committed_plan
+    algorithm.commit_plan(newer_plan)

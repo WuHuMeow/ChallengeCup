@@ -8,14 +8,90 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, fields, is_dataclass
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from core.config import get_config
 from core.types import JointState, PredictionResult
 
 logger = logging.getLogger(__name__)
+
+
+def _freeze_decision_value(value: Any) -> Any:
+    """Return a stable immutable representation of a decision input."""
+    if is_dataclass(value) and not isinstance(value, type):
+        return (
+            type(value).__module__,
+            type(value).__qualname__,
+            tuple(
+                (field.name, _freeze_decision_value(getattr(value, field.name)))
+                for field in fields(value)
+            ),
+        )
+    if isinstance(value, dict):
+        frozen = (
+            (_freeze_decision_value(key), _freeze_decision_value(item))
+            for key, item in value.items()
+        )
+        return tuple(sorted(frozen, key=lambda pair: repr(pair[0])))
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_decision_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted((_freeze_decision_value(item) for item in value), key=repr))
+    if isinstance(value, Path):
+        return str(value)
+    if value is None or isinstance(value, (str, bytes, int, float, bool)):
+        return value
+    return repr(value)
+
+
+def joint_state_fingerprint(state: JointState) -> tuple[Any, ...]:
+    """Fingerprint every field so mutable observations cannot reuse a stale plan."""
+    frozen = _freeze_decision_value(state)
+    if not isinstance(frozen, tuple):
+        raise TypeError("joint_state_fingerprint_not_tuple")
+    return frozen
+
+
+@dataclass(frozen=True)
+class CloudPolicyPlan:
+    """Immutable prediction/dispatch plan produced without changing runtime state."""
+
+    owner_token: object
+    reset_epoch: int
+    base_revision: int
+    state_fingerprint: tuple[Any, ...]
+    state_step: int
+    state_timestamp: float
+    config_fingerprint: tuple[float, int, int]
+    prediction_enabled: bool
+    dispatch_enabled: bool
+    predicted_flows: tuple[tuple[str, float], ...]
+    horizon_steps: int
+    horizon_seconds: float
+    dispatched_params: tuple[tuple[str, float], ...]
+    avg_pressure: float | None
+    dispatch_updated: bool
+    next_prev_predicted: tuple[tuple[str, float], ...]
+    next_prev_hourly_flow: tuple[tuple[str, float], ...]
+    next_last_params: tuple[tuple[str, float], ...] | None
+    next_last_dispatch_step: int
+
+    def prediction_result(self) -> PredictionResult | None:
+        if not self.prediction_enabled:
+            return None
+        return PredictionResult(
+            horizon_steps=self.horizon_steps,
+            horizon_seconds=self.horizon_seconds,
+            predicted_flows=dict(self.predicted_flows),
+        )
+
+    def params(self) -> dict[str, float] | None:
+        if not self.dispatch_enabled:
+            return None
+        return dict(self.dispatched_params)
 
 
 class CloudPolicy:
@@ -33,6 +109,11 @@ class CloudPolicy:
         self._prev_hourly_flow: dict[str, float] = {}
         self._last_params: Optional[dict] = None
         self._last_dispatch_step: int = -10**9
+        self._plan_owner = object()
+        self._reset_epoch = 0
+        self._runtime_revision = 0
+        self._pending_plan: CloudPolicyPlan | None = None
+        self._committed_plan: CloudPolicyPlan | None = None
 
         if model_path is None:
             model_path = get_config().path("paths.model_path")
@@ -55,25 +136,158 @@ class CloudPolicy:
         except Exception as exc:
             logger.warning("加载模型失败: %s，将使用 EWMA 预测", exc)
 
-    def predict(self, state: JointState) -> PredictionResult:
-        """EWMA 流量预测：predicted(t+1) = α × observed(t) + (1-α) × predicted(t)。"""
+    def _config_fingerprint(self) -> tuple[float, int, int]:
+        return float(self.alpha), int(self.horizon), int(self.update_interval)
+
+    @staticmethod
+    def _items(values: dict[str, float]) -> tuple[tuple[str, float], ...]:
+        return tuple(sorted((str(key), float(value)) for key, value in values.items()))
+
+    def plan(
+        self,
+        state: JointState,
+        *,
+        prediction: bool,
+        dispatch: bool,
+    ) -> CloudPolicyPlan:
+        """Plan prediction and parameter dispatch without changing runtime state."""
+        fingerprint = joint_state_fingerprint(state)
+        config_fingerprint = self._config_fingerprint()
+        key = (fingerprint, config_fingerprint, bool(prediction), bool(dispatch))
+        if self._pending_plan is not None:
+            pending_key = (
+                self._pending_plan.state_fingerprint,
+                self._pending_plan.config_fingerprint,
+                self._pending_plan.prediction_enabled,
+                self._pending_plan.dispatch_enabled,
+            )
+            if (
+                pending_key == key
+                and self._pending_plan.reset_epoch == self._reset_epoch
+                and self._pending_plan.base_revision == self._runtime_revision
+            ):
+                return self._pending_plan
+        if self._committed_plan is not None:
+            committed_key = (
+                self._committed_plan.state_fingerprint,
+                self._committed_plan.config_fingerprint,
+                self._committed_plan.prediction_enabled,
+                self._committed_plan.dispatch_enabled,
+            )
+            if committed_key == key:
+                return self._committed_plan
+
         predicted: dict[str, float] = {}
-        for direction, observed in state.flows.items():
-            prev = self._prev_hourly_flow.get(direction, observed)
-            hourly_flow = self.alpha * observed + (1 - self.alpha) * prev
-            predicted[direction] = hourly_flow * self.horizon / 3600.0
+        next_prev_predicted = dict(self._prev_predicted)
+        next_prev_hourly_flow = dict(self._prev_hourly_flow)
+        if prediction:
+            for direction, observed in state.flows.items():
+                prev = self._prev_hourly_flow.get(direction, observed)
+                hourly_flow = self.alpha * observed + (1 - self.alpha) * prev
+                predicted[direction] = hourly_flow * self.horizon / 3600.0
+            next_prev_predicted = predicted
+            next_prev_hourly_flow = {
+                direction: vehicles * 3600.0 / self.horizon
+                for direction, vehicles in predicted.items()
+            }
 
-        self._prev_predicted = predicted
-        self._prev_hourly_flow = {
-            direction: vehicles * 3600.0 / self.horizon
-            for direction, vehicles in predicted.items()
-        }
+        next_last_params = (
+            None if self._last_params is None else dict(self._last_params)
+        )
+        next_last_dispatch_step = self._last_dispatch_step
+        dispatched_params: dict[str, float] = {}
+        pressure: float | None = None
+        dispatch_updated = False
+        if dispatch:
+            pressure = self.avg_pressure(state)
+            if (
+                next_last_params is None
+                or state.step - next_last_dispatch_step >= self.update_interval
+            ):
+                next_last_params = self._compute_params(pressure)
+                next_last_dispatch_step = state.step
+                dispatch_updated = True
+            dispatched_params = dict(next_last_params)
 
-        return PredictionResult(
+        plan = CloudPolicyPlan(
+            owner_token=self._plan_owner,
+            reset_epoch=self._reset_epoch,
+            base_revision=self._runtime_revision,
+            state_fingerprint=fingerprint,
+            state_step=state.step,
+            state_timestamp=float(state.timestamp),
+            config_fingerprint=config_fingerprint,
+            prediction_enabled=bool(prediction),
+            dispatch_enabled=bool(dispatch),
+            predicted_flows=self._items(predicted),
             horizon_steps=self.horizon,
             horizon_seconds=float(self.horizon),
-            predicted_flows=predicted,
+            dispatched_params=self._items(dispatched_params),
+            avg_pressure=pressure,
+            dispatch_updated=dispatch_updated,
+            next_prev_predicted=self._items(next_prev_predicted),
+            next_prev_hourly_flow=self._items(next_prev_hourly_flow),
+            next_last_params=(
+                None if next_last_params is None else self._items(next_last_params)
+            ),
+            next_last_dispatch_step=next_last_dispatch_step,
         )
+        self._pending_plan = plan
+        return plan
+
+    def validate_plan(self, plan: CloudPolicyPlan) -> bool:
+        """Validate a plan, returning False only when it is already committed."""
+        if not isinstance(plan, CloudPolicyPlan):
+            raise RuntimeError("cloud_plan_invalid_type")
+        if plan.owner_token is not self._plan_owner:
+            raise RuntimeError("cloud_plan_cross_owner")
+        if plan.reset_epoch != self._reset_epoch:
+            raise RuntimeError("cloud_plan_post_reset")
+        if plan.config_fingerprint != self._config_fingerprint():
+            raise RuntimeError("cloud_plan_config_changed")
+        if self._pending_plan is not None and plan is not self._pending_plan:
+            raise RuntimeError("cloud_plan_superseded")
+        if self._pending_plan is None and plan is self._committed_plan:
+            return False
+        if plan.base_revision != self._runtime_revision:
+            raise RuntimeError("cloud_plan_stale_revision")
+        if plan is not self._pending_plan:
+            raise RuntimeError("cloud_plan_not_pending")
+        return True
+
+    def commit(self, plan: CloudPolicyPlan) -> None:
+        """Apply one validated runtime transition; duplicate commit is a no-op."""
+        if not self.validate_plan(plan):
+            return
+        self._prev_predicted = dict(plan.next_prev_predicted)
+        self._prev_hourly_flow = dict(plan.next_prev_hourly_flow)
+        self._last_params = (
+            None if plan.next_last_params is None else dict(plan.next_last_params)
+        )
+        self._last_dispatch_step = plan.next_last_dispatch_step
+        self._runtime_revision += 1
+        self._committed_plan = plan
+        self._pending_plan = None
+        if plan.dispatch_updated:
+            logger.info(
+                "云端下发参数: step=%d avg_pressure=%.3f params=%s",
+                plan.state_step,
+                plan.avg_pressure,
+                dict(plan.dispatched_params),
+            )
+
+    def commit_plan(self, plan: CloudPolicyPlan) -> None:
+        """Compatibility alias for callers that name both transaction phases."""
+        self.commit(plan)
+
+    def predict(self, state: JointState) -> PredictionResult:
+        """Plan and immediately commit one EWMA prediction."""
+        plan = self.plan(state, prediction=True, dispatch=False)
+        self.commit(plan)
+        result = plan.prediction_result()
+        if result is None:
+            raise RuntimeError("cloud_prediction_plan_missing_result")
+        return result
 
     # (avg_pressure 阈值, 下发参数)：>0.8 极高压力（更激进）/ >0.4 中档 / 常规
     PRESSURE_TIERS = (
@@ -108,16 +322,12 @@ class CloudPolicy:
         Returns:
             控制参数 dict，含 min_green / max_green / base_green。
         """
-        pressure = self.avg_pressure(state)
-        if (
-            self._last_params is None
-            or state.step - self._last_dispatch_step >= self.update_interval
-        ):
-            self._last_params = self._compute_params(pressure)
-            self._last_dispatch_step = state.step
-            logger.info("云端下发参数: step=%d avg_pressure=%.3f params=%s",
-                        state.step, pressure, self._last_params)
-        return dict(self._last_params)
+        plan = self.plan(state, prediction=False, dispatch=True)
+        self.commit(plan)
+        params = plan.params()
+        if params is None:
+            raise RuntimeError("cloud_dispatch_plan_missing_params")
+        return params
 
     def dispatch_base_green(self, state: JointState) -> float:
         """周期性下发 base_green 参数（云端全局协调）。"""
@@ -129,3 +339,7 @@ class CloudPolicy:
         self._prev_hourly_flow = {}
         self._last_params = None
         self._last_dispatch_step = -10**9
+        self._reset_epoch += 1
+        self._runtime_revision = 0
+        self._pending_plan = None
+        self._committed_plan = None

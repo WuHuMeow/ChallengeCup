@@ -10,7 +10,7 @@ from algorithms.capacity_aware_max_pressure import (
 from algorithms.classic_max_pressure import ClassicMaxPressureAlgorithm
 from cloud.cloud_policy import CloudPolicy
 from core.movements import MovementKey, MovementState, PhaseMovementState
-from core.types import JointState, PhaseTrafficState
+from core.types import JointState, PhaseTrafficState, QueueState
 from engine.mock_bridge import MockBridge
 
 
@@ -468,3 +468,294 @@ def test_prediction_keeps_ewma_history_in_hourly_flow_units(state):
     predicted = policy.predict(hourly)
 
     assert predicted.predicted_flows == {"in_a": 50.0}
+
+
+def _legacy_decision_state(
+    *,
+    with_transition: bool,
+    step: int = 10,
+    elapsed: float = 20.0,
+    flows: dict[str, float] | None = None,
+) -> JointState:
+    phases = [_legacy_phase(0, 1.0, "in_current")]
+    target_phase = 2 if with_transition else 1
+    if with_transition:
+        phases.append(
+            dataclasses.replace(
+                _legacy_phase(1, 0.0, "in_transition"), signal_state="y"
+            )
+        )
+    phases.append(_legacy_phase(target_phase, 10.0, "in_target"))
+    return JointState(
+        step=step,
+        timestamp=float(step),
+        tls_id="tls_legacy",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=elapsed,
+        flows=flows or {"in_current": 0.0, "in_target": 600.0},
+        phase_states=phases,
+        phase_movements=(),
+        legal_phase_transitions=((0, target_phase),),
+    )
+
+
+def _capacity_runtime_state(algorithm: CapacityAwareMaxPressureAlgorithm):
+    return (
+        algorithm.pending_target_phase,
+        algorithm._configured_phase,
+        algorithm.base_green,
+        algorithm.min_green,
+        algorithm.max_green,
+        dict(algorithm.cloud_policy._prev_predicted),
+        dict(algorithm.cloud_policy._prev_hourly_flow),
+        None
+        if algorithm.cloud_policy._last_params is None
+        else dict(algorithm.cloud_policy._last_params),
+        algorithm.cloud_policy._last_dispatch_step,
+    )
+
+
+@pytest.mark.parametrize("with_transition", (False, True), ids=("direct", "safe"))
+def test_legacy_observation_first_is_pure_and_converges_with_clean_step(
+    with_transition,
+):
+    """Legacy inspection must not change the direct or safe-transition action path."""
+    observed_policy = CloudPolicy()
+    clean_policy = CloudPolicy()
+    for policy in (observed_policy, clean_policy):
+        policy.alpha = 0.5
+        policy.horizon = 3600
+    observed = CapacityAwareMaxPressureAlgorithm(
+        CapacityAwareConfig.m4(), observed_policy
+    )
+    clean = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4(), clean_policy)
+    high = _legacy_decision_state(with_transition=with_transition)
+    low = dataclasses.replace(
+        high,
+        step=9,
+        timestamp=9.0,
+        flows={"in_current": 0.0, "in_target": 0.0},
+    )
+    observed_policy.predict(low)
+    clean_policy.predict(low)
+    before_observation = _capacity_runtime_state(observed)
+
+    observed.audit_record(high)
+    observed.score_breakdown(high)
+
+    assert _capacity_runtime_state(observed) == before_observation
+    equivalent_high = dataclasses.replace(
+        high, phase_states=list(high.phase_states), flows=dict(high.flows)
+    )
+    observed_actions = observed.step(equivalent_high)
+    clean_actions = clean.step(high)
+    assert observed_actions == clean_actions
+    assert _capacity_runtime_state(observed) == _capacity_runtime_state(clean)
+    assert observed_policy._prev_hourly_flow["in_target"] == 300.0
+    audit_after_step = observed.audit_record(high)
+    assert audit_after_step["final_decision"]["actions"] == [
+        {
+            "action_type": action.action_type,
+            "value": action.value,
+            "reason": action.reason,
+        }
+        for action in observed_actions
+    ]
+    assert observed_policy._prev_hourly_flow["in_target"] == 300.0
+
+
+def test_movement_m4_observation_first_is_pure_and_commits_prediction_once(state):
+    """Movement inspection must cache forecast scores without advancing EWMA."""
+    observed_policy = CloudPolicy()
+    clean_policy = CloudPolicy()
+    for policy in (observed_policy, clean_policy):
+        policy.alpha = 0.5
+        policy.horizon = 3600
+    observed = CapacityAwareMaxPressureAlgorithm(
+        CapacityAwareConfig.m4(), observed_policy
+    )
+    clean = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4(), clean_policy)
+    low = dataclasses.replace(state, step=9, timestamp=9.0, flows={"in_c": 0.0})
+    high = dataclasses.replace(state, flows={"in_c": 600.0})
+    observed_policy.predict(low)
+    clean_policy.predict(low)
+    before_observation = _capacity_runtime_state(observed)
+
+    observed.score_breakdown(high)
+    observed.audit_record(high)
+
+    assert _capacity_runtime_state(observed) == before_observation
+    equivalent_high = dataclasses.replace(high, flows=dict(high.flows))
+    observed_actions = observed.step(equivalent_high)
+    clean_actions = clean.step(high)
+    assert observed_actions == clean_actions
+    assert _capacity_runtime_state(observed) == _capacity_runtime_state(clean)
+    assert observed_policy._prev_hourly_flow == {"in_c": 300.0}
+    observed.audit_record(high)
+    assert observed_policy._prev_hourly_flow == {"in_c": 300.0}
+
+
+def test_m3_legacy_disables_prediction_and_keeps_frozen_green_limits():
+    """Cloud tiers must not enable M3 prediction or raise its 30-second maximum."""
+    policy = CloudPolicy()
+    policy.alpha = 0.5
+    policy.horizon = 3600
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3(), policy)
+    pressured = dataclasses.replace(
+        _legacy_decision_state(with_transition=False),
+        queues=[
+            QueueState(
+                direction="in_target",
+                queue_length=9.0,
+                waiting_time=0.0,
+                vehicle_count=9,
+                capacity=10.0,
+            )
+        ],
+    )
+
+    actions = algorithm.step(pressured)
+    audit = algorithm.audit_record(pressured)
+
+    duration = next(
+        action.value
+        for action in actions
+        if action.action_type == "set_phase_duration"
+    )
+    audited_duration = next(
+        action["value"]
+        for action in audit["final_decision"]["actions"]
+        if action["action_type"] == "set_phase_duration"
+    )
+    assert policy._prev_predicted == {}
+    assert policy._prev_hourly_flow == {}
+    assert duration == 30.0
+    assert audited_duration == 30.0
+    assert algorithm.min_green == algorithm.manifest["min_green"] == 10.0
+    assert algorithm.max_green == algorithm.manifest["max_green"] == 30.0
+
+
+def test_legacy_audit_reports_distinct_pending_wait_and_complete_reasons():
+    """Top-level evidence must name the actual pending transition branch."""
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
+    initial = _legacy_decision_state(with_transition=True)
+    algorithm.step(initial)
+    waiting = dataclasses.replace(
+        initial,
+        step=11,
+        timestamp=11.0,
+        current_phase=1,
+        current_phase_name="p1",
+        elapsed_phase_time=1.0,
+    )
+
+    waiting_audit = algorithm.audit_record(waiting)
+    waiting_actions = algorithm.step(waiting)
+    complete = dataclasses.replace(
+        waiting, step=12, timestamp=12.0, elapsed_phase_time=3.0
+    )
+    complete_audit = algorithm.audit_record(complete)
+    complete_actions = algorithm.step(complete)
+
+    assert waiting_audit["selection_reason"] == "pending_target_in_progress"
+    assert waiting_audit["decision_reason"] == "pending_transition_wait"
+    assert waiting_actions == []
+    assert complete_audit["selection_reason"] == "pending_target_in_progress"
+    assert complete_audit["decision_reason"] == "pending_transition_complete"
+    assert complete_actions[0].value == 2
+
+
+def test_decision_plan_validates_fingerprint_owner_epoch_revision_and_history(state):
+    """Stale, foreign, reset, or reconstructed history plans must never commit."""
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4())
+    old_plan = algorithm.plan_decision(state)
+    state.flows["in_c"] = 600.0
+    current_plan = algorithm.plan_decision(state)
+
+    assert current_plan is not old_plan
+    with pytest.raises(RuntimeError, match="decision_plan_superseded"):
+        algorithm.commit_plan(old_plan)
+    with pytest.raises(RuntimeError, match="decision_plan_cross_owner"):
+        CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4()).commit_plan(
+            current_plan
+        )
+    algorithm.commit_plan(current_plan)
+    after_first_commit = _capacity_runtime_state(algorithm)
+    algorithm.commit_plan(current_plan)
+    assert _capacity_runtime_state(algorithm) == after_first_commit
+
+    newer = dataclasses.replace(state, step=11, timestamp=11.0)
+    algorithm.step(newer)
+    changed_history = dataclasses.replace(
+        state, flows={"in_c": 700.0}
+    )
+    with pytest.raises(RuntimeError, match="decision_history_unavailable"):
+        algorithm.audit_record(changed_history)
+
+    future = dataclasses.replace(state, step=12, timestamp=12.0)
+    pre_reset_plan = algorithm.plan_decision(future)
+    algorithm.reset()
+    with pytest.raises(RuntimeError, match="decision_plan_post_reset"):
+        algorithm.commit_plan(pre_reset_plan)
+
+
+def test_capacity_injected_prediction_weight_is_effective_without_policy_mutation():
+    """An algorithm override must not silently rewrite its injected policy config."""
+
+    class FalsyCloudPolicy(CloudPolicy):
+        def __bool__(self):
+            return False
+
+    policy = FalsyCloudPolicy()
+    policy.configured_prediction_weight = 0.7
+
+    algorithm = CapacityAwareMaxPressureAlgorithm(
+        CapacityAwareConfig.m4(),
+        policy,
+        prediction_weight=0.2,
+    )
+
+    assert algorithm.cloud_policy is policy
+    assert policy.configured_prediction_weight == 0.7
+    assert algorithm.manifest["prediction_weight"] == 0.2
+
+
+def test_capacity_rejects_transactional_policy_missing_required_configuration():
+    """A partial transaction object must fail at injection, not during a live tick."""
+
+    class IncompleteTransactionalPolicy:
+        def plan(self, state, *, prediction, dispatch):
+            raise AssertionError("incomplete policy must fail before planning")
+
+        def validate_plan(self, plan):
+            return True
+
+        def commit(self, plan):
+            pass
+
+        def reset(self):
+            pass
+
+    with pytest.raises(TypeError, match="capacity_cloud_policy_contract_missing"):
+        CapacityAwareMaxPressureAlgorithm(
+            CapacityAwareConfig.m4(), IncompleteTransactionalPolicy()
+        )
+
+
+def test_capacity_keeps_committed_audit_while_a_newer_plan_is_pending(state):
+    """Post-step audit must not replace the pending next-tick decision."""
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4())
+    committed_actions = algorithm.step(state)
+    committed_audit = algorithm.audit_record(state)
+    newer_state = dataclasses.replace(
+        state, step=11, timestamp=11.0, flows={"in_c": 600.0}
+    )
+    newer_plan = algorithm.plan_decision(newer_state)
+
+    historical_audit = algorithm.audit_record(dataclasses.replace(state))
+
+    assert historical_audit == committed_audit
+    algorithm.commit_plan(newer_plan)
+    assert newer_plan.actions
+    assert committed_actions

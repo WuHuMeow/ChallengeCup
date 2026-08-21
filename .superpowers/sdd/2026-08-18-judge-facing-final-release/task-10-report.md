@@ -282,3 +282,73 @@ All behavior tests use hand-derived literal expectations and real state/control 
 - `audit_record()` reads the frozen legacy action list and only serializes the existing ActionResults supplied by Runner or the shared bridge. No centralized executor, fallback state machine, or other Task 11 behavior was added.
 - Legacy score ranking follows the preserved parent tie rule: highest score, then current phase when tied, then smallest index. The audit records current phase, elapsed time, legal targets, candidates, selected phase, and stable selection reason.
 - No new Critical or Important issue was found in the scoped diff. The real smoke continued to select safe no-action movement fallbacks, so the legacy action-result evidence is supplied by the focused shared `MockBridge.apply_actions()` behavior test.
+
+## Review Fix Round 4
+
+### TDD Evidence
+
+1. RED CloudPolicy transaction boundary:
+   `./.venv/Scripts/python.exe -m pytest tests/test_cloud.py::test_cloud_plan_is_observationally_pure_and_semantic_commit_is_idempotent tests/test_cloud.py::test_cloud_plan_fingerprint_rejects_mutation_supersession_and_cross_owner tests/test_cloud.py::test_cloud_plan_created_before_reset_is_rejected -q -p no:cacheprovider --basetemp=.t10/fix4-red-cloud-plan`
+   Result: `3 failed in 0.13s` as expected because `CloudPolicy` had no pure `plan()` or explicit `commit()` API.
+2. GREEN CloudPolicy transaction boundary:
+   `./.venv/Scripts/python.exe -m pytest tests/test_cloud.py::test_cloud_plan_is_observationally_pure_and_semantic_commit_is_idempotent tests/test_cloud.py::test_cloud_plan_fingerprint_rejects_mutation_supersession_and_cross_owner tests/test_cloud.py::test_cloud_plan_created_before_reset_is_rejected -q -p no:cacheprovider --basetemp=.t10/fix4-green-cloud-plan`
+   Result: `3 passed in 0.07s`; the full cloud file then reported `10 passed in 0.07s`.
+3. RED legacy controller plan/commit and branch reasons:
+   `./.venv/Scripts/python.exe -m pytest tests/test_algorithms.py::test_ca_mp_decision_plan_is_pure_then_commits_once_for_equivalent_state tests/test_algorithms.py::test_ca_mp_pending_wait_and_complete_reasons_come_from_planning_branch tests/test_algorithms.py::test_ca_mp_commit_rejects_superseded_cross_owner_and_post_reset_plans -q -p no:cacheprovider --basetemp=.t10/fix4-red-legacy-plan`
+   Result: `3 failed in 0.49s` as expected because `CAMaxPressureAlgorithm` had no decision-plan API.
+4. GREEN legacy controller plan/commit and branch reasons:
+   `./.venv/Scripts/python.exe -m pytest tests/test_algorithms.py::test_ca_mp_decision_plan_is_pure_then_commits_once_for_equivalent_state tests/test_algorithms.py::test_ca_mp_pending_wait_and_complete_reasons_come_from_planning_branch tests/test_algorithms.py::test_ca_mp_commit_rejects_superseded_cross_owner_and_post_reset_plans -q -p no:cacheprovider --basetemp=.t10/fix4-green-legacy-plan`
+   Result: `3 passed in 0.38s`; direct legacy behavior remained green with `14 passed in 0.52s` for the then-current full algorithm file.
+5. RED/GREEN injected-policy ownership and transactional fail-fast:
+   `./.venv/Scripts/python.exe -m pytest tests/test_algorithms.py::test_ca_mp_preserves_falsy_injected_policy_and_requires_transactions -q -p no:cacheprovider --basetemp=.t10/fix4-red-policy-contract`
+   Result: `1 failed in 0.48s` because a falsy injected policy was replaced. The corresponding GREEN command with `--basetemp=.t10/fix4-green-policy-contract` reported `1 passed in 0.36s`.
+6. RED capacity-aware orchestration:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_legacy_observation_first_is_pure_and_converges_with_clean_step tests/test_capacity_aware_max_pressure.py::test_movement_m4_observation_first_is_pure_and_commits_prediction_once tests/test_capacity_aware_max_pressure.py::test_m3_legacy_disables_prediction_and_keeps_frozen_green_limits tests/test_capacity_aware_max_pressure.py::test_legacy_audit_reports_distinct_pending_wait_and_complete_reasons tests/test_capacity_aware_max_pressure.py::test_decision_plan_validates_fingerprint_owner_epoch_revision_and_history tests/test_capacity_aware_max_pressure.py::test_capacity_injected_prediction_weight_is_effective_without_policy_mutation -q -p no:cacheprovider --basetemp=.t10/fix4-red-capacity-plan`
+   Result: `7 failed in 0.60s` as expected: inspection mutated controller/EWMA state, M3 predicted, reasons were inferred incorrectly, child plans used the legacy transaction, and falsy policy identity was lost.
+7. GREEN capacity-aware orchestration:
+   The same selected tests with `--basetemp=.t10/fix4-green-capacity-plan-attempt1` reported `7 passed in 0.55s`.
+8. RED/GREEN retained Round 3 tie attribution:
+   `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py -q -p no:cacheprovider --basetemp=.t10/fix4-green-capacity-all-attempt1`
+   Result: `1 failed, 44 passed in 0.58s`; an already-selected non-current tie was relabeled as max-green forced. The focused GREEN command with `--basetemp=.t10/fix4-green-tie-regression` reported `1 passed in 0.40s`, and the complete file then reported `45 passed in 0.46s`.
+9. RED/GREEN committed-history preservation with a newer pending plan:
+   `./.venv/Scripts/python.exe -m pytest tests/test_cloud.py::test_cloud_keeps_committed_history_while_a_newer_plan_is_pending tests/test_algorithms.py::test_ca_mp_keeps_committed_history_while_a_newer_plan_is_pending tests/test_capacity_aware_max_pressure.py::test_capacity_keeps_committed_audit_while_a_newer_plan_is_pending -q -p no:cacheprovider --basetemp=.t10/fix4-red-committed-pending`
+   Result: `3 failed in 0.65s` because historical lookup replaced the newer pending plan. The GREEN command with `--basetemp=.t10/fix4-green-committed-pending` reported `3 passed in 0.44s`.
+10. RED/GREEN capacity-policy configuration fail-fast:
+    `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py::test_capacity_rejects_transactional_policy_missing_required_configuration -q -p no:cacheprovider --basetemp=.t10/fix4-red-capacity-policy-contract`
+    Result: `1 failed in 0.57s` with a late `AttributeError`; the GREEN command with `--basetemp=.t10/fix4-green-capacity-policy-contract` reported `1 passed in 0.45s` with stable construction-time rejection.
+
+### Verification
+
+- Final amended focused tests:
+  `./.venv/Scripts/python.exe -m pytest tests/test_cloud.py tests/test_algorithms.py tests/test_capacity_aware_max_pressure.py -q -p no:cacheprovider --basetemp=.t10/fix4-amended-focused-final`
+  Result: `74 passed in 0.68s`.
+- Final Task 10 expanded focused suite:
+  `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py tests/test_edge_channel.py tests/test_runner_channel.py tests/test_run_service.py tests/test_cloud.py tests/test_capacity_preflight.py tests/test_algorithms.py -q -p no:cacheprovider --basetemp=.t10/fix4-expanded-focused-final`
+  Result: `125 passed in 10.75s`.
+- Final full project suite:
+  `./.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=.t10/fix4-full-final`
+  Result: `505 passed in 83.43s (0:01:23)`.
+- Official static capacity preflight:
+  `./.venv/Scripts/python.exe -c "from scenes.capacity_preflight import validate_capacity_aware_scene; from scenes.registry import SceneRegistry; scenes = [SceneRegistry().get_scene(str(index)) for index in range(1, 21)]; [validate_capacity_aware_scene(scene.meta.sumo_net) for scene in scenes]; print(f'{len(scenes)}/20 official capacity preflights passed')"`
+  Result: `20/20 official capacity preflights passed`.
+- Real 100-step RunService/SUMO EdgeMessage smoke:
+  `RunService(output_root=Path('.t10/fix4-real-smoke-final')).run_sync(RunRequest('1', 'capacity_aware_maxpressure', steps=100, seed=42, edge_delay_steps=2))`
+  Result: run ID `d89343774b4f`, `completed`, `channel_wait=2`, `algorithm_audit=98`, `action_applied=0`, `action_rejected=0`, and `illegal_transition=0`. The manifest records `layer=M3`, `prediction_enabled=false`, and green limits `10..30`; the sampled audit decision was `safe_fallback_illegal_target`.
+- Python compatibility:
+  `python --version` returned `Python 3.14.7`; `python -m compileall algorithms cloud engine scenes` exited 0.
+- Integrity:
+  `git diff --check` exited 0. The archive SHA-256 is `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`; `data/intersection_data` remains 163 tracked and 232 on-disk files, with zero protected-path worktree and index diffs.
+
+### Files Changed
+
+- Modified `cloud/cloud_policy.py`, `algorithms/ca_max_pressure.py`, and `algorithms/capacity_aware_max_pressure.py`.
+- Modified `tests/test_cloud.py`, `tests/test_algorithms.py`, and `tests/test_capacity_aware_max_pressure.py`.
+- Appended this Task 10 report section.
+
+### Self Review and Concerns
+
+- Cloud, direct legacy, and capacity-aware layers now use immutable plans with complete state fingerprints plus owner, reset epoch and base revision. Pending and committed plans are distinct; semantic copies reuse the same plan, input mutation replans, old/superseded/cross-owner/post-reset commits fail with stable reasons, and duplicate internal commit is a no-op.
+- `CAMaxPressureAlgorithm` is the single source for legacy scores, selection, exact branch reason, actions and next controller state. Capacity-aware legacy audit maps that plan directly; the Round 3 child-side inference/capture seam is gone.
+- Capacity-aware inspection only plans/caches. `step()` is the only controller/policy commit point for both legacy and movement paths. M0-M3 never plan prediction, M4 commits one prediction, and all capacity-aware legacy actions/live fields/audit/manifest retain the selected `10..30` layer limits.
+- The implementation does not deduplicate bridge actions and does not change Runner, signal writing, transition insertion, the shared action validator, or any Task 11 executor behavior.
+- The real smoke again selected safe no-action fallbacks, so it proves channel/audit/safety telemetry but not applied-action correlation. Exact action and `ActionResult` correlation remains supported by focused behavior tests using the existing shared bridge path.

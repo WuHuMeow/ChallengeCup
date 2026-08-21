@@ -7,8 +7,12 @@ import logging
 from math import isfinite
 from typing import Iterable
 
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from cloud.cloud_policy import CloudPolicy
+from algorithms.ca_max_pressure import (
+    CAMaxPressureAlgorithm,
+    LegacyDecisionPlan,
+    _LegacyPlanningProfile,
+)
+from cloud.cloud_policy import CloudPolicy, CloudPolicyPlan, joint_state_fingerprint
 from core.movements import MovementState, PhaseMovementState
 from core.types import ActionResult, ControlAction, JointState, PhaseTrafficState
 from scenes.capacity_preflight import validate_capacity_aware_scene
@@ -126,7 +130,13 @@ class _PlannedAction:
 
 @dataclass(frozen=True)
 class _DecisionSnapshot:
-    state_token: tuple[int, int, float]
+    owner_token: object
+    reset_epoch: int
+    base_revision: int
+    state_fingerprint: tuple[object, ...]
+    state_step: int
+    state_timestamp: float
+    profile_fingerprint: tuple[object, ...]
     phase_scores: tuple[tuple[int, PhaseScore], ...]
     movement_pressures: tuple[tuple[int, tuple[_MovementPressure, ...]], ...]
     current_phase: int
@@ -137,6 +147,8 @@ class _DecisionSnapshot:
     selection_reason: str
     decision_reason: str
     actions: tuple[_PlannedAction, ...]
+    legacy_plan: LegacyDecisionPlan | None = None
+    cloud_plan: CloudPolicyPlan | None = None
 
     def scores(self) -> dict[int, PhaseScore]:
         return dict(self.phase_scores)
@@ -263,35 +275,45 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             prediction_weight=prediction_weight,
             base_green=base_green,
         )
-        self.config = config or CapacityAwareConfig.default()
+        missing_policy_configuration = tuple(
+            name
+            for name in (
+                "alpha",
+                "horizon",
+                "update_interval",
+                "configured_prediction_weight",
+            )
+            if not hasattr(self.cloud_policy, name)
+        )
+        if missing_policy_configuration:
+            raise TypeError(
+                "capacity_cloud_policy_contract_missing:"
+                + ",".join(missing_policy_configuration)
+            )
+        self.config = config if config is not None else CapacityAwareConfig.default()
         if overflow_occupancy_threshold is not None:
             self.config = replace(
                 self.config, overflow_threshold=float(overflow_occupancy_threshold)
             )
-        self.cloud_policy = cloud_policy or CloudPolicy()
-        if prediction_weight is not None:
-            self.cloud_policy.configured_prediction_weight = float(prediction_weight)
-        self.cloud_policy.configured_prediction_weight = _nonnegative_float(
-            "prediction_weight", self.cloud_policy.configured_prediction_weight
+        effective_prediction_weight = (
+            prediction_weight
+            if prediction_weight is not None
+            else self.cloud_policy.configured_prediction_weight
+        )
+        self.prediction_weight = _nonnegative_float(
+            "prediction_weight", effective_prediction_weight
         )
         self.base_green = _positive_float("base_green", self.base_green)
         self.min_green = self.config.min_green
         self.max_green = self.config.max_green
         self.overflow_threshold = self.config.overflow_threshold
-        self._last_snapshot: _DecisionSnapshot | None = None
-        self._legacy_score_capture: dict[int, float] | None = None
-
-    @staticmethod
-    def _state_token(state: JointState) -> tuple[int, int, float]:
-        return id(state), state.step, float(state.timestamp)
-
-    def _predicted_arrivals(self, state: JointState) -> tuple[dict[str, float], float]:
-        if not self.config.prediction:
-            return {}, 0.0
-        prediction = self.cloud_policy.predict(state)
-        return prediction.predicted_flows, float(
-            self.cloud_policy.configured_prediction_weight
-        )
+        self._capacity_base_green = self.base_green
+        self._capacity_prediction_weight = self.prediction_weight
+        self._decision_plan_owner = object()
+        self._decision_reset_epoch = 0
+        self._decision_runtime_revision = 0
+        self._pending_decision_plan: _DecisionSnapshot | None = None
+        self._committed_decision_plan: _DecisionSnapshot | None = None
 
     def _duration(self, selected: float, scores: dict[int, PhaseScore]) -> float:
         positive = [
@@ -307,141 +329,84 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
         )
         return float(min(self.config.max_green, max(self.config.min_green, duration)))
 
-    def phase_pressure(
-        self,
-        phase: PhaseTrafficState,
-        predicted_arrivals: float,
-    ) -> float:
-        """Capture the legacy calculation that the preserved parent path executes."""
-        pressure = super().phase_pressure(phase, predicted_arrivals)
-        if self._legacy_score_capture is not None:
-            self._legacy_score_capture[phase.phase_index] = pressure
-        return pressure
+    def _profile_fingerprint(self) -> tuple[object, ...]:
+        return (
+            self.config,
+            self._capacity_base_green,
+            self._capacity_prediction_weight,
+            float(self.cloud_policy.alpha),
+            int(self.cloud_policy.horizon),
+            int(self.cloud_policy.update_interval),
+        )
 
-    def _build_legacy_snapshot(self, state: JointState) -> _DecisionSnapshot:
-        """Freeze the one parent legacy decision so audit cannot advance EWMA again."""
-        scores: dict[int, float] = {}
-        pending_target = self.pending_target_phase
-        configured_phase = self._configured_phase
-        self._legacy_score_capture = scores
-        try:
-            actions = tuple(
+    def _legacy_profile(self) -> _LegacyPlanningProfile:
+        return _LegacyPlanningProfile(
+            prediction_enabled=self.config.prediction,
+            dispatch_enabled=True,
+            base_green=self._capacity_base_green,
+            min_green=self.config.min_green,
+            max_green=self.config.max_green,
+            overflow_threshold=self.config.overflow_threshold,
+            prediction_weight=self._capacity_prediction_weight,
+        )
+
+    def _build_legacy_plan(
+        self,
+        state: JointState,
+        fingerprint: tuple[object, ...],
+        profile_fingerprint: tuple[object, ...],
+    ) -> _DecisionSnapshot:
+        legacy = super().plan_decision(state, profile=self._legacy_profile())
+        phase_scores = tuple(
+            (index, PhaseScore(score, (), ())) for index, score in legacy.scores
+        )
+        return _DecisionSnapshot(
+            owner_token=self._decision_plan_owner,
+            reset_epoch=self._decision_reset_epoch,
+            base_revision=self._decision_runtime_revision,
+            state_fingerprint=fingerprint,
+            state_step=state.step,
+            state_timestamp=float(state.timestamp),
+            profile_fingerprint=profile_fingerprint,
+            phase_scores=phase_scores,
+            movement_pressures=tuple((index, ()) for index, _ in phase_scores),
+            current_phase=legacy.current_phase,
+            elapsed_phase_time=legacy.elapsed_phase_time,
+            legal_targets=legacy.legal_targets,
+            candidate_phases=legacy.candidate_phases,
+            selected_phase=legacy.selected_phase,
+            selection_reason=legacy.selection_reason,
+            decision_reason=legacy.decision_reason,
+            actions=tuple(
                 _PlannedAction(
                     action.tls_id,
                     action.action_type,
                     action.value,
                     action.reason,
                 )
-                for action in super().step(state)
+                for action in legacy.actions
+            ),
+            legacy_plan=legacy,
+        )
+
+    def _build_movement_plan(
+        self,
+        state: JointState,
+        fingerprint: tuple[object, ...],
+        profile_fingerprint: tuple[object, ...],
+    ) -> _DecisionSnapshot:
+        cloud_plan: CloudPolicyPlan | None = None
+        predicted: dict[str, float] = {}
+        weight = 0.0
+        if self.config.prediction:
+            cloud_plan = self.cloud_policy.plan(
+                state, prediction=True, dispatch=False
             )
-        finally:
-            self._legacy_score_capture = None
-
-        phase_scores = tuple(
-            (index, PhaseScore(score, (), ()))
-            for index, score in scores.items()
-        )
-        movement_pressures = tuple((index, ()) for index, _ in phase_scores)
-        phases = list(state.phase_states)
-        by_index = {phase.phase_index: phase for phase in phases}
-        viable = [
-            phase
-            for phase in phases
-            if phase.phase_index in scores and isfinite(scores[phase.phase_index])
-        ]
-        legal_targets = tuple(
-            candidate
-            for source, candidate in state.legal_phase_transitions
-            if source == state.current_phase
-        )
-        selected_phase: int | None = None
-        if not viable:
-            selection_reason = "safe_fallback_all_blocked"
-        else:
-            highest_score = max(scores[phase.phase_index] for phase in viable)
-            tied = tuple(sorted(
-                phase.phase_index
-                for phase in viable
-                if scores[phase.phase_index] == highest_score
-            ))
-            if state.current_phase in tied:
-                selected_phase = state.current_phase
-                selection_reason = (
-                    "equal_score_keep_current"
-                    if len(tied) > 1
-                    else "current_phase_selected"
-                )
-            else:
-                selected_phase = tied[0]
-                selection_reason = (
-                    "equal_score_smallest_index"
-                    if len(tied) > 1
-                    else "highest_viable_pressure"
-                )
-            current = by_index.get(state.current_phase)
-            if pending_target is not None and state.current_phase == pending_target:
-                selected_phase = pending_target
-                selection_reason = "pending_target_reached"
-            elif pending_target is not None and not self._is_green(current):
-                selected_phase = pending_target
-                selection_reason = "pending_target_in_progress"
-            elif self._is_green(current) and state.elapsed_phase_time >= self.max_green:
-                alternatives = [
-                    phase
-                    for phase in viable
-                    if phase.phase_index != state.current_phase
-                ]
-                if alternatives:
-                    highest_alternative = max(
-                        scores[phase.phase_index] for phase in alternatives
-                    )
-                    tied_alternatives = tuple(sorted(
-                        phase.phase_index
-                        for phase in alternatives
-                        if scores[phase.phase_index] == highest_alternative
-                    ))
-                    selected_phase = tied_alternatives[0]
-                    selection_reason = (
-                        "max_green_forced_equal_score_smallest_index"
-                        if len(tied_alternatives) > 1
-                        else "max_green_forced_alternative"
-                    )
-
-        if actions:
-            decision_reason = "dispatch_legacy_phase_state"
-        elif not viable:
-            decision_reason = "safe_fallback_all_blocked"
-        elif (
-            selected_phase == state.current_phase
-            and configured_phase == state.current_phase
-        ):
-            decision_reason = "already_configured"
-        elif (
-            self._is_green(by_index.get(state.current_phase))
-            and state.elapsed_phase_time < self.min_green
-        ):
-            decision_reason = "minimum_green_not_elapsed"
-        else:
-            decision_reason = "legacy_no_action"
-
-        return _DecisionSnapshot(
-            state_token=self._state_token(state),
-            phase_scores=phase_scores,
-            movement_pressures=movement_pressures,
-            current_phase=state.current_phase,
-            elapsed_phase_time=state.elapsed_phase_time,
-            legal_targets=legal_targets,
-            candidate_phases=tuple(phase.phase_index for phase in viable),
-            selected_phase=selected_phase,
-            selection_reason=selection_reason,
-            decision_reason=decision_reason,
-            actions=actions,
-        )
-
-    def _build_snapshot(self, state: JointState) -> _DecisionSnapshot:
-        if not state.phase_movements:
-            return self._build_legacy_snapshot(state)
-        predicted, weight = self._predicted_arrivals(state)
+            prediction = cloud_plan.prediction_result()
+            if prediction is None:
+                raise RuntimeError("movement_cloud_prediction_plan_missing_result")
+            predicted = prediction.predicted_flows
+            weight = self._capacity_prediction_weight
         phase_scores: list[tuple[int, PhaseScore]] = []
         movement_pressures: list[tuple[int, tuple[_MovementPressure, ...]]] = []
         by_index = {phase.phase_index: phase for phase in state.phase_movements}
@@ -527,7 +492,13 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
                     ),
                 )
         return _DecisionSnapshot(
-            state_token=self._state_token(state),
+            owner_token=self._decision_plan_owner,
+            reset_epoch=self._decision_reset_epoch,
+            base_revision=self._decision_runtime_revision,
+            state_fingerprint=fingerprint,
+            state_step=state.step,
+            state_timestamp=float(state.timestamp),
+            profile_fingerprint=profile_fingerprint,
             phase_scores=tuple(phase_scores),
             movement_pressures=tuple(movement_pressures),
             current_phase=state.current_phase,
@@ -538,16 +509,87 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             selection_reason=selection_reason,
             decision_reason=decision_reason,
             actions=actions,
+            cloud_plan=cloud_plan,
         )
 
+    def plan_decision(self, state: JointState) -> _DecisionSnapshot:
+        """Plan/cache a decision without committing controller or policy state."""
+        fingerprint = joint_state_fingerprint(state)
+        profile_fingerprint = self._profile_fingerprint()
+        cache_key = (fingerprint, profile_fingerprint)
+        if self._pending_decision_plan is not None:
+            pending_key = (
+                self._pending_decision_plan.state_fingerprint,
+                self._pending_decision_plan.profile_fingerprint,
+            )
+            if (
+                pending_key == cache_key
+                and self._pending_decision_plan.reset_epoch
+                == self._decision_reset_epoch
+                and self._pending_decision_plan.base_revision
+                == self._decision_runtime_revision
+            ):
+                return self._pending_decision_plan
+        if self._committed_decision_plan is not None:
+            committed_key = (
+                self._committed_decision_plan.state_fingerprint,
+                self._committed_decision_plan.profile_fingerprint,
+            )
+            if committed_key == cache_key:
+                return self._committed_decision_plan
+            current_order = (state.step, float(state.timestamp))
+            committed_order = (
+                self._committed_decision_plan.state_step,
+                self._committed_decision_plan.state_timestamp,
+            )
+            if current_order <= committed_order:
+                raise RuntimeError("decision_history_unavailable")
+
+        if state.phase_movements:
+            plan = self._build_movement_plan(
+                state, fingerprint, profile_fingerprint
+            )
+        else:
+            plan = self._build_legacy_plan(state, fingerprint, profile_fingerprint)
+        self._pending_decision_plan = plan
+        return plan
+
+    def validate_plan(self, plan: _DecisionSnapshot) -> bool:
+        """Validate a capacity-aware plan before applying any nested transition."""
+        if not isinstance(plan, _DecisionSnapshot):
+            raise RuntimeError("decision_plan_invalid_type")
+        if plan.owner_token is not self._decision_plan_owner:
+            raise RuntimeError("decision_plan_cross_owner")
+        if plan.reset_epoch != self._decision_reset_epoch:
+            raise RuntimeError("decision_plan_post_reset")
+        if self._pending_decision_plan is not None and plan is not self._pending_decision_plan:
+            raise RuntimeError("decision_plan_superseded")
+        if self._pending_decision_plan is None and plan is self._committed_decision_plan:
+            return False
+        if plan.base_revision != self._decision_runtime_revision:
+            raise RuntimeError("decision_plan_stale_revision")
+        if plan is not self._pending_decision_plan:
+            raise RuntimeError("decision_plan_not_pending")
+        if plan.legacy_plan is not None:
+            super()._validate_legacy_plan(plan.legacy_plan)
+        elif plan.cloud_plan is not None:
+            self.cloud_policy.validate_plan(plan.cloud_plan)
+        return True
+
+    def commit_plan(self, plan: _DecisionSnapshot) -> None:
+        """Commit the controller/policy transition once; never execute bridge actions."""
+        if not self.validate_plan(plan):
+            return
+        if plan.legacy_plan is not None:
+            super().commit_plan(plan.legacy_plan)
+        elif plan.cloud_plan is not None:
+            self.cloud_policy.commit(plan.cloud_plan)
+        self._decision_runtime_revision += 1
+        self._committed_decision_plan = plan
+        self._pending_decision_plan = None
+
     def _snapshot_for(self, state: JointState) -> _DecisionSnapshot:
-        if (
-            self._last_snapshot is not None
-            and self._last_snapshot.state_token == self._state_token(state)
-        ):
-            return self._last_snapshot
-        self._last_snapshot = self._build_snapshot(state)
-        return self._last_snapshot
+        return self.plan_decision(state)
 
     def score_breakdown(self, state: JointState) -> dict[int, PhaseScore] | dict[int, float]:
         scores = self._snapshot_for(state).scores()
@@ -648,18 +690,32 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             snapshot.selected_phase,
             [action.action_type for action in snapshot.actions],
         )
+        self.commit_plan(snapshot)
         return [action.control_action() for action in snapshot.actions]
 
     def init(self, scene) -> None:
         validate_capacity_aware_scene(scene.meta.sumo_net)
-        self._last_snapshot = None
-        self._legacy_score_capture = None
+        self._decision_reset_epoch += 1
+        self._decision_runtime_revision = 0
+        self._pending_decision_plan = None
+        self._committed_decision_plan = None
+        self._legacy_reset_epoch += 1
+        self._legacy_runtime_revision = 0
+        self._pending_legacy_plan = None
+        self._committed_legacy_plan = None
         super().init(scene)
 
     def reset(self) -> None:
-        self._last_snapshot = None
-        self._legacy_score_capture = None
         super().reset()
+        self.base_green = self._capacity_base_green
+        self.min_green = self.config.min_green
+        self.max_green = self.config.max_green
+        self.overflow_threshold = self.config.overflow_threshold
+        self.prediction_weight = self._capacity_prediction_weight
+        self._decision_reset_epoch += 1
+        self._decision_runtime_revision = 0
+        self._pending_decision_plan = None
+        self._committed_decision_plan = None
 
     @property
     def manifest(self) -> dict[str, object]:
@@ -671,7 +727,7 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             "spillback_gate": self.config.spillback_gate,
             "prediction_enabled": self.config.prediction,
             "horizon_seconds": float(self.cloud_policy.horizon),
-            "prediction_weight": self.cloud_policy.configured_prediction_weight,
+            "prediction_weight": self._capacity_prediction_weight,
             "min_green": self.config.min_green,
             "max_green": self.config.max_green,
             "overflow_threshold": self.config.overflow_threshold,
