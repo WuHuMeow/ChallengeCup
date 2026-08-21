@@ -97,6 +97,7 @@ class TraCIBridge:
         self._observed_turn_counts: Counter[tuple[str, str]] = Counter()
         self._approach_lanes_by_vehicle: dict[str, str] = {}
         self._conflict_definitions: tuple[ConflictDefinition, ...] = ()
+        self._pending_startup_actions: tuple[ControlAction, ...] = ()
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -175,6 +176,7 @@ class TraCIBridge:
         self._observed_turn_counts.clear()
         self._approach_lanes_by_vehicle.clear()
         self._conflict_definitions = ()
+        self._pending_startup_actions = ()
 
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
@@ -186,8 +188,10 @@ class TraCIBridge:
         tls_ids = traci.trafficlight.getIDList()
         if not tls_ids:
             raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
-        self._activate_additional_signal_programs(set(tls_ids))
         self.tls_id = tls_ids[0]
+        self._pending_startup_actions = self._additional_signal_program_actions(
+            self.tls_id
+        )
         self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
         logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
         self._load_edge_mapping()
@@ -195,18 +199,45 @@ class TraCIBridge:
         self._load_conflict_definitions()
         self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
 
-    def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
-        """Activate deterministic variant programs loaded from additional files."""
+    def _additional_signal_program_actions(
+        self,
+        tls_id: str,
+    ) -> tuple[ControlAction, ...]:
+        """Build validated-boundary actions for deterministic variant programs."""
+        actions: list[ControlAction] = []
         for path in self.additional_files:
             try:
                 root = ET.parse(path).getroot()
             except (OSError, ET.ParseError):
                 continue
             for logic in root.findall("tlLogic"):
-                tls_id = logic.get("id", "")
+                candidate_tls_id = logic.get("id", "")
                 program_id = logic.get("programID", "")
-                if tls_id in tls_ids and program_id.startswith("variant_"):
-                    traci.trafficlight.setProgram(tls_id, program_id)
+                if candidate_tls_id != tls_id or not program_id.startswith("variant_"):
+                    continue
+                actions.append(ControlAction.for_simulation_time(
+                    tls_id,
+                    "set_program",
+                    {
+                        "program_id": program_id,
+                        "phases": [
+                            {
+                                "duration": phase.get("duration"),
+                                "state": phase.get("state"),
+                            }
+                            for phase in logic.findall("phase")
+                        ],
+                    },
+                    "install validated variant signal program",
+                    0.0,
+                ))
+        return tuple(actions)
+
+    def take_startup_actions(self) -> tuple[ControlAction, ...]:
+        """Consume signal-program actions discovered during ``start()``."""
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
 
     def _load_edge_mapping(self) -> None:
         """加载 data/intersection_data/metadata/edge_mapping.json 并筛选进口道。

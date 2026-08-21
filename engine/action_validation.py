@@ -87,7 +87,14 @@ def validate_startup_program_safety(
                 f"phase={green_index}->{next_green}",
             )
 
-        yellow_duration = 0.0
+        departing_greens = {
+            signal_index
+            for signal_index, signal in enumerate(phases[green_index]["state"])
+            if signal in "Gg"
+        }
+        yellow_duration_by_signal = {
+            signal_index: 0.0 for signal_index in departing_greens
+        }
         all_red_duration = 0.0
         all_red_started = False
         for index in clearance:
@@ -101,7 +108,9 @@ def validate_startup_program_safety(
                         f"startup program phase={green_index}->{next_green} "
                         "has yellow after all-red clearance",
                     )
-                yellow_duration += duration
+                for signal_index in departing_greens:
+                    if state[signal_index] in "Yy":
+                        yellow_duration_by_signal[signal_index] += duration
             elif all(signal in "rR" for signal in state):
                 all_red_started = True
                 all_red_duration += duration
@@ -112,20 +121,24 @@ def validate_startup_program_safety(
                     f"clearance before green phase={next_green}",
                 )
 
-        if yellow_duration == 0.0:
-            return (
-                "unsafe_startup_program",
-                f"startup program phase={green_index}->{next_green} "
-                f"is missing yellow clearance; requires {yellow_seconds:g} "
-                "simulation seconds",
-            )
-        if yellow_duration < yellow_seconds:
-            return (
-                "unsafe_startup_program",
-                f"startup program phase={green_index}->{next_green} yellow "
-                f"clearance={yellow_duration:g} requires {yellow_seconds:g} "
-                "simulation seconds",
-            )
+        for signal_index, yellow_duration in sorted(
+            yellow_duration_by_signal.items()
+        ):
+            if yellow_duration == 0.0:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={green_index}->{next_green} "
+                    f"signal_index={signal_index} is missing yellow clearance; "
+                    f"requires {yellow_seconds:g} simulation seconds",
+                )
+            if yellow_duration < yellow_seconds:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={green_index}->{next_green} "
+                    f"signal_index={signal_index} yellow "
+                    f"clearance={yellow_duration:g} requires {yellow_seconds:g} "
+                    "simulation seconds",
+                )
         if all_red_duration == 0.0:
             return (
                 "unsafe_startup_program",

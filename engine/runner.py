@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-import re
 import json
+import re
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
@@ -15,7 +16,9 @@ from core.config import get_config
 from core.run_models import RunStatus
 from core.types import (
     CONTROL_ACTION_VALIDITY_SECONDS,
+    ActionResult,
     ControlAction,
+    JointState,
     SafetyEvent,
     Scene,
 )
@@ -137,6 +140,63 @@ class SimulationRunner:
         if self.event_logger:
             self.event_logger.log(len(self.metrics_history), event_type, detail)
 
+    def _record_action_results(
+        self,
+        action_results: Sequence[ActionResult],
+        state: JointState,
+        *,
+        step: int = 0,
+    ) -> None:
+        if not self.event_logger:
+            return
+        for result in action_results:
+            event_type = (
+                "action_applied" if result.accepted else "action_rejected"
+            )
+            self.event_logger.log(
+                step,
+                event_type,
+                (
+                    f"type={result.action.action_type} "
+                    f"value={result.action.value!r} "
+                    f"reason={result.action.reason!r} "
+                    f"detail={result.detail}"
+                ),
+                reason=result.reason_code,
+                action=result.action,
+                accepted=result.accepted,
+                simulation_seconds=float(state.timestamp),
+            )
+
+    def _apply_pending_startup_actions(
+        self,
+        state: JointState | None = None,
+        *,
+        step: int = 0,
+    ) -> bool:
+        actions = tuple(
+            getattr(self.bridge, "take_startup_actions", lambda: ())()
+        )
+        if not actions:
+            return False
+        startup_state = state if state is not None else self.bridge.get_state()
+        results = self.safety_executor.apply(
+            actions,
+            startup_state,
+            self.bridge,
+        )
+        self._record_action_results(results, startup_state, step=step)
+        rejected = next(
+            (result for result in results if not result.accepted),
+            None,
+        )
+        if rejected is not None and self.algorithm.name != "fixed_time":
+            raise RuntimeError(
+                "startup signal program rejected: "
+                f"{rejected.reason_code}: {rejected.detail}"
+            )
+        return True
+
     def run(
         self,
         steps: Optional[int] = None,
@@ -167,6 +227,7 @@ class SimulationRunner:
                     f"intersection={self.scene.meta.intersection_id}"
                     f" algorithm={self.algorithm.name}",
                 )
+            self._apply_pending_startup_actions()
             for step in range(steps):
                 last_step = step
                 if stop_event is not None and stop_event.is_set():
@@ -302,6 +363,8 @@ class SimulationRunner:
         """Advance one step and return continue, exhausted, or disconnected."""
         try:
             raw_state = self.bridge.get_state()
+            if self._apply_pending_startup_actions(raw_state, step=step):
+                raw_state = self.bridge.get_state()
             control_state = raw_state
             if self.state_channel is not None:
                 simulation_time = float(raw_state.timestamp)
@@ -350,25 +413,7 @@ class SimulationRunner:
                         sort_keys=True,
                     ),
                 )
-            if self.event_logger:
-                for result in action_results:
-                    event_type = (
-                        "action_applied" if result.accepted else "action_rejected"
-                    )
-                    self.event_logger.log(
-                        step,
-                        event_type,
-                        (
-                            f"type={result.action.action_type} "
-                            f"value={result.action.value!r} "
-                            f"reason={result.action.reason!r} "
-                            f"detail={result.detail}"
-                        ),
-                        reason=result.reason_code,
-                        action=result.action,
-                        accepted=result.accepted,
-                        simulation_seconds=float(raw_state.timestamp),
-                    )
+            self._record_action_results(action_results, raw_state, step=step)
             safety_events = self.safety_collector.observe(
                 self._previous_safety_state, raw_state, tuple(action_results)
             )

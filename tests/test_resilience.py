@@ -107,7 +107,7 @@ def test_start_clears_discovery_state_before_repopulating(tmp_path):
     assert bridge._inbound_lanes == ["new_inbound"]
 
 
-def test_start_activates_variant_signal_program(tmp_path):
+def test_start_defers_variant_signal_program_to_the_safety_boundary(tmp_path):
     config = tmp_path / "demo_1.sumocfg"
     config.touch()
     signal = tmp_path / "signal_program.add.xml"
@@ -145,7 +145,17 @@ def test_start_activates_variant_signal_program(tmp_path):
     ):
         bridge.start()
 
-    set_program.assert_called_once_with("new_tls", "variant_x1.1")
+    set_program.assert_not_called()
+    actions = bridge.take_startup_actions()
+    assert len(actions) == 1
+    assert actions[0].tls_id == "new_tls"
+    assert actions[0].action_type == "set_program"
+    assert actions[0].value == {
+        "program_id": "variant_x1.1",
+        "phases": [{"duration": "10", "state": "G"}],
+    }
+    assert actions[0].reason == "install validated variant signal program"
+    assert bridge.take_startup_actions() == ()
 
 
 def test_close_idempotent():

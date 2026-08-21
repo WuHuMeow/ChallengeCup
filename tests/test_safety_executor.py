@@ -507,6 +507,59 @@ def test_startup_program_requires_configured_clearance(
     assert bridge.written == []
 
 
+def test_startup_program_rejects_yellow_on_an_unrelated_signal():
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = _program_action([
+        {"duration": 30.0, "state": "Gr"},
+        {"duration": 3.0, "state": "ry"},
+        {"duration": 1.0, "state": "rr"},
+        {"duration": 30.0, "state": "rG"},
+        {"duration": 3.0, "state": "yr"},
+        {"duration": 1.0, "state": "rr"},
+    ])
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "unsafe_startup_program"
+    assert "signal_index=0" in result.detail
+    assert "missing yellow clearance" in result.detail
+    assert bridge.written == []
+
+
+def test_startup_program_accepts_a_movement_aligned_multi_green_cycle():
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = _program_action([
+        {"duration": 30.0, "state": "Gr"},
+        {"duration": 3.0, "state": "yr"},
+        {"duration": 1.0, "state": "rr"},
+        {"duration": 30.0, "state": "rG"},
+        {"duration": 3.0, "state": "ry"},
+        {"duration": 1.0, "state": "rr"},
+    ])
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is True
+    assert bridge.written == [action]
+
+
 def test_direct_legal_green_edge_is_rejected_without_a_clearance_path():
     phases = (
         PhaseMovementState(0, "Gr", (), 30.0),

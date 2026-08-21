@@ -515,3 +515,129 @@ The required fresh 100-step intersection 1 fixed-time run used seed 42:
   `CloudPolicy.predict()` / `dispatch_params()` compatibility issue. Fix Round 2
   was self-reviewed only as required; no subagent or independent reviewer was
   dispatched.
+
+## Fix Round 3: Variant Boundary and Movement-Aligned Clearance
+
+### Status
+
+IMPLEMENTED_PENDING_INDEPENDENT_RE-REVIEW. This round addresses both Critical
+findings from `task-11-r2-rereview.md`; Task 12 was not started. The parked Task
+10 same-observation `CloudPolicy.predict()` / `dispatch_params()` compatibility
+issue remains unchanged and must stay in the final whole-branch fix wave.
+
+### Critical Closure
+
+- `TraCIBridge.start()` no longer calls `traci.trafficlight.setProgram()` for a
+  `variant_*` additional signal file. It parses the source `tlLogic` into a
+  run-time `ControlAction` queue consumed once by `take_startup_actions()`.
+- `SimulationRunner` consumes queued startup actions before the first tick and
+  after an automatic bridge reconnect. Both paths call the existing
+  `SafetyExecutor.apply()` with a zero-time startup state and record normal
+  `action_applied` / `action_rejected` rows, including action payload, reason,
+  and simulation seconds. Rejected variant startup programs fail fast for
+  controller algorithms. `fixed_time` records the rejection and continues so
+  its own validated Excel `set_program` action can supersede an unsafe source
+  variant, preserving the pre-existing fixed-time workflow without a bypass.
+- `validate_startup_program_safety()` now tracks every signal index that is green
+  in the departing service phase and accumulates yellow duration only when that
+  same signal index is yellow. A mismatched yellow on another signal is rejected
+  with `signal_index=<n>` evidence; every departing green must meet the yellow
+  threshold before pure all-red clearance.
+
+### TDD Evidence
+
+The first round-3 behavior run was intentionally RED:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_resilience.py::test_start_defers_variant_signal_program_to_the_safety_boundary tests/test_runner_channel.py::test_runner_applies_and_records_pending_startup_program_through_safety tests/test_safety_executor.py::test_startup_program_rejects_yellow_on_an_unrelated_signal tests/test_safety_executor.py::test_startup_program_accepts_a_movement_aligned_multi_green_cycle -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\red-fix-round3-20260821-1
+```
+
+- RED: `3 failed, 1 passed`; the direct variant write remained, runner did not
+  consume pending startup actions, and the movement-mismatched yellow was
+  accepted. The positive multi-green case passed as the baseline.
+
+The first implementation GREEN run was:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_resilience.py::test_start_defers_variant_signal_program_to_the_safety_boundary tests/test_runner_channel.py::test_runner_applies_and_records_pending_startup_program_through_safety tests/test_safety_executor.py::test_startup_program_rejects_yellow_on_an_unrelated_signal tests/test_safety_executor.py::test_startup_program_accepts_a_movement_aligned_multi_green_cycle -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\green-fix-round3-20260821-1
+```
+
+- GREEN: `4 passed`.
+- Reconnect lifecycle RED: `1 failed` for
+  `test_runner_reapplies_a_variant_program_through_safety_after_reconnect`.
+- Reconnect lifecycle GREEN: `5 passed` including the initial four cases.
+- Fixed-time fallback RED: `1 failed` for
+  `test_fixed_time_continues_after_rejected_variant_startup_program`.
+- Fixed-time fallback GREEN: `6 passed` including the movement, startup, and
+  reconnect cases.
+
+### Final Verification
+
+- Focused suite: `132 passed in 1.20s`.
+- Affected suite (safety, runner, bridge, algorithms, variants, service):
+  `273 passed in 14.85s`.
+- Full project suite: `574 passed in 84.62s (0:01:24)`, no warnings.
+- `python --version`: Python `3.14.7`.
+- `python -m compileall -q algorithms cloud core engine experiments scenes`:
+  exit 0.
+- `git diff --check`: exit 0.
+- Protected archive SHA-256 remains
+  `12A6F2FD69ACBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`.
+- `data/intersection_data` remains `163` Git-tracked files and `232` files on
+  disk; working-tree and staged protected-path diffs are empty.
+- Production signal writes are confined to `TraCIBridge._apply_actions()`
+  (including its same-method rollback). No public `apply_actions(` caller was
+  found in algorithms, cloud, core, engine, experiments, scenes, or scripts.
+
+### Final-Tree Real SUMO Evidence
+
+Fixed-time compatibility smoke:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 1 --algorithm fixed_time --steps 100 --seed 42 --output-dir .t11\real-smoke-fixed-fix3-20260821-2
+```
+
+- Run `0958b5337c31` completed with requested steps `100`, final simulation
+  time `100.0`, SUMO version `22`, and `100` simulation-log rows.
+- Events contain one `action_rejected` with reason
+  `unsafe_startup_program` for the source variant and one accepted fixed-time
+  `set_program` at simulation time `0.0`; `illegal_transition=0`.
+
+Safe variant smoke:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 15 --algorithm classic_maxpressure --flow-multiplier 1.25 --steps 100 --seed 42 --output-dir .t11\real-smoke-variant-fix3-20260821-1
+```
+
+- Run `1df38e46cd3b` completed with `requested_steps=100`, final simulation
+  time `10.0` under the scene's `0.1`-second step length, SUMO version `22`,
+  and `100` simulation-log rows.
+- The variant `set_program` was accepted at step 0 / simulation time `0.0`
+  through the safety boundary. Later rejections were only structured
+  `minimum_green_violation` controller timing outcomes; no
+  `illegal_transition` event was produced.
+
+### Files Changed in Fix Round 3
+
+- Production: `engine/action_validation.py`, `engine/runner.py`,
+  `engine/traci_bridge.py`.
+- Regression coverage: `tests/test_safety_executor.py`,
+  `tests/test_resilience.py`, `tests/test_runner_channel.py`.
+- Evidence: this report.
+
+### Self Review and Remaining Gate
+
+- Startup actions are consumed exactly once, and reconnect startup actions are
+  consumed before the next controller decision with a refreshed state after
+  program installation.
+- Startup action evidence follows the lifecycle order `run_start`, structured
+  action result, then `terminal`.
+- Source XML is only parsed into a domain action; structural, startup-coordinate,
+  minimum-green, movement-specific yellow, and all-red checks happen in the
+  shared executor path before the private bridge sink.
+- Fixed-time's explicit fallback is limited to its own algorithm name and still
+  records the rejected source variant; other algorithms fail on an unsafe
+  startup variant instead of silently running a requested-but-uninstalled
+  program.
+- This report is awaiting an independent scoped re-review of
+  `f7a823d..HEAD`. The Task 10 parked compatibility finding remains open.

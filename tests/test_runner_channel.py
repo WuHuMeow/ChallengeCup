@@ -144,6 +144,92 @@ class _SafetyExecutorSpy:
         return ()
 
 
+class _PendingStartupProgramBridge(MockBridge):
+    def __init__(self):
+        super().__init__()
+        self._pending_startup_actions = (
+            ControlAction.for_simulation_time(
+                self.tls_id,
+                "set_program",
+                {
+                    "program_id": "variant_safe",
+                    "phases": [
+                        {"duration": 30.0, "state": "Gr"},
+                        {"duration": 3.0, "state": "yr"},
+                        {"duration": 1.0, "state": "rr"},
+                        {"duration": 30.0, "state": "rG"},
+                        {"duration": 3.0, "state": "ry"},
+                        {"duration": 1.0, "state": "rr"},
+                    ],
+                },
+                "install validated variant signal program",
+                0.0,
+            ),
+        )
+
+    def take_startup_actions(self):
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
+
+
+class _ReconnectStartupProgramBridge(_PendingStartupProgramBridge):
+    def __init__(self):
+        super().__init__()
+        self._pending_startup_actions = ()
+        self._reconnected = False
+
+    def step(self):
+        if not self._reconnected:
+            self._reconnected = True
+            self._current_step = 0
+            self._pending_startup_actions = (
+                ControlAction.for_simulation_time(
+                    self.tls_id,
+                    "set_program",
+                    {
+                        "program_id": "variant_safe",
+                        "phases": [
+                            {"duration": 30.0, "state": "Gr"},
+                            {"duration": 3.0, "state": "yr"},
+                            {"duration": 1.0, "state": "rr"},
+                            {"duration": 30.0, "state": "rG"},
+                            {"duration": 3.0, "state": "ry"},
+                            {"duration": 1.0, "state": "rr"},
+                        ],
+                    },
+                    "install validated variant signal program",
+                    0.0,
+                ),
+            )
+            return 0.0
+        return super().step()
+
+
+class _RejectedStartupProgramBridge(_PendingStartupProgramBridge):
+    def __init__(self):
+        super().__init__()
+        action = self._pending_startup_actions[0]
+        self._pending_startup_actions = (
+            ControlAction.for_simulation_time(
+                action.tls_id,
+                action.action_type,
+                {
+                    "program_id": "variant_unsafe",
+                    "phases": [
+                        {"duration": 30.0, "state": "Gr"},
+                        {"duration": 1.0, "state": "rr"},
+                        {"duration": 30.0, "state": "rG"},
+                        {"duration": 3.0, "state": "ry"},
+                        {"duration": 1.0, "state": "rr"},
+                    ],
+                },
+                action.reason,
+                0.0,
+            ),
+        )
+
+
 def make_scene() -> Scene:
     return Scene(SceneMeta(
         intersection_id="1", name="test",
@@ -233,6 +319,71 @@ def test_runner_routes_every_action_batch_through_the_safety_executor(tmp_path):
     assert actions == ()
     assert state.timestamp == 0.0
     assert called_bridge is bridge
+
+
+def test_runner_applies_and_records_pending_startup_program_through_safety(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _PendingStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    assert [action.action_type for action in bridge._applied_actions] == [
+        "set_program"
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [row["type"] for row in events[:2]] == [
+        "run_start",
+        "action_applied",
+    ]
+    applied = [row for row in events if row["type"] == "action_applied"]
+    assert len(applied) == 1
+    assert applied[0]["action_type"] == "set_program"
+    assert applied[0]["status"] == "accepted"
+    assert applied[0]["accepted"] == "true"
+    assert applied[0]["simulation_seconds"] == "0.0"
+    assert "install validated variant signal program" in applied[0]["detail"]
+
+
+def test_runner_reapplies_a_variant_program_through_safety_after_reconnect(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _ReconnectStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(2)
+
+    assert [action.action_type for action in bridge._applied_actions] == [
+        "set_program"
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert len([row for row in events if row["type"] == "action_applied"]) == 1
+
+
+def test_fixed_time_continues_after_rejected_variant_startup_program(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _RejectedStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = [row for row in events if row["type"] == "action_rejected"]
+    assert [row["reason"] for row in rejected] == ["unsafe_startup_program"]
 
 
 def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):
