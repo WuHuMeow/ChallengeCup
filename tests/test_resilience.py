@@ -5,9 +5,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
-from core.types import Scene, SceneMeta
+from core.types import ControlAction, Scene, SceneMeta
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
+from engine.safety_executor import SafetyExecutor
 
 
 _VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
@@ -156,6 +157,153 @@ def test_start_defers_variant_signal_program_to_the_safety_boundary(tmp_path):
     }
     assert actions[0].reason == "install validated variant signal program"
     assert bridge.take_startup_actions() == ()
+
+
+def test_start_defers_variant_program_for_every_discovered_tls(tmp_path):
+    config = tmp_path / "demo_1.sumocfg"
+    config.touch()
+    signal = tmp_path / "signal_program.add.xml"
+    signal.write_text(
+        "<additional>"
+        "<tlLogic id='tls_main' programID='variant_main' type='static' offset='0'>"
+        "<phase duration='10' state='G'/></tlLogic>"
+        "<tlLogic id='tls_side' programID='variant_side' type='static' offset='0'>"
+        "<phase duration='10' state='G'/></tlLogic>"
+        "<tlLogic id='missing_tls' programID='variant_missing' type='static' offset='0'>"
+        "<phase duration='10' state='G'/></tlLogic>"
+        "</additional>",
+        encoding="utf-8",
+    )
+    bridge = TraCIBridge(config, additional_files=[signal])
+    program = SimpleNamespace(
+        programID="0",
+        phases=(SimpleNamespace(state="G", duration=10.0),),
+    )
+
+    with (
+        patch.object(traci, "start"),
+        patch.object(
+            traci.trafficlight,
+            "getIDList",
+            return_value=["tls_main", "tls_side"],
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getControlledLanes",
+            return_value=["main_lane"],
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getControlledLinks",
+            return_value=((('main_lane', 'out_lane', ':via'),),),
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getAllProgramLogics",
+            return_value=[program],
+        ),
+        patch.object(traci.trafficlight, "getProgram", return_value="0"),
+        patch.object(traci.trafficlight, "setProgram") as set_program,
+        patch.object(TraCIBridge, "_load_edge_mapping"),
+    ):
+        bridge.start()
+        first_actions = bridge.take_startup_actions()
+        bridge.start()
+        reconnect_actions = bridge.take_startup_actions()
+
+    expected = [
+        ("tls_main", "variant_main"),
+        ("tls_side", "variant_side"),
+    ]
+    for actions in (first_actions, reconnect_actions):
+        assert [
+            (action.tls_id, action.value["program_id"])
+            for action in actions
+        ] == expected
+    set_program.assert_not_called()
+
+
+def test_secondary_variant_program_uses_its_startup_state_through_safety():
+    bridge = _bridge()
+    bridge.tls_id = "tls_main"
+    bridge._tls_ids = ("tls_main", "tls_side")
+    primary_builder = object()
+    bridge._movement_state_builder = primary_builder
+    old_program = SimpleNamespace(
+        programID="0",
+        phases=(SimpleNamespace(state="rr", duration=1.0),),
+    )
+    programs = {
+        "tls_main": [old_program],
+        "tls_side": [old_program],
+    }
+    active_programs = {"tls_main": "0", "tls_side": "0"}
+
+    def install_logic(tls_id, logic):
+        programs[tls_id] = [logic]
+
+    def activate_program(tls_id, program_id):
+        active_programs[tls_id] = program_id
+
+    action = ControlAction.for_simulation_time(
+        "tls_side",
+        "set_program",
+        {
+            "program_id": "variant_side",
+            "phases": [
+                {"duration": 30.0, "state": "Gr"},
+                {"duration": 3.0, "state": "yr"},
+                {"duration": 1.0, "state": "rr"},
+                {"duration": 30.0, "state": "rG"},
+                {"duration": 3.0, "state": "ry"},
+                {"duration": 1.0, "state": "rr"},
+            ],
+        },
+        "install validated variant signal program",
+        0.0,
+    )
+
+    with (
+        patch.object(traci.simulation, "getTime", return_value=0.0),
+        patch.object(traci.trafficlight, "getPhase", return_value=0),
+        patch.object(traci.trafficlight, "getSpentDuration", return_value=0.0),
+        patch.object(
+            traci.trafficlight,
+            "getAllProgramLogics",
+            side_effect=lambda tls_id: programs[tls_id],
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getProgram",
+            side_effect=lambda tls_id: active_programs[tls_id],
+        ),
+        patch.object(
+            traci.trafficlight,
+            "getControlledLinks",
+            return_value=(
+                (("in_0", "out_0", ":via_0"),),
+                (("in_1", "out_1", ":via_1"),),
+            ),
+        ),
+        patch.object(
+            traci.trafficlight,
+            "setProgramLogic",
+            side_effect=install_logic,
+        ),
+        patch.object(
+            traci.trafficlight,
+            "setProgram",
+            side_effect=activate_program,
+        ) as set_program,
+    ):
+        state = bridge.get_startup_state("tls_side")
+        result = SafetyExecutor().apply([action], state, bridge)[0]
+
+    assert state.tls_id == "tls_side"
+    assert result.accepted is True
+    set_program.assert_called_once_with("tls_side", "variant_side")
+    assert bridge.tls_id == "tls_main"
+    assert bridge._movement_state_builder is primary_builder
 
 
 def test_close_idempotent():

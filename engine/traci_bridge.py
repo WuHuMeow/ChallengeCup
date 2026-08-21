@@ -86,6 +86,7 @@ class TraCIBridge:
         self.max_restarts = max(0, int(max_restarts))
         self._restarts = 0
         self.tls_id: Optional[str] = None
+        self._tls_ids: tuple[str, ...] = ()
         self._controlled_lanes: List[str] = []
         self._inbound_lanes: Optional[List[str]] = None  # edge_mapping 进口道筛选结果
         self.lane_directions: dict[str, str] = {}  # lane_id -> 方位（供 AB 压力映射）
@@ -168,6 +169,7 @@ class TraCIBridge:
         # Clear discovery state before every start so reconnects cannot retain
         # identifiers or lane mappings from the previous SUMO process.
         self.tls_id = None
+        self._tls_ids = ()
         self._controlled_lanes = []
         self._inbound_lanes = None
         self.lane_directions = {}
@@ -185,12 +187,13 @@ class TraCIBridge:
         logger.info("启动 SUMO: %s", " ".join(cmd))
         traci.start(cmd)
 
-        tls_ids = traci.trafficlight.getIDList()
+        tls_ids = tuple(traci.trafficlight.getIDList())
         if not tls_ids:
             raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+        self._tls_ids = tls_ids
         self.tls_id = tls_ids[0]
         self._pending_startup_actions = self._additional_signal_program_actions(
-            self.tls_id
+            set(tls_ids)
         )
         self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
         logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
@@ -201,7 +204,7 @@ class TraCIBridge:
 
     def _additional_signal_program_actions(
         self,
-        tls_id: str,
+        tls_ids: set[str],
     ) -> tuple[ControlAction, ...]:
         """Build validated-boundary actions for deterministic variant programs."""
         actions: list[ControlAction] = []
@@ -213,10 +216,13 @@ class TraCIBridge:
             for logic in root.findall("tlLogic"):
                 candidate_tls_id = logic.get("id", "")
                 program_id = logic.get("programID", "")
-                if candidate_tls_id != tls_id or not program_id.startswith("variant_"):
+                if (
+                    candidate_tls_id not in tls_ids
+                    or not program_id.startswith("variant_")
+                ):
                     continue
                 actions.append(ControlAction.for_simulation_time(
-                    tls_id,
+                    candidate_tls_id,
                     "set_program",
                     {
                         "program_id": program_id,
@@ -238,6 +244,26 @@ class TraCIBridge:
         actions = self._pending_startup_actions
         self._pending_startup_actions = ()
         return actions
+
+    def get_startup_state(self, tls_id: str) -> JointState:
+        """Read the zero-time signal state used to validate one startup action."""
+        if tls_id not in self._tls_ids:
+            raise RuntimeError(f"unknown startup tls_id: {tls_id!r}")
+        simulation_time = float(traci.simulation.getTime())
+        current_phase = int(traci.trafficlight.getPhase(tls_id))
+        program = self.get_signal_program(tls_id)
+        phase_obj = program.phases[current_phase]
+        phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
+        return JointState(
+            step=int(round(simulation_time / self.step_length)),
+            timestamp=simulation_time,
+            tls_id=tls_id,
+            current_phase=current_phase,
+            current_phase_name=phase_name,
+            elapsed_phase_time=float(
+                traci.trafficlight.getSpentDuration(tls_id)
+            ),
+        )
 
     def _load_edge_mapping(self) -> None:
         """加载 data/intersection_data/metadata/edge_mapping.json 并筛选进口道。
@@ -1043,9 +1069,15 @@ class TraCIBridge:
         """
         results: list[ActionResult] = []
         for action in actions:
+            known_tls_ids = self._tls_ids or (
+                (self.tls_id,) if self.tls_id is not None else ()
+            )
+            expected_tls_id = (
+                action.tls_id if action.tls_id in known_tls_ids else None
+            )
             value, reason_code, error = validate_control_action(
                 action,
-                self.tls_id,
+                expected_tls_id,
             )
             if error is not None:
                 results.append(ActionResult(action, False, error, reason_code or ""))
@@ -1059,7 +1091,7 @@ class TraCIBridge:
                         current_phase,
                         allowed_phase_targets,
                         active_program,
-                    ) = self._control_action_domain()
+                    ) = self._control_action_domain(action.tls_id)
                 except RuntimeError as exc:
                     results.append(
                         ActionResult(
@@ -1073,7 +1105,7 @@ class TraCIBridge:
                 if not isinstance(value, dict):
                     value, reason_code, error = validate_control_action(
                         action,
-                        self.tls_id,
+                        action.tls_id,
                         phase_count=phase_count,
                         program_ids=program_ids,
                         current_phase=(
@@ -1097,7 +1129,6 @@ class TraCIBridge:
             elif action.action_type == "set_phase_duration":
                 traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
-                previous_builder = self._movement_state_builder
                 program_id = value["program_id"] if isinstance(value, dict) else value
                 if isinstance(value, dict):
                     phases = [
@@ -1111,7 +1142,6 @@ class TraCIBridge:
                     replacement = MovementStateBuilder(self, action.tls_id)
                 except Exception as exc:
                     traci.trafficlight.setProgram(action.tls_id, active_program)
-                    self._movement_state_builder = previous_builder
                     results.append(
                         ActionResult(
                             action,
@@ -1121,20 +1151,22 @@ class TraCIBridge:
                         )
                     )
                     continue
-                self._movement_state_builder = replacement
+                if action.tls_id == self.tls_id:
+                    self._movement_state_builder = replacement
             results.append(ActionResult(action, True, "applied"))
         return results
 
     def _control_action_domain(
         self,
+        tls_id: str,
     ) -> tuple[int, set[str], int, set[int], str]:
         """Return the active phase count and available programs from SUMO."""
         try:
-            programs = list(traci.trafficlight.getAllProgramLogics(self.tls_id))
+            programs = list(traci.trafficlight.getAllProgramLogics(tls_id))
             if not programs:
                 raise RuntimeError("no signal programs returned")
-            active_program = traci.trafficlight.getProgram(self.tls_id)
-            current_phase = int(traci.trafficlight.getPhase(self.tls_id))
+            active_program = traci.trafficlight.getProgram(tls_id)
+            current_phase = int(traci.trafficlight.getPhase(tls_id))
         except RuntimeError:
             raise
         except (traci.exceptions.TraCIException, traci.exceptions.FatalTraCIError) as exc:

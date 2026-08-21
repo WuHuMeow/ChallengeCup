@@ -641,3 +641,130 @@ Safe variant smoke:
   program.
 - This report is awaiting an independent scoped re-review of
   `f7a823d..HEAD`. The Task 10 parked compatibility finding remains open.
+
+## Fix Round 4: Multi-TLS Variant Startup Preservation
+
+### Status
+
+IMPLEMENTED_PENDING_INDEPENDENT_RE-REVIEW. This round closes the sole Important
+finding from `task-11-r3-quality-rereview.md`: every discovered TLS that has a
+matching `variant_*` program is now represented by a startup `ControlAction`.
+Task 12 and the parked Task 10 compatibility finding remain untouched.
+
+### Important Closure
+
+- `TraCIBridge.start()` stores the complete current-process TLS discovery set
+  and stages matching variant programs in additional-file order. Programs for
+  TLS IDs absent from the current SUMO process remain ignored, matching the old
+  activation membership rule. `start()` resets and rebuilds the set and action
+  queue on both initial startup and reconnect; it never calls `setProgram()`.
+- `TraCIBridge.get_startup_state(tls_id)` returns a `JointState` whose TLS ID,
+  phase, phase name, elapsed phase time, step, and simulation seconds come from
+  that exact TLS. The existing no-argument primary-controller `get_state()` is
+  unchanged.
+- `SimulationRunner` validates and applies each startup action separately with
+  its matching startup state through `SafetyExecutor.apply()`. It records each
+  accepted or rejected result with `entity_ids=(action.tls_id,)`, processes the
+  complete startup queue before deciding whether a non-fixed-time rejection is
+  fatal, and uses the same path after reconnect.
+- The private TraCI sink now derives action domain information from the action's
+  discovered TLS. A secondary program install validates its own program/phase
+  domain and topology but never replaces the primary TLS movement-state
+  builder. Fixtures that intentionally set only `bridge.tls_id` without calling
+  `start()` retain primary-TLS compatibility.
+
+### TDD Evidence
+
+The behavior-level RED command was:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_resilience.py::test_start_defers_variant_program_for_every_discovered_tls tests/test_resilience.py::test_secondary_variant_program_uses_its_startup_state_through_safety tests/test_runner_channel.py::test_runner_correlates_each_tls_startup_result_on_start_and_reconnect -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\red-fix-round4-20260821-1
+```
+
+- RED: `3 failed`. The bridge returned only `tls_main`, lacked an explicit
+  secondary-TLS startup state API, and startup event rows had no TLS entity
+  correlation. The first failure specifically expected the missing
+  `("tls_side", "variant_side")` action.
+- The two round-4 basetemp directories initially created under `.t11` were
+  removed immediately after the location mistake was identified. All final
+  verification used dedicated non-protected paths; no `.t11` content is staged
+  or included in this fix.
+
+The first minimal GREEN command used the same three node IDs with basetemp
+`...\.t11\green-fix-round4-20260821-1` and returned `3 passed in 0.66s`.
+After strengthening discovery coverage to call the same real bridge `start()`
+twice and assert both action queues plus zero direct `setProgram()` calls, the
+final behavior rerun returned `3 passed in 0.62s`. The real-bridge secondary
+test also asserts that a successful secondary install preserves the primary
+movement builder by object identity.
+
+### Final Verification
+
+- Focused safety/bridge/runner suite:
+  `84 passed in 0.79s`.
+- Affected suite covering safety, action validation, runner, bridge outputs,
+  fixed-time, both max-pressure algorithms, events, variants, and run service:
+  `276 passed in 14.52s`.
+- Full project suite: `577 passed in 84.63s (0:01:24)`, no warnings.
+- `python --version`: Python `3.14.7`.
+- `python -m compileall -q algorithms cloud core engine experiments scenes`:
+  exit 0.
+- `git diff --check`: exit 0 before the report append and rerun below for the
+  staged final tree.
+- Production write scan finds signal writes only inside
+  `TraCIBridge._apply_actions()` (including same-method rollback), and only
+  `SafetyExecutor` calls that private sink. The public `apply_actions(` scan is
+  empty.
+- One focused attempt produced `51 passed, 33 setup errors` because pytest could
+  not recursively create a missing external basetemp parent. One affected
+  attempt produced `258 passed, 18 failed` because its C-drive basetemp violated
+  the repository-bound timing/variant contract and Windows same-drive relative
+  path requirement. Creating the parent and moving basetemp inside the D-drive
+  worktree produced the clean final results above; neither transient exposed a
+  product failure.
+
+### Runtime and Multi-TLS Evidence
+
+Reliable constructed multi-TLS evidence uses the production `TraCIBridge`,
+production `SafetyExecutor`, and a controlled TraCI boundary:
+
+- two consecutive `start()` calls each discover `tls_main` and `tls_side`, each
+  stage both matching variant actions, omit an absent TLS, and never directly
+  call `setProgram()`;
+- a safe `tls_side` program is validated against a `JointState` with
+  `tls_id="tls_side"`, reaches the private sink as
+  `setProgram("tls_side", "variant_side")`, and leaves the primary movement
+  builder unchanged;
+- runner initial-start and reconnect cycles each record accepted `tls_main` and
+  safety-rejected `tls_side` outcomes with the corresponding TLS entity ID and
+  `unsafe_startup_program`, never `unknown_tls`.
+
+The official 20-scene dataset contains one TLS per scene, so it cannot provide a
+genuine multi-TLS SUMO run. Final-tree real SUMO compatibility evidence is:
+
+- Fixed-time scene 1 run `4d5cd8a5ba8f`: `completed`, 100 requested steps,
+  final simulation time `100.0`, and 100 simulation-log rows. Events contain a
+  `J1` `unsafe_startup_program` rejection at `0.0`, followed by the accepted
+  frozen fixed-time `set_program` at `0.0`, proving fallback semantics remain.
+- Classic scene 15 run `d64e8e63a189` with flow multiplier `1.25`:
+  `completed`, 100 requested steps, final simulation time `10.0`, and 100
+  simulation-log rows. Its `J1` variant `set_program` is accepted at `0.0`;
+  `illegal_transition=0`.
+
+### Protected Inputs, Files, and Concerns
+
+- Correct live/ledger archive SHA-256 remains
+  `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`.
+  This supersedes the 62-character typo in an earlier recovery summary.
+- `data/intersection_data` remains 163 Git-tracked files and 232 files on disk;
+  worktree and staged protected-path diffs are empty.
+- Production: `engine/traci_bridge.py`, `engine/runner.py`.
+- Regression coverage: `tests/test_resilience.py`,
+  `tests/test_runner_channel.py`.
+- Evidence: this report. `progress.md`, protected review/archive material,
+  `.t9c`, `.t10`, `.t11`, the archive, official scene data, and generated smoke
+  or basetemp directories are excluded from the commit.
+- Remaining limitation: multi-TLS evidence is a deterministic constructed TraCI
+  integration rather than a real official-scene SUMO run because no official
+  scene contains multiple TLS. The fixture exercises the production discovery,
+  state, executor, private-sink, event, initial-start, and reconnect paths.

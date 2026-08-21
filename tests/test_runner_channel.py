@@ -13,7 +13,7 @@ from algorithms.capacity_aware_max_pressure import (
     CapacityAwareMaxPressureAlgorithm,
 )
 from core.movements import MovementKey, MovementState, PhaseMovementState
-from core.types import ControlAction, JointState, Scene, SceneMeta
+from core.types import ActionResult, ControlAction, JointState, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.mock_bridge import MockBridge
@@ -230,6 +230,81 @@ class _RejectedStartupProgramBridge(_PendingStartupProgramBridge):
         )
 
 
+class _MultiTlsStartupProgramBridge(MockBridge):
+    def __init__(self):
+        super().__init__(tls_id="tls_main")
+        self._pending_startup_actions = self._startup_actions()
+        self._reconnected = False
+
+    @staticmethod
+    def _startup_actions():
+        safe_phases = [
+            {"duration": 30.0, "state": "Gr"},
+            {"duration": 3.0, "state": "yr"},
+            {"duration": 1.0, "state": "rr"},
+            {"duration": 30.0, "state": "rG"},
+            {"duration": 3.0, "state": "ry"},
+            {"duration": 1.0, "state": "rr"},
+        ]
+        unsafe_phases = [
+            {"duration": 30.0, "state": "Gr"},
+            {"duration": 1.0, "state": "rr"},
+            {"duration": 30.0, "state": "rG"},
+            {"duration": 3.0, "state": "ry"},
+            {"duration": 1.0, "state": "rr"},
+        ]
+        return (
+            ControlAction.for_simulation_time(
+                "tls_main",
+                "set_program",
+                {"program_id": "variant_main", "phases": safe_phases},
+                "install validated variant signal program",
+                0.0,
+            ),
+            ControlAction.for_simulation_time(
+                "tls_side",
+                "set_program",
+                {"program_id": "variant_side", "phases": unsafe_phases},
+                "install validated variant signal program",
+                0.0,
+            ),
+        )
+
+    def take_startup_actions(self):
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
+
+    def get_startup_state(self, tls_id):
+        return JointState(
+            step=0,
+            timestamp=0.0,
+            tls_id=tls_id,
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=0.0,
+        )
+
+    def _apply_actions(self, actions):
+        results = []
+        for action in actions:
+            if action.tls_id not in {"tls_main", "tls_side"}:
+                results.append(
+                    ActionResult(action, False, "unknown tls", "unknown_tls")
+                )
+                continue
+            self._applied_actions.append(action)
+            results.append(ActionResult(action, True, "applied"))
+        return results
+
+    def step(self):
+        if not self._reconnected:
+            self._reconnected = True
+            self._pending_startup_actions = self._startup_actions()
+            return 0.0
+        return super().step()
+
+
 def make_scene() -> Scene:
     return Scene(SceneMeta(
         intersection_id="1", name="test",
@@ -384,6 +459,39 @@ def test_fixed_time_continues_after_rejected_variant_startup_program(tmp_path):
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
     rejected = [row for row in events if row["type"] == "action_rejected"]
     assert [row["reason"] for row in rejected] == ["unsafe_startup_program"]
+
+
+def test_runner_correlates_each_tls_startup_result_on_start_and_reconnect(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _MultiTlsStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(2)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    startup_results = [
+        row for row in events
+        if row["type"] in {"action_applied", "action_rejected"}
+        and "install validated variant signal program" in row["detail"]
+    ]
+    assert [
+        (
+            json.loads(row["entity_ids"]),
+            row["status"],
+            row["reason"],
+        )
+        for row in startup_results
+    ] == [
+        (["tls_main"], "accepted", ""),
+        (["tls_side"], "rejected", "unsafe_startup_program"),
+        (["tls_main"], "accepted", ""),
+        (["tls_side"], "rejected", "unsafe_startup_program"),
+    ]
 
 
 def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):

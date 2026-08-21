@@ -166,6 +166,7 @@ class SimulationRunner:
                 action=result.action,
                 accepted=result.accepted,
                 simulation_seconds=float(state.timestamp),
+                entity_ids=(result.action.tls_id,),
             )
 
     def _apply_pending_startup_actions(
@@ -179,15 +180,30 @@ class SimulationRunner:
         )
         if not actions:
             return False
-        startup_state = state if state is not None else self.bridge.get_state()
-        results = self.safety_executor.apply(
-            actions,
-            startup_state,
-            self.bridge,
-        )
-        self._record_action_results(results, startup_state, step=step)
+        all_results: list[ActionResult] = []
+        for action in actions:
+            if state is not None and state.tls_id == action.tls_id:
+                startup_state = state
+            else:
+                get_startup_state = getattr(
+                    self.bridge,
+                    "get_startup_state",
+                    None,
+                )
+                startup_state = (
+                    get_startup_state(action.tls_id)
+                    if get_startup_state is not None
+                    else self.bridge.get_state()
+                )
+            results = self.safety_executor.apply(
+                [action],
+                startup_state,
+                self.bridge,
+            )
+            all_results.extend(results)
+            self._record_action_results(results, startup_state, step=step)
         rejected = next(
-            (result for result in results if not result.accepted),
+            (result for result in all_results if not result.accepted),
             None,
         )
         if rejected is not None and self.algorithm.name != "fixed_time":
