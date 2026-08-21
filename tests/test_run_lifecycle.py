@@ -672,3 +672,50 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
     assert bridge_process.killed is False
     assert unrelated.terminated is False
     assert unrelated.killed is False
+
+
+def test_bridge_start_interrupt_reaps_recorded_process(monkeypatch, tmp_path):
+    bridge_process = _OwnedProcess(41005)
+    config = tmp_path / "unused.sumocfg"
+    config.write_text("<configuration />", encoding="utf-8")
+    bridge = TraCIBridge(
+        config,
+        process_factory=lambda *args, **kwargs: bridge_process,
+    )
+    monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41006)
+    monkeypatch.setattr(
+        traci,
+        "init",
+        lambda *args, **kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+    monkeypatch.setattr(traci, "isLoaded", lambda: False)
+
+    with pytest.raises(KeyboardInterrupt):
+        bridge.start()
+
+    assert bridge.process_id == 41005
+    assert bridge_process.terminated is True
+    assert bridge_process.killed is False
+
+
+def test_bridge_start_rejects_existing_connection_before_launch(monkeypatch, tmp_path):
+    config = tmp_path / "unused.sumocfg"
+    config.write_text("<configuration />", encoding="utf-8")
+    launches = []
+
+    def process_factory(*args, **kwargs):
+        launches.append((args, kwargs))
+        return _OwnedProcess(41007)
+
+    bridge = TraCIBridge(config, process_factory=process_factory)
+    monkeypatch.setattr(traci, "isLoaded", lambda: True)
+    monkeypatch.setattr(
+        traci,
+        "init",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("connection setup")),
+    )
+
+    with pytest.raises(RuntimeError, match="TraCI connection already active"):
+        bridge.start()
+
+    assert launches == []

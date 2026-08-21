@@ -1,8 +1,11 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from core.run_models import RunRequest, RunStatus, SUPPORTED_ALGORITHMS, VariantSpec
+from core.timebase import SimulationWindow
+from engine.run_service import RunService
 
 
 def test_run_request_defaults_to_seconds_without_hidden_step_count():
@@ -28,6 +31,20 @@ def test_run_request_derives_compatibility_steps_only_from_explicit_step_length(
     )
 
     assert request.steps == 36000
+
+
+def test_replacing_compatibility_request_preserves_declared_warmup():
+    request = RunRequest(
+        intersection_id="1",
+        algorithm="fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=600,
+        step_length_override=0.1,
+    )
+
+    replaced = replace(request, seed=43)
+
+    assert RunService._window(replaced, 0.1) == SimulationWindow(3600, 600)
 
 
 def test_run_request_keeps_explicit_steps_for_smoke_compatibility():

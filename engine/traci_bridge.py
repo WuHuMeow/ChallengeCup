@@ -187,6 +187,8 @@ class TraCIBridge:
 
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
+        if traci.isLoaded():
+            raise RuntimeError("TraCI connection already active")
 
         cmd = self._build_cmd()
         logger.info("启动 SUMO: %s", " ".join(cmd))
@@ -212,8 +214,12 @@ class TraCIBridge:
             self._load_turn_ratios()
             self._load_conflict_definitions()
             self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
-        except Exception:
-            self.close()
+        except BaseException:
+            if self._owned_process is not None:
+                try:
+                    self.close()
+                except Exception:
+                    logger.exception("清理 SUMO 启动失败的子进程时发生错误")
             raise
 
     def _start_owned_connection(self, cmd: list[str]) -> None:

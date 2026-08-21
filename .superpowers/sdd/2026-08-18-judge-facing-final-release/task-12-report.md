@@ -395,3 +395,51 @@ repo-local rerun above is the authoritative full result. The configured
 `output/tmp` and existing scratch directories remain ACL-blocked/untracked and
 were not staged. A fresh real SUMO run is intentionally left for the controller
 handoff rather than fabricated in this writer round.
+
+## Startup Ownership and Request Reconstruction Fix Round 3 (2026-08-21)
+
+The controller re-review found two additional lifecycle boundary defects in the
+fix-round tree. A request reconstructed with `dataclasses.replace()` could
+reinterpret compatibility-generated `steps` as explicit and drop its declared
+warmup. Startup cleanup caught only `Exception`, so an interrupt after the child
+was recorded could leak it; an already-active global TraCI connection was also
+not rejected before launch.
+
+### RED evidence
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-red -k replacing_compatibility_request_preserves_declared_warmup
+1 failed, 7 deselected in 0.60s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-red-interrupt -k bridge_start_interrupt_reaps_recorded_process
+1 failed, 21 deselected in 0.81s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-red-existing -k bridge_start_rejects_existing_connection_before_launch
+1 failed, 21 deselected in 0.76s
+```
+
+### GREEN evidence
+
+The three regressions pass after the minimal fixes:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-green -k replacing_compatibility_request_preserves_declared_warmup
+1 passed, 7 deselected in 0.60s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-green-start -k "bridge_start_interrupt_reaps_recorded_process or bridge_start_rejects_existing_connection_before_launch"
+2 passed, 20 deselected in 0.59s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r3-focused
+106 passed in 39.76s
+
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .superpowers\tmp\task12-round3-full
+610 passed in 143.96s
+```
+
+The changed request marker is an internal, hidden init field so
+`dataclasses.replace()` carries the original explicitness decision. TraCI
+startup now rejects an active connection before `Popen` and catches
+`BaseException` while preserving the original error after best-effort exact
+child cleanup. No process-name enumeration or unrelated-process cleanup was
+introduced. A fresh real SUMO run after this additive commit remains a
+controller handoff gate.
