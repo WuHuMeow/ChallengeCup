@@ -29,13 +29,17 @@ def _state(*, current_phase: int = 0, elapsed: float = 30.0) -> JointState:
     )
 
 
-def _program_action() -> ControlAction:
+def _program_action(
+    phases: list[dict[str, object]] | None = None,
+) -> ControlAction:
     return ControlAction(
         "tls",
         "set_program",
         {
             "program_id": "fixed",
-            "phases": [
+            "phases": phases
+            if phases is not None
+            else [
                 {"duration": 30.0, "state": "Grr"},
                 {"duration": 3.0, "state": "yrr"},
                 {"duration": 1.0, "state": "rrr"},
@@ -378,6 +382,129 @@ def test_frozen_program_definition_is_accepted_only_at_simulation_start():
 
     assert result.accepted is True
     assert bridge._applied_actions == [action]
+
+
+def test_startup_program_rejects_a_green_shorter_than_the_live_minimum():
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = _program_action([
+        {"duration": 9.9, "state": "Grr"},
+        {"duration": 3.0, "state": "yrr"},
+        {"duration": 1.0, "state": "rrr"},
+        {"duration": 30.0, "state": "rGr"},
+        {"duration": 3.0, "state": "ryr"},
+        {"duration": 1.0, "state": "rrr"},
+    ])
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "unsafe_startup_program"
+    assert "min_green=10" in result.detail
+    assert bridge.written == []
+
+
+def test_startup_program_rejects_a_direct_green_to_green_transition():
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = _program_action([
+        {"duration": 30.0, "state": "Grr"},
+        {"duration": 30.0, "state": "rGr"},
+        {"duration": 3.0, "state": "ryr"},
+        {"duration": 1.0, "state": "rrr"},
+    ])
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "unsafe_startup_program"
+    assert "direct green-to-green" in result.detail
+    assert bridge.written == []
+
+
+@pytest.mark.parametrize(
+    ("phases", "detail_fragment"),
+    [
+        (
+            [
+                {"duration": 30.0, "state": "Grr"},
+                {"duration": 1.0, "state": "rrr"},
+                {"duration": 30.0, "state": "rGr"},
+                {"duration": 3.0, "state": "ryr"},
+                {"duration": 1.0, "state": "rrr"},
+            ],
+            "missing yellow clearance",
+        ),
+        (
+            [
+                {"duration": 30.0, "state": "Grr"},
+                {"duration": 2.9, "state": "yrr"},
+                {"duration": 1.0, "state": "rrr"},
+                {"duration": 30.0, "state": "rGr"},
+                {"duration": 3.0, "state": "ryr"},
+                {"duration": 1.0, "state": "rrr"},
+            ],
+            "yellow clearance=2.9 requires 3",
+        ),
+        (
+            [
+                {"duration": 30.0, "state": "Grr"},
+                {"duration": 3.0, "state": "yrr"},
+                {"duration": 30.0, "state": "rGr"},
+                {"duration": 3.0, "state": "ryr"},
+                {"duration": 1.0, "state": "rrr"},
+            ],
+            "missing all-red clearance",
+        ),
+        (
+            [
+                {"duration": 30.0, "state": "Grr"},
+                {"duration": 3.0, "state": "yrr"},
+                {"duration": 0.9, "state": "rrr"},
+                {"duration": 30.0, "state": "rGr"},
+                {"duration": 3.0, "state": "ryr"},
+                {"duration": 1.0, "state": "rrr"},
+            ],
+            "all-red clearance=0.9 requires 1",
+        ),
+    ],
+    ids=("missing-yellow", "short-yellow", "missing-all-red", "short-all-red"),
+)
+def test_startup_program_requires_configured_clearance(
+    phases,
+    detail_fragment,
+):
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = _program_action(phases)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "unsafe_startup_program"
+    assert detail_fragment in result.detail
+    assert bridge.written == []
 
 
 def test_direct_legal_green_edge_is_rejected_without_a_clearance_path():

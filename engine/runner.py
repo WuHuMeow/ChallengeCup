@@ -97,7 +97,13 @@ class SimulationRunner:
             get_config().get("algorithms.ca_maxpressure.min_green", 10.0)
         )
         self.safety_executor = SafetyExecutor(
-            lambda: getattr(self.algorithm, "min_green", default_min_green)
+            lambda: getattr(self.algorithm, "min_green", default_min_green),
+            yellow_seconds=float(
+                get_config().get("algorithms.ca_maxpressure.yellow_duration", 3.0)
+            ),
+            all_red_seconds=float(
+                get_config().get("algorithms.ca_maxpressure.all_red_duration", 1.0)
+            ),
         )
         if self.state_channel is not None:
             self.state_channel.bind_contract(self._channel_run_id, ("joint-state.v1",))

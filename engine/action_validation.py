@@ -45,6 +45,104 @@ def validate_action_window(
     return None, None
 
 
+def validate_startup_program_safety(
+    program: Mapping[str, object],
+    *,
+    min_green_seconds: float,
+    yellow_seconds: float,
+    all_red_seconds: float,
+) -> tuple[str | None, str | None]:
+    """Validate one normalized fixed-time program against the safety policy."""
+    phases = program["phases"]
+    service_greens = [
+        index
+        for index, phase in enumerate(phases)
+        if any(signal in phase["state"] for signal in "Gg")
+        and not any(signal in phase["state"] for signal in "Yy")
+    ]
+    if not service_greens:
+        return "unsafe_startup_program", "startup program has no service green phase"
+
+    for index in service_greens:
+        duration = float(phases[index]["duration"])
+        if duration < min_green_seconds:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={index} green duration={duration:g} "
+                f"requires min_green={min_green_seconds:g}",
+            )
+
+    phase_count = len(phases)
+    for position, green_index in enumerate(service_greens):
+        next_green = service_greens[(position + 1) % len(service_greens)]
+        clearance: list[int] = []
+        cursor = (green_index + 1) % phase_count
+        while cursor != next_green:
+            clearance.append(cursor)
+            cursor = (cursor + 1) % phase_count
+        if not clearance:
+            return (
+                "unsafe_startup_program",
+                f"startup program has direct green-to-green transition "
+                f"phase={green_index}->{next_green}",
+            )
+
+        yellow_duration = 0.0
+        all_red_duration = 0.0
+        all_red_started = False
+        for index in clearance:
+            phase = phases[index]
+            state = phase["state"]
+            duration = float(phase["duration"])
+            if any(signal in state for signal in "Yy"):
+                if all_red_started:
+                    return (
+                        "unsafe_startup_program",
+                        f"startup program phase={green_index}->{next_green} "
+                        "has yellow after all-red clearance",
+                    )
+                yellow_duration += duration
+            elif all(signal in "rR" for signal in state):
+                all_red_started = True
+                all_red_duration += duration
+            else:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={index} is not yellow or all-red "
+                    f"clearance before green phase={next_green}",
+                )
+
+        if yellow_duration == 0.0:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} "
+                f"is missing yellow clearance; requires {yellow_seconds:g} "
+                "simulation seconds",
+            )
+        if yellow_duration < yellow_seconds:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} yellow "
+                f"clearance={yellow_duration:g} requires {yellow_seconds:g} "
+                "simulation seconds",
+            )
+        if all_red_duration == 0.0:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} "
+                f"is missing all-red clearance; requires {all_red_seconds:g} "
+                "simulation seconds",
+            )
+        if all_red_duration < all_red_seconds:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} all-red "
+                f"clearance={all_red_duration:g} requires {all_red_seconds:g} "
+                "simulation seconds",
+            )
+    return None, None
+
+
 def validate_phase_change_timing(
     action: ControlAction,
     *,

@@ -377,3 +377,141 @@ and wrote 100 `simulation_log.csv` rows.
   `CloudPolicy.predict()` / `dispatch_params()` compatibility issue. Fix Round 1
   was self-reviewed only, as required; no subagent or independent reviewer was
   dispatched.
+
+## Fix Round 2: Startup Signal Program Safety
+
+### Status
+
+DONE_WITH_CONCERNS. The remaining Critical startup-program finding is closed on
+top of reviewed base `f7a823dd466541819bb4603a8f931f5dac303b02`. Task 12 was
+not started. The parked Task 10 same-observation `CloudPolicy` compatibility
+issue remains unchanged and out of scope.
+
+### Review Finding Closure
+
+- Clean-startup `set_program` definitions now pass an independent timing policy
+  check after schema and startup-coordinate validation and before the private
+  bridge sink.
+- A service-green phase contains `G/g` and no `Y/y`; every such phase must meet
+  the live algorithm minimum green. A mixed green/yellow phase remains yellow
+  clearance so continuing greens in official programs are preserved.
+- Every cyclic transition between service-green phases must contain configured
+  yellow clearance followed by pure all-red clearance, with each accumulated
+  duration meeting the configured threshold. Direct green transitions,
+  missing clearance, undersized clearance, and yellow after all-red reject as
+  `unsafe_startup_program` without a signal write.
+- Runner passes the configured `yellow_duration` and `all_red_duration` policy
+  to the executor; the existing live minimum-green provider remains dynamic.
+- Live safety-boundary documentation now records the independent startup-program
+  minimum-green, yellow, and all-red checks.
+
+### TDD Evidence
+
+The behavior-level RED command was:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py::test_startup_program_rejects_a_green_shorter_than_the_live_minimum tests/test_safety_executor.py::test_startup_program_rejects_a_direct_green_to_green_transition tests/test_safety_executor.py::test_startup_program_requires_configured_clearance -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\red-startup-program-policy-fix2-20260821-1
+```
+
+- RED: `6 failed in 0.19s`; all unsafe definitions were accepted and written.
+- The six discovered cases cover a short green, direct green-to-green, missing
+  yellow, short yellow, missing all-red, and short all-red program.
+
+The exact GREEN command used a fresh basetemp:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py::test_startup_program_rejects_a_green_shorter_than_the_live_minimum tests/test_safety_executor.py::test_startup_program_rejects_a_direct_green_to_green_transition tests/test_safety_executor.py::test_startup_program_requires_configured_clearance -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\green-startup-program-policy-fix2-20260821-1
+```
+
+- GREEN: `6 passed in 0.06s`.
+- Full executor regression after implementation: `36 passed in 0.06s`.
+- Full executor regression after live-doc updates: `36 passed in 0.06s`.
+
+### Final Verification
+
+All commands below ran on the final implementation and live-documentation tree
+prepared for the Round 2 commit.
+
+- Required focused suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py tests/test_action_validation.py tests/test_safety_metrics.py tests/test_runner_channel.py tests/test_fixed_time_plan.py tests/test_algorithms.py -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\focused-fix-round2-final-20260821-1
+```
+
+  Result: `121 passed in 1.53s`, no warnings.
+
+- Expanded executor/runner/algorithm/bridge/channel suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py tests/test_action_validation.py tests/test_safety_metrics.py tests/test_runner_channel.py tests/test_fixed_time_plan.py tests/test_algorithms.py tests/test_classic_max_pressure.py tests/test_capacity_aware_max_pressure.py tests/test_mock_bridge.py tests/test_traci_outputs.py tests/test_events.py tests/test_edge_channel.py -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\affected-fix-round2-final-20260821-1
+```
+
+  Result: `245 passed in 2.53s`, no warnings.
+
+- Full project suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\full-fix-round2-final-20260821-1
+```
+
+  Result: `569 passed in 131.35s (0:02:11)`, no warnings.
+
+- `python --version`: Python `3.14.7`.
+- `python -m compileall algorithms cloud core engine experiments scenes`:
+  exit 0.
+- `git diff --check`: exit 0.
+- `rg --pcre2 -n "(?<!_)apply_actions\(" algorithms cloud core engine
+  experiments scenes scripts -g '*.py'`: no matches.
+
+### Final-Tree Real SUMO Evidence
+
+The required fresh 100-step intersection 1 fixed-time run used seed 42:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 1 --algorithm fixed_time --steps 100 --seed 42 --output-dir .t11\real-smoke-fixed-fix2-20260821-1
+```
+
+- Run `baa105b06e08` completed with requested steps `100`, final simulation time
+  `100.0`, SUMO version field `22`, and exactly 100 `simulation_log.csv` rows.
+- The only signal action was an accepted `set_program` at step `0` / simulation
+  time `0.0`, with reason `install frozen fixed-time plan`.
+- Events contain one `action_applied`, zero `action_rejected`, and zero
+  `illegal_transition` rows.
+
+### Protected Inputs and Scope
+
+- `赛题资料.7z` SHA-256 remains
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`.
+- `data/intersection_data` remains 163 tracked files and 232 disk files.
+- Official-data and output worktree/staged diff checks are empty; the complete
+  staged set was also empty before final scoped staging.
+- Pre-existing `progress.md`, `.t9c`, `.t10`, `.t11`, the archive, output/cache
+  files, parked Task 10 code, and official data remain excluded from this fix.
+
+### Files Changed in Fix Round 2
+
+- Production safety: `engine/action_validation.py`, `engine/safety_executor.py`,
+  and `engine/runner.py`.
+- Regression coverage: `tests/test_safety_executor.py`.
+- Live docs: `algorithms/README.md`, `docs/interface.md`, and
+  `docs/architecture/interface.md`.
+- Evidence: this report.
+
+### Self Review and Concerns
+
+- Reviewed the normalized program type boundary before timing validation; schema
+  validation guarantees a non-empty list of finite-duration, equal-width phase
+  mappings before the policy reads states or durations.
+- Reviewed cyclic behavior for both multiple and single service-green programs.
+  A single service green scans every intervening phase before returning to
+  itself, while a lone green with no clearance rejects as a direct cyclic
+  transition.
+- Reviewed official mixed green/yellow phase semantics: mixed phases count as
+  yellow clearance rather than new service greens, and pure all-red is required
+  after yellow before the next service green.
+- Reviewed rejection ordering and confirmed unsafe definitions cannot reach the
+  private bridge sink or suppress the next safety observation.
+- The only retained product concern is the explicitly parked Task 10
+  `CloudPolicy.predict()` / `dispatch_params()` compatibility issue. Fix Round 2
+  was self-reviewed only as required; no subagent or independent reviewer was
+  dispatched.

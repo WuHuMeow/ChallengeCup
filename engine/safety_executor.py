@@ -13,6 +13,7 @@ from engine.action_validation import (
     validate_clearance_duration,
     validate_control_action,
     validate_phase_change_timing,
+    validate_startup_program_safety,
 )
 
 if TYPE_CHECKING:
@@ -25,12 +26,23 @@ class SafetyExecutor:
     def __init__(
         self,
         min_green_seconds: float | Callable[[], float] = 10.0,
+        *,
+        yellow_seconds: float = 3.0,
+        all_red_seconds: float = 1.0,
     ) -> None:
         if callable(min_green_seconds):
             self._min_green_provider = min_green_seconds
         else:
             normalized = self._validate_min_green(min_green_seconds)
             self._min_green_provider = lambda: normalized
+        self.yellow_seconds = self._validate_clearance_seconds(
+            yellow_seconds,
+            "yellow_seconds",
+        )
+        self.all_red_seconds = self._validate_clearance_seconds(
+            all_red_seconds,
+            "all_red_seconds",
+        )
         self.min_green_seconds
 
     @property
@@ -42,6 +54,13 @@ class SafetyExecutor:
         normalized = float(value)
         if not math.isfinite(normalized) or normalized <= 0:
             raise ValueError("min_green_seconds must be positive and finite")
+        return normalized
+
+    @staticmethod
+    def _validate_clearance_seconds(value: object, name: str) -> float:
+        normalized = float(value)
+        if not math.isfinite(normalized) or normalized <= 0:
+            raise ValueError(f"{name} must be positive and finite")
         return normalized
 
     def apply(
@@ -105,6 +124,21 @@ class SafetyExecutor:
                     "unsafe_program_switch",
                 )
                 continue
+            if action.action_type == "set_program":
+                reason_code, detail = validate_startup_program_safety(
+                    value,
+                    min_green_seconds=min_green_seconds,
+                    yellow_seconds=self.yellow_seconds,
+                    all_red_seconds=self.all_red_seconds,
+                )
+                if detail is not None:
+                    results[index] = ActionResult(
+                        action,
+                        False,
+                        detail,
+                        reason_code or "",
+                    )
+                    continue
             normalized[index] = value
 
         phase_duration_pairs = {
