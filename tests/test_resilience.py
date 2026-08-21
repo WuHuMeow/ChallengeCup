@@ -78,7 +78,7 @@ def test_start_clears_discovery_state_before_repopulating(tmp_path):
     )
 
     with (
-        patch.object(traci, "start"),
+        patch.object(TraCIBridge, "_start_owned_connection"),
         patch.object(
             traci.trafficlight, "getIDList", return_value=["new_tls"]
         ),
@@ -125,7 +125,7 @@ def test_start_defers_variant_signal_program_to_the_safety_boundary(tmp_path):
     )
 
     with (
-        patch.object(traci, "start"),
+        patch.object(TraCIBridge, "_start_owned_connection"),
         patch.object(traci.trafficlight, "getIDList", return_value=["new_tls"]),
         patch.object(
             traci.trafficlight, "getControlledLanes", return_value=["new_lane"]
@@ -181,7 +181,7 @@ def test_start_defers_variant_program_for_every_discovered_tls(tmp_path):
     )
 
     with (
-        patch.object(traci, "start"),
+        patch.object(TraCIBridge, "_start_owned_connection"),
         patch.object(
             traci.trafficlight,
             "getIDList",

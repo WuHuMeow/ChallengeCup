@@ -334,3 +334,64 @@ constructed a runner instead of failing at the validated-scene boundary.
 
 The supplemental commit hash is reported in the post-commit handoff because a
 commit cannot contain its own final hash without changing that hash.
+
+## Validated Scene Review Fix Round 2 (2026-08-21)
+
+This additive round closes the five scoped review findings while preserving the
+controller's `progress.md` change and all protected inputs. The validated
+manifest step length is now carried into `SimulationRunner`, used for tick
+derivation and final metadata, and applied to the generated SUMO config. Formal
+requests retain declared warmup when compatibility steps are synthesized, while
+explicit `steps=` requests retain legacy semantics. Runtime scene paths and
+hashes are checked against the passing manifest before runner construction.
+Malformed status artifacts recover to an explicit terminal failure. TraCI now
+owns its child `Popen` from creation through `traci.init(proc=...)`, including
+startup failure cleanup, with no process-name enumeration or termination.
+
+### RED evidence
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-round2-red -k "runner_keeps_validated_step_length_authoritative_over_bridge or formal_override_retains_declared_warmup or manifest_runtime_scene_identity_mismatch_fails_closed or corrupt_status_artifact_still_reaches_terminal_failed_result or bridge_start_failure_reaps_process_created_during_traci_start"
+5 failed, 33 deselected in 6.23s
+```
+
+Failures were the expected raw-bridge timebase (`1` tick instead of `4`),
+dropped warmup (`0.0` instead of `600`), accepted identity mismatch, escaped
+`JSONDecodeError`, and missing startup process-capture seam. A second focused
+RED check after making the compatibility flag idempotent isolated the remaining
+authoritative runner failure:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-round2-red-authoritative -k "runner_keeps_validated_step_length_authoritative_over_bridge or formal_override_retains_declared_warmup"
+1 failed, 1 passed, 16 deselected in 2.59s
+```
+
+### GREEN evidence
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-round2-green-core-full2
+46 passed in 27.45s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-validated-scene-focused-round2-final
+95 passed in 39.67s
+
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .superpowers\tmp\task12-round2-full-final
+607 passed in 193.96s
+```
+
+Static gates after the final code and report edits:
+
+```text
+.\.venv\Scripts\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests visualization
+COMPILEALL_OK
+
+git diff --check
+DIFF_CHECK_OK
+```
+
+The external `D:\Temp` full-suite attempt produced four unrelated fixed-time
+plan path failures because those tests require a repo-local `tmp_path`; the
+repo-local rerun above is the authoritative full result. The configured
+`output/tmp` and existing scratch directories remain ACL-blocked/untracked and
+were not staged. A fresh real SUMO run is intentionally left for the controller
+handoff rather than fabricated in this writer round.

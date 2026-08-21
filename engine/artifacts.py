@@ -47,6 +47,10 @@ _STATUS_TRANSITIONS = {
 _ARTIFACT_LOCK = threading.RLock()
 
 
+class CorruptStatusArtifactError(ValueError):
+    """Raised when status.json exists but cannot be parsed as a status record."""
+
+
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
@@ -226,6 +230,27 @@ class RunArtifacts:
                 payload["ended_at"] = now
             _atomic_json(self.status, payload)
 
+    def recover_corrupt_status(self, reason: str) -> None:
+        """Replace only a malformed status artifact with an explicit failure."""
+        with _ARTIFACT_LOCK:
+            try:
+                json.loads(self.status.read_text(encoding="utf-8"))
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                now = datetime.now(timezone.utc).isoformat()
+                _atomic_json(
+                    self.status,
+                    {
+                        "run_id": self.run_id,
+                        "status": "failed",
+                        "reason": reason,
+                        "updated_at": now,
+                        "started_at": None,
+                        "ended_at": now,
+                    },
+                )
+                return
+        raise ValueError("status artifact is valid; recovery refused")
+
     def write_metadata(
         self,
         status: str,
@@ -272,7 +297,14 @@ class RunArtifacts:
         }
         with _ARTIFACT_LOCK:
             if self.status.exists():
-                status_payload = json.loads(self.status.read_text(encoding="utf-8"))
+                try:
+                    status_payload = json.loads(
+                        self.status.read_text(encoding="utf-8")
+                    )
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise CorruptStatusArtifactError(
+                        f"status artifact is corrupt: {exc}"
+                    ) from exc
                 current_status = str(status_payload.get("status", ""))
                 if current_status in _TERMINAL_STATUS_VALUES and current_status != status:
                     raise ValueError(

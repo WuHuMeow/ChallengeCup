@@ -54,6 +54,7 @@ class SimulationRunner:
         events_csv: Optional[Path] = None,
         artifacts: Optional[RunArtifacts] = None,
         state_channel: Optional[EdgeChannel] = None,
+        step_length: float | None = None,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -65,6 +66,9 @@ class SimulationRunner:
         self.additional_files = additional_files or []
         self.artifacts = artifacts
         self.state_channel = state_channel
+        self.step_length = (
+            float(step_length) if step_length is not None else None
+        )
 
         if artifacts is not None:
             output_csv = artifacts.metrics
@@ -248,7 +252,7 @@ class SimulationRunner:
                 "requested_seconds": target_seconds,
                 "warmup_seconds": resolved_window.warmup_seconds,
                 "derived_steps": target_steps,
-                "step_length": float(getattr(self.bridge, "step_length", 1.0)),
+                "step_length": self._effective_step_length(),
                 "sumo_pid": None,
             })
 
@@ -303,9 +307,6 @@ class SimulationRunner:
                             reason = "SUMO exhausted before requested seconds"
                         else:
                             status = RunStatus.COMPLETED
-                        break
-                    if seconds_authoritative and self._last_simulation_time >= target_seconds:
-                        status = RunStatus.COMPLETED
                         break
                 else:
                     status = RunStatus.COMPLETED
@@ -396,7 +397,7 @@ class SimulationRunner:
                         requested_seconds=target_seconds,
                         warmup_seconds=resolved_window.warmup_seconds,
                         final_simulation_time=self._last_simulation_time,
-                        step_length=getattr(self.bridge, "step_length", None),
+                        step_length=self._effective_step_length(),
                         configured_end_time=getattr(
                             self.bridge,
                             "configured_end_time",
@@ -438,7 +439,7 @@ class SimulationRunner:
         self,
         requested: SimulationWindow | int | None,
     ) -> tuple[SimulationWindow, int]:
-        step_length = float(getattr(self.bridge, "step_length", 1.0))
+        step_length = self._effective_step_length()
         if isinstance(requested, SimulationWindow):
             return requested, steps_for_seconds(requested.duration_seconds, step_length)
         if requested is None:
@@ -446,6 +447,11 @@ class SimulationRunner:
         if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:
             raise ValueError("legacy steps must be an integer > 0")
         return SimulationWindow(seconds_for_steps(requested, step_length), 0.0), requested
+
+    def _effective_step_length(self) -> float:
+        if self.step_length is not None:
+            return self.step_length
+        return float(getattr(self.bridge, "step_length", 1.0))
 
     def _tick(self, step: int) -> str:
         """Advance one step and return continue, exhausted, or disconnected."""

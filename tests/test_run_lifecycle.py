@@ -643,3 +643,32 @@ def test_bridge_cleanup_targets_only_its_recorded_process(monkeypatch, tmp_path)
     assert owned.killed is False
     assert unrelated.terminated is False
     assert unrelated.killed is False
+
+
+def test_bridge_start_failure_reaps_process_created_during_connection_setup(
+    monkeypatch, tmp_path
+):
+    bridge_process = _OwnedProcess(41003)
+    unrelated = _OwnedProcess(41004)
+    config = tmp_path / "unused.sumocfg"
+    config.write_text("<configuration />", encoding="utf-8")
+    bridge = TraCIBridge(
+        config,
+        process_factory=lambda *args, **kwargs: bridge_process,
+    )
+    monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41005)
+    monkeypatch.setattr(
+        traci,
+        "init",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("connect failed")),
+    )
+    monkeypatch.setattr(traci, "isLoaded", lambda: False)
+
+    with pytest.raises(RuntimeError, match="connect failed"):
+        bridge.start()
+
+    assert bridge.process_id == 41003
+    assert bridge_process.terminated is True
+    assert bridge_process.killed is False
+    assert unrelated.terminated is False
+    assert unrelated.killed is False

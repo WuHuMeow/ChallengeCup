@@ -20,7 +20,7 @@ from scenes.registry import SceneRegistry
 from engine.run_service import RunService
 from engine.runner import SimulationRunner
 from engine.mock_bridge import MockBridge
-from engine.traci_bridge import traci
+from engine.traci_bridge import TraCIBridge, traci
 
 
 class RecordingRunner:
@@ -75,7 +75,7 @@ class EdgeMappingRunner(SimulationRunner):
             phases=(SimpleNamespace(state="G", duration=30.0),),
         )
         with (
-            patch.object(traci, "start"),
+            patch.object(TraCIBridge, "_start_owned_connection"),
             patch.object(traci.trafficlight, "getIDList", return_value=["tls"]),
             patch.object(
                 traci.trafficlight,
@@ -136,6 +136,12 @@ class EffectiveStepRunner(SimulationRunner):
         )
         super().__init__(bridge=MockBridge(step_length=step_length), **kwargs)
         type(self).instances.append(self)
+
+
+class CorruptStatusRunner(RecordingRunner):
+    def run(self, window, stop_event=None, frame_sink=None):
+        self.artifacts.status.write_text("{not-json", encoding="utf-8")
+        raise RuntimeError("runner failure after status corruption")
 
 
 def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
@@ -220,6 +226,112 @@ def test_run_service_uses_validated_manifest_timebase_instead_of_raw_xml(tmp_pat
     assert manifest["step_length"] == 0.25
     assert manifest["derived_steps"] == 4
     assert RecordingRunner.run_steps == [SimulationWindow(1, 0)]
+
+
+def test_runner_keeps_validated_step_length_authoritative_over_bridge(tmp_path):
+    base_scene = SceneRegistry().get_scene("1")
+    registry = ValidatedRegistry(
+        base_scene,
+        SceneManifest(scene_id="1", step_length=0.25, validation_status="pass"),
+    )
+
+    class AuthoritativeRunner(SimulationRunner):
+        instances = []
+
+        def __init__(self, **kwargs):
+            self.runtime_cfg = kwargs["sumo_cfg"]
+            super().__init__(bridge=MockBridge(step_length=1.0), **kwargs)
+            type(self).instances.append(self)
+
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=AuthoritativeRunner,
+        registry=registry,
+    )
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    manifest = json.loads((result.run_dir / "manifest.json").read_text())
+    metadata = json.loads(
+        (result.run_dir / "run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert result.status is RunStatus.COMPLETED
+    assert manifest["step_length"] == 0.25
+    assert manifest["derived_steps"] == 4
+    assert AuthoritativeRunner.instances[-1].bridge._current_step == 4
+    assert float(
+        ET.parse(AuthoritativeRunner.instances[-1].runtime_cfg)
+        .getroot()
+        .find("./time/step-length")
+        .get("value")
+    ) == 0.25
+    assert metadata["step_length"] == 0.25
+
+
+def test_formal_override_retains_declared_warmup(tmp_path):
+    RecordingRunner.run_steps = []
+    service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
+
+    result = service.run_sync(
+        RunRequest(
+            "1",
+            "fixed_time",
+            duration_seconds=3600,
+            warmup_seconds=600,
+            step_length_override=0.1,
+        )
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
+
+
+def test_manifest_runtime_scene_identity_mismatch_fails_closed(tmp_path):
+    base_scene = SceneRegistry().get_scene("1")
+    raw_cfg = tmp_path / "runtime.sumocfg"
+    raw_cfg.write_text("<configuration />", encoding="utf-8")
+    registry = ValidatedRegistry(
+        Scene(meta=replace(base_scene.meta, sumo_cfg=raw_cfg)),
+        SceneManifest(
+            scene_id="1",
+            step_length=1.0,
+            validation_status="pass",
+            source_files={"sumocfg": "different.sumocfg"},
+            sha256={"sumocfg": "deadbeef"},
+        ),
+    )
+    RecordingRunner.calls = []
+    service = RunService(
+        output_root=tmp_path / "runs", runner_factory=RecordingRunner, registry=registry
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    assert result.status is RunStatus.FAILED
+    assert "identity" in result.reason.lower()
+    assert RecordingRunner.calls == []
+
+
+def test_corrupt_status_artifact_still_reaches_terminal_failed_result(tmp_path):
+    service = RunService(output_root=tmp_path, runner_factory=CorruptStatusRunner)
+
+    queued = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    service.shutdown(wait=True)
+    result = service.get(queued.run_id)
+
+    assert result is not None
+    assert result.status is RunStatus.FAILED
+    assert "status artifact" in result.reason.lower()
+    assert "runner failure after status corruption" in result.reason
+    assert json.loads(
+        (result.run_dir / "status.json").read_text(encoding="utf-8")
+    )["status"] == "failed"
+    assert service.stop(queued.run_id) is False
 
 
 @pytest.mark.parametrize(

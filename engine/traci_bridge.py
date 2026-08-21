@@ -76,6 +76,7 @@ class TraCIBridge:
         max_restarts: int = 0,
         vehicle_sample_rate: int = 1,
         event_callback: Optional[Callable[[str, str], None]] = None,
+        process_factory: Optional[Callable[..., subprocess.Popen]] = None,
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.configured_end_time = self._read_configured_end_time()
@@ -93,6 +94,7 @@ class TraCIBridge:
         self.lane_directions: dict[str, str] = {}  # lane_id -> 方位（供 AB 压力映射）
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
+        self._process_factory = process_factory or subprocess.Popen
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
         self._movement_state_builder: MovementStateBuilder | None = None
         self._turn_ratios: dict[tuple[str, str], float] = {}
@@ -188,29 +190,46 @@ class TraCIBridge:
 
         cmd = self._build_cmd()
         logger.info("启动 SUMO: %s", " ".join(cmd))
-        traci.start(cmd)
         try:
-            process = getattr(traci.getConnection(), "_process", None)
+            self._start_owned_connection(cmd)
+            tls_ids = tuple(traci.trafficlight.getIDList())
+            if not tls_ids:
+                raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+            self._tls_ids = tls_ids
+            self.tls_id = tls_ids[0]
+            self._pending_startup_actions = self._additional_signal_program_actions(
+                set(tls_ids)
+            )
+            self._controlled_lanes = list(
+                traci.trafficlight.getControlledLanes(self.tls_id)
+            )
+            logger.info(
+                "控制信号灯: %s, 控制车道数: %d",
+                self.tls_id,
+                len(self._controlled_lanes),
+            )
+            self._load_edge_mapping()
+            self._load_turn_ratios()
+            self._load_conflict_definitions()
+            self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
         except Exception:
-            process = None
+            self.close()
+            raise
+
+    def _start_owned_connection(self, cmd: list[str]) -> None:
+        """Create, record, and connect the exact SUMO child owned by this bridge."""
+        port = traci.getFreeSocketPort()
+        process = self._process_factory(
+            [*cmd, "--remote-port", str(port)],
+            stdout=None,
+        )
+        self._record_owned_process(process)
+        traci.init(port, proc=process)
+
+    def _record_owned_process(self, process: subprocess.Popen | None) -> None:
         self._owned_process = process
         if process is not None:
             self._owned_pid = int(process.pid)
-
-        tls_ids = tuple(traci.trafficlight.getIDList())
-        if not tls_ids:
-            raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
-        self._tls_ids = tls_ids
-        self.tls_id = tls_ids[0]
-        self._pending_startup_actions = self._additional_signal_program_actions(
-            set(tls_ids)
-        )
-        self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
-        logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
-        self._load_edge_mapping()
-        self._load_turn_ratios()
-        self._load_conflict_definitions()
-        self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
 
     def _additional_signal_program_actions(
         self,

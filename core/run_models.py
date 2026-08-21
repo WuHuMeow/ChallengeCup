@@ -145,8 +145,11 @@ class RunRequest:
     variant: VariantSpec = field(default_factory=VariantSpec)
     disturbance: DisturbanceSpec | None = None
     algorithm_params: dict[str, float] = field(default_factory=dict)
+    _steps_explicit: bool = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        if not hasattr(self, "_steps_explicit"):
+            object.__setattr__(self, "_steps_explicit", self.steps is not None)
         if isinstance(self.intersection_id, bool):
             raise ValueError("intersection_id must be an integer in 1..20")
         try:

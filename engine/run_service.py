@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -13,7 +14,7 @@ from typing import Callable
 from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
 from core.run_models import RunRequest, RunResult, RunStatus
 from core.timebase import SimulationWindow, seconds_for_steps, steps_for_seconds
-from engine.artifacts import RunArtifacts
+from engine.artifacts import CorruptStatusArtifactError, RunArtifacts
 from engine.edge_channel import EdgeChannel
 from engine.run_state import RunStateMachine, TERMINAL_STATUSES
 from engine.runner import SimulationRunner
@@ -236,6 +237,7 @@ class RunService:
                     f"scene {request.intersection_id}"
                 )
             scene = self.registry.get_scene(request.intersection_id)
+            self._verify_scene_identity(manifest, scene)
             step_length = self._step_length(request, manifest.step_length)
             window = self._window(request, step_length)
             derived_steps = steps_for_seconds(window.duration_seconds, step_length)
@@ -251,7 +253,7 @@ class RunService:
                 request.flow_multiplier,
                 request.variant,
                 artifacts.run_dir / "variants",
-                step_length_override=request.step_length_override,
+                step_length_override=step_length,
             )
             state_channel = None
             if request.edge_delay_steps or request.edge_directions:
@@ -273,6 +275,7 @@ class RunService:
                 seed=request.seed,
                 artifacts=artifacts,
                 state_channel=state_channel,
+                step_length=step_length,
             )
             with self._lock:
                 self._runners[run_id] = runner
@@ -308,16 +311,30 @@ class RunService:
             current = self._states.get(run_id)
             if current is not None and current.status in TERMINAL_STATUSES:
                 return current
-            self._write_terminal_metadata(
-                artifacts,
-                RunStatus.FAILED,
-                reason,
-                requested_steps=(
-                    derived_steps if "derived_steps" in locals() else None
-                ),
-                window=window if "window" in locals() else None,
-                step_length=step_length if "step_length" in locals() else None,
-            )
+            try:
+                self._write_terminal_metadata(
+                    artifacts,
+                    RunStatus.FAILED,
+                    reason,
+                    requested_steps=(
+                        derived_steps if "derived_steps" in locals() else None
+                    ),
+                    window=window if "window" in locals() else None,
+                    step_length=step_length if "step_length" in locals() else None,
+                )
+            except CorruptStatusArtifactError as artifact_exc:
+                reason = f"status artifact corruption during failure: {artifact_exc}; {reason}"
+                artifacts.recover_corrupt_status(reason)
+                self._write_terminal_metadata(
+                    artifacts,
+                    RunStatus.FAILED,
+                    reason,
+                    requested_steps=(
+                        derived_steps if "derived_steps" in locals() else None
+                    ),
+                    window=window if "window" in locals() else None,
+                    step_length=step_length if "step_length" in locals() else None,
+                )
             return self._states.transition(run_id, RunStatus.FAILED, reason)
         finally:
             with self._lock:
@@ -359,12 +376,59 @@ class RunService:
 
     @staticmethod
     def _window(request: RunRequest, step_length: float) -> SimulationWindow:
-        if request.steps is not None:
+        if request.steps is not None and request._steps_explicit:
             return SimulationWindow(
                 seconds_for_steps(request.steps, step_length),
                 0.0,
             )
         return SimulationWindow(request.duration_seconds, request.warmup_seconds)
+
+    def _verify_scene_identity(self, manifest, scene) -> None:
+        """Reject a mutable runtime scene that differs from its validated source."""
+        source_files = dict(getattr(manifest, "source_files", {}) or {})
+        hashes = dict(getattr(manifest, "sha256", {}) or {})
+        if not source_files and not hashes:
+            return
+        attributes = {
+            "net": "sumo_net",
+            "route": "sumo_rou",
+            "flow": "sumo_flow",
+            "turn": "sumo_turn",
+            "sumocfg": "sumo_cfg",
+            "timing": "timing_xlsx",
+            "map": "map_png",
+        }
+        data_root = getattr(self.registry, "data_root", None)
+        roots = [Path.cwd()]
+        if data_root is not None:
+            try:
+                roots.insert(0, Path(data_root).resolve().parents[1])
+            except (IndexError, OSError):
+                pass
+        for key in source_files.keys() | hashes.keys():
+            attribute = attributes.get(key)
+            runtime = getattr(scene.meta, attribute, None) if attribute else None
+            if runtime is None:
+                raise ValueError(f"validated scene identity mismatch for {key}")
+            runtime_path = Path(runtime).resolve()
+            source_file = source_files.get(key)
+            if source_file is not None:
+                expected = Path(str(source_file))
+                expected_paths = (
+                    (expected.resolve(),)
+                    if expected.is_absolute()
+                    else tuple((root / expected).resolve() for root in roots)
+                )
+                if runtime_path not in expected_paths:
+                    raise ValueError(f"validated scene identity mismatch for {key}")
+            expected_hash = hashes.get(key)
+            if expected_hash:
+                digest = hashlib.sha256()
+                with runtime_path.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                if digest.hexdigest().lower() != str(expected_hash).lower():
+                    raise ValueError(f"validated scene identity mismatch for {key} hash")
 
     @staticmethod
     def _step_length(request: RunRequest, validated_step_length: float) -> float:
