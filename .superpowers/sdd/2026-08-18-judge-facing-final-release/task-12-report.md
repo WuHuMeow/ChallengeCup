@@ -122,7 +122,7 @@ Executed a real fixed-time scene 1 run through `RunService` with the explicit
 legacy smoke request `steps=100`. The service adapted it to a
 `SimulationWindow`, while the runner and evidence remained seconds-based.
 
-Final run:
+Historical run (superseded by the re-entry run below):
 
 ```text
 run_id: 5b1b4d404815
@@ -298,3 +298,39 @@ Remaining concerns are unchanged from the prior report: the configured
 pytest/output directories are ACL-blocked, generated `.task12-*` paths remain
 untracked and unstaged, and Task 10's parked CloudPolicy compatibility finding
 is out of scope.
+
+## Validated Scene Timebase Supplemental Fix (2026-08-21)
+
+This additive fix requires `RunService` to resolve an exact passing manifest
+through `SceneRegistry.list_scenes(formal_only=True)` before constructing the
+runtime scene. The validated manifest supplies the base step length; an
+explicit request override remains authoritative. Missing and failed manifests
+now fail before runner construction. The two lifecycle wait tests use observed
+`_wait_until_done` entry/return events instead of scheduling delays.
+
+### RED evidence
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-validated-scene-red -k "uses_validated_manifest_timebase or rejects_scene_without_passing_validated_manifest"
+3 failed, 11 deselected in 3.27s
+```
+
+The timebase case wrote raw XML `step_length == 1.0` instead of the passing
+manifest's `0.25`. The missing- and failed-manifest cases both completed and
+constructed a runner instead of failing at the validated-scene boundary.
+
+### GREEN evidence
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-validated-scene-green -k "uses_validated_manifest_timebase or rejects_scene_without_passing_validated_manifest"
+3 passed, 11 deselected in 2.57s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-validated-scene-core-green
+33 passed in 23.14s
+
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-validated-scene-focused
+90 passed in 37.99s
+```
+
+The supplemental commit hash is reported in the post-commit handoff because a
+commit cannot contain its own final hash without changing that hash.

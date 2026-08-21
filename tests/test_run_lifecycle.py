@@ -175,7 +175,10 @@ def test_stop_waits_after_terminal_state_publication_until_cleanup(
     _CompletedRunner.release.clear()
     service = RunService(output_root=tmp_path, runner_factory=_CompletedRunner)
     terminal_published = threading.Event()
+    wait_entered = threading.Event()
+    wait_returned = threading.Event()
     original_transition = service._states.transition
+    original_wait_until_done = service._wait_until_done
 
     def transition_with_terminal_pause(run_id, new_status, reason, **kwargs):
         result = original_transition(run_id, new_status, reason, **kwargs)
@@ -186,7 +189,15 @@ def test_stop_waits_after_terminal_state_publication_until_cleanup(
             assert _CompletedRunner.release.wait(timeout=5)
         return result
 
+    def observed_wait_until_done(run_id):
+        wait_entered.set()
+        try:
+            return original_wait_until_done(run_id)
+        finally:
+            wait_returned.set()
+
     monkeypatch.setattr(service._states, "transition", transition_with_terminal_pause)
+    monkeypatch.setattr(service, "_wait_until_done", observed_wait_until_done)
     queued = service.submit(
         RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
     )
@@ -199,14 +210,18 @@ def test_stop_waits_after_terminal_state_publication_until_cleanup(
         name="terminal-stopper",
     )
     stopper.start()
-    time.sleep(0.05)
-    assert stopper.is_alive()
-    assert stop_results == []
-    assert stop_errors == []
-
-    _CompletedRunner.release.set()
-    stopper.join(timeout=5)
-    service.shutdown()
+    try:
+        assert wait_entered.wait(timeout=2)
+        assert not wait_returned.is_set()
+        assert stop_results == []
+        assert stop_errors == []
+    finally:
+        _CompletedRunner.release.set()
+        try:
+            assert wait_returned.wait(timeout=5)
+        finally:
+            stopper.join(timeout=5)
+            service.shutdown()
 
     assert not stopper.is_alive()
     assert stop_results == [False]
@@ -214,10 +229,24 @@ def test_stop_waits_after_terminal_state_publication_until_cleanup(
     assert json.loads((queued.run_dir / "status.json").read_text())["status"] == "completed"
 
 
-def test_stop_handles_terminal_artifact_before_state_publication(tmp_path):
+def test_stop_handles_terminal_artifact_before_state_publication(
+    monkeypatch, tmp_path
+):
     _ArtifactTerminalRunner.published.clear()
     _ArtifactTerminalRunner.release.clear()
     service = RunService(output_root=tmp_path, runner_factory=_ArtifactTerminalRunner)
+    wait_entered = threading.Event()
+    wait_returned = threading.Event()
+    original_wait_until_done = service._wait_until_done
+
+    def observed_wait_until_done(run_id):
+        wait_entered.set()
+        try:
+            return original_wait_until_done(run_id)
+        finally:
+            wait_returned.set()
+
+    monkeypatch.setattr(service, "_wait_until_done", observed_wait_until_done)
     queued = service.submit(
         RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
     )
@@ -230,14 +259,18 @@ def test_stop_handles_terminal_artifact_before_state_publication(tmp_path):
         name="artifact-terminal-stopper",
     )
     stopper.start()
-    time.sleep(0.05)
-    assert stop_results == []
-    assert stop_errors == []
-    assert stopper.is_alive()
-
-    _ArtifactTerminalRunner.release.set()
-    stopper.join(timeout=5)
-    service.shutdown()
+    try:
+        assert wait_entered.wait(timeout=2)
+        assert not wait_returned.is_set()
+        assert stop_results == []
+        assert stop_errors == []
+    finally:
+        _ArtifactTerminalRunner.release.set()
+        try:
+            assert wait_returned.wait(timeout=5)
+        finally:
+            stopper.join(timeout=5)
+            service.shutdown()
 
     assert not stopper.is_alive()
     assert stop_results == [False]

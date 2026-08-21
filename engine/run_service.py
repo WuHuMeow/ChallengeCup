@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-import xml.etree.ElementTree as ET
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -222,8 +221,22 @@ class RunService:
                     return self._finish_interrupted_before_start(artifacts)
                 raise
 
+            manifest = next(
+                (
+                    candidate
+                    for candidate in self.registry.list_scenes(formal_only=True)
+                    if candidate.scene_id == request.intersection_id
+                    and candidate.validation_status == "pass"
+                ),
+                None,
+            )
+            if manifest is None:
+                raise ValueError(
+                    "validated scene manifest unavailable or failed for "
+                    f"scene {request.intersection_id}"
+                )
             scene = self.registry.get_scene(request.intersection_id)
-            step_length = self._step_length(request, scene.meta.sumo_cfg)
+            step_length = self._step_length(request, manifest.step_length)
             window = self._window(request, step_length)
             derived_steps = steps_for_seconds(window.duration_seconds, step_length)
             artifacts.write_manifest({
@@ -354,15 +367,10 @@ class RunService:
         return SimulationWindow(request.duration_seconds, request.warmup_seconds)
 
     @staticmethod
-    def _step_length(request: RunRequest, sumo_cfg: Path) -> float:
+    def _step_length(request: RunRequest, validated_step_length: float) -> float:
         if request.step_length_override is not None:
             return float(request.step_length_override)
-        try:
-            root = ET.parse(sumo_cfg).getroot()
-            element = root.find("./time/step-length")
-            return float(element.get("value")) if element is not None else 1.0
-        except (OSError, ET.ParseError, TypeError, ValueError) as exc:
-            raise ValueError(f"invalid SUMO step-length in {sumo_cfg}") from exc
+        return validated_step_length
 
     def _result_from_artifacts(self, artifacts: RunArtifacts) -> RunResult:
         payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))

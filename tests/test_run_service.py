@@ -7,12 +7,15 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
 from core.timebase import SimulationWindow
 from core.types import Scene
+from scenes.models import SceneManifest
 from scenes.registry import SceneRegistry
 from engine.run_service import RunService
 from engine.runner import SimulationRunner
@@ -42,6 +45,19 @@ class RecordingRunner:
             sumo_version="test",
         )
         return []
+
+
+class ValidatedRegistry:
+    def __init__(self, scene, manifest):
+        self.scene = scene
+        self.manifest = manifest
+
+    def get_scene(self, intersection_id):
+        assert intersection_id == self.scene.meta.intersection_id
+        return self.scene
+
+    def list_scenes(self, formal_only=False):
+        return () if self.manifest is None else (self.manifest,)
 
 
 class EdgeMappingRunner(SimulationRunner):
@@ -156,21 +172,96 @@ def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
         encoding="utf-8",
     )
 
-    class CustomRegistry:
-        def get_scene(self, intersection_id):
-            return Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg))
-
     RecordingRunner.run_steps = []
     service = RunService(
         output_root=tmp_path / "runs",
         runner_factory=RecordingRunner,
-        registry=CustomRegistry(),
+        registry=ValidatedRegistry(
+            Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg)),
+            SceneManifest(
+                scene_id="1", step_length=1.0, validation_status="pass"
+            ),
+        ),
     )
 
     result = service.run_sync(RunRequest("1", "fixed_time"))
 
     assert result.status is RunStatus.COMPLETED
     assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
+
+
+def test_run_service_uses_validated_manifest_timebase_instead_of_raw_xml(tmp_path):
+    base_scene = SceneRegistry().get_scene("1")
+    raw_cfg = tmp_path / "raw-one-second.sumocfg"
+    raw_cfg.write_text(
+        "<configuration><time><step-length value='1.0'/></time></configuration>",
+        encoding="utf-8",
+    )
+    registry = ValidatedRegistry(
+        Scene(meta=replace(base_scene.meta, sumo_cfg=raw_cfg)),
+        SceneManifest(scene_id="1", step_length=0.25, validation_status="pass"),
+    )
+    RecordingRunner.calls = []
+    RecordingRunner.run_steps = []
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=RecordingRunner,
+        registry=registry,
+    )
+
+    result = service.run_sync(
+        RunRequest(
+            "1", "fixed_time", duration_seconds=1, warmup_seconds=0
+        )
+    )
+
+    manifest = json.loads((result.run_dir / "manifest.json").read_text())
+    assert result.status is RunStatus.COMPLETED
+    assert manifest["step_length"] == 0.25
+    assert manifest["derived_steps"] == 4
+    assert RecordingRunner.run_steps == [SimulationWindow(1, 0)]
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        None,
+        SceneManifest(
+            scene_id="1",
+            step_length=0.25,
+            validation_status="fail",
+            warnings=("invalid step-length",),
+        ),
+    ],
+    ids=("missing", "failed"),
+)
+def test_run_service_rejects_scene_without_passing_validated_manifest(
+    tmp_path, manifest
+):
+    base_scene = SceneRegistry().get_scene("1")
+    raw_cfg = tmp_path / "runnable.sumocfg"
+    raw_cfg.write_text(
+        "<configuration><time><step-length value='1.0'/></time></configuration>",
+        encoding="utf-8",
+    )
+    RecordingRunner.calls = []
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=RecordingRunner,
+        registry=ValidatedRegistry(
+            Scene(meta=replace(base_scene.meta, sumo_cfg=raw_cfg)), manifest
+        ),
+    )
+
+    result = service.run_sync(
+        RunRequest(
+            "1", "fixed_time", duration_seconds=1, warmup_seconds=0
+        )
+    )
+
+    assert result.status is RunStatus.FAILED
+    assert "validated scene" in result.reason.lower()
+    assert RecordingRunner.calls == []
 
 
 def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
@@ -248,13 +339,16 @@ def test_run_service_converts_edge_delay_steps_to_scene_seconds(tmp_path):
         encoding="utf-8",
     )
 
-    class CustomRegistry:
-        def get_scene(self, intersection_id):
-            return Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg))
-
     RecordingRunner.calls = []
     service = RunService(
-        output_root=tmp_path / "runs", runner_factory=RecordingRunner, registry=CustomRegistry()
+        output_root=tmp_path / "runs",
+        runner_factory=RecordingRunner,
+        registry=ValidatedRegistry(
+            Scene(meta=replace(base_scene.meta, sumo_cfg=custom_cfg)),
+            SceneManifest(
+                scene_id="1", step_length=0.5, validation_status="pass"
+            ),
+        ),
     )
 
     result = service.run_sync(RunRequest("1", "fixed_time", steps=5, edge_delay_steps=2))
@@ -273,10 +367,6 @@ def test_step_override_drives_effective_sumo_ticks_and_edge_delay(tmp_path):
         encoding="utf-8",
     )
 
-    class CustomRegistry:
-        def get_scene(self, intersection_id):
-            return Scene(meta=replace(base_scene.meta, sumo_cfg=source_cfg))
-
     algorithm = TickRecordingAlgorithm()
     algorithms = AlgorithmRegistry()
     algorithms.register(
@@ -286,7 +376,12 @@ def test_step_override_drives_effective_sumo_ticks_and_edge_delay(tmp_path):
     service = RunService(
         output_root=tmp_path / "runs",
         runner_factory=EffectiveStepRunner,
-        registry=CustomRegistry(),
+        registry=ValidatedRegistry(
+            Scene(meta=replace(base_scene.meta, sumo_cfg=source_cfg)),
+            SceneManifest(
+                scene_id="1", step_length=1.0, validation_status="pass"
+            ),
+        ),
         algorithm_registry=algorithms,
     )
 
