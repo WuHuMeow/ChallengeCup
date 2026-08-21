@@ -352,3 +352,50 @@ All behavior tests use hand-derived literal expectations and real state/control 
 - Capacity-aware inspection only plans/caches. `step()` is the only controller/policy commit point for both legacy and movement paths. M0-M3 never plan prediction, M4 commits one prediction, and all capacity-aware legacy actions/live fields/audit/manifest retain the selected `10..30` layer limits.
 - The implementation does not deduplicate bridge actions and does not change Runner, signal writing, transition insertion, the shared action validator, or any Task 11 executor behavior.
 - The real smoke again selected safe no-action fallbacks, so it proves channel/audit/safety telemetry but not applied-action correlation. Exact action and `ActionResult` correlation remains supported by focused behavior tests using the existing shared bridge path.
+
+## Review Fix Round 5
+
+### TDD Evidence
+
+1. RED transaction history, nested lifecycle, direct-step compatibility, and scoring extension behavior:
+   `./.venv/Scripts/python.exe -m pytest -q tests/test_cloud.py::test_cloud_duplicate_commit_preserves_a_newer_pending_plan tests/test_cloud.py::test_cloud_rejects_planning_and_committing_changed_old_history tests/test_algorithms.py::test_ca_mp_duplicate_commit_preserves_a_newer_pending_plan tests/test_algorithms.py::test_ca_mp_rejects_planning_and_committing_changed_old_history tests/test_algorithms.py::test_ca_mp_cached_plan_rejects_an_injected_policy_reset tests/test_algorithms.py::test_ca_mp_repeated_selected_current_step_actions_then_no_action tests/test_algorithms.py::test_ca_mp_subclass_phase_pressure_override_changes_selected_phase tests/test_capacity_aware_max_pressure.py::test_capacity_duplicate_commit_preserves_a_newer_pending_plan tests/test_capacity_aware_max_pressure.py::test_capacity_cached_plan_rejects_an_injected_policy_reset --basetemp=.t10/round5-red-final`
+   Result: `9 failed in 0.67s` as expected. Duplicate A commits raised superseded errors while B was pending; Cloud/direct history commits raised stale-revision errors; composite caches survived an injected policy reset; direct repeated `step()` replayed two actions; and a real `phase_pressure()` override did not change selection.
+2. GREEN for the same nine behaviors:
+   `./.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests/test_cloud.py::test_cloud_duplicate_commit_preserves_a_newer_pending_plan tests/test_cloud.py::test_cloud_rejects_planning_and_committing_changed_old_history tests/test_algorithms.py::test_ca_mp_duplicate_commit_preserves_a_newer_pending_plan tests/test_algorithms.py::test_ca_mp_rejects_planning_and_committing_changed_old_history tests/test_algorithms.py::test_ca_mp_cached_plan_rejects_an_injected_policy_reset tests/test_algorithms.py::test_ca_mp_repeated_selected_current_step_actions_then_no_action tests/test_algorithms.py::test_ca_mp_subclass_phase_pressure_override_changes_selected_phase tests/test_capacity_aware_max_pressure.py::test_capacity_duplicate_commit_preserves_a_newer_pending_plan tests/test_capacity_aware_max_pressure.py::test_capacity_cached_plan_rejects_an_injected_policy_reset --basetemp=.t10/fix5-green-final`
+   Result: `9 passed in 0.44s`.
+3. The first amended-focused pass exposed two older multi-tick fixtures that reused order `(100, 10.0)` for changed observations. Their second observations now use `(101, 11.0)`, matching the new monotonic history contract; no production exception was added. The final amended-focused command below is green.
+
+### Verification
+
+- Final amended focused tests:
+  `./.venv/Scripts/python.exe -m pytest tests/test_cloud.py tests/test_algorithms.py tests/test_capacity_aware_max_pressure.py -q -p no:cacheprovider --basetemp=.t10/fix5-amended-focused-final`
+  Result: `83 passed in 0.71s`.
+- Final Task 10 expanded focused suite, including every Round 4 transaction/purity/config/reason test:
+  `./.venv/Scripts/python.exe -m pytest tests/test_capacity_aware_max_pressure.py tests/test_edge_channel.py tests/test_runner_channel.py tests/test_run_service.py tests/test_cloud.py tests/test_capacity_preflight.py tests/test_algorithms.py -q -p no:cacheprovider --basetemp=.t10/fix5-expanded-focused-attempt1`
+  Result: `134 passed in 13.67s`.
+- Final full project suite with a fresh basetemp:
+  `./.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=.t10/fix5-full-final`
+  Result: `514 passed in 80.79s (0:01:20)`.
+- Official static capacity preflight:
+  `./.venv/Scripts/python.exe -c "from scenes.capacity_preflight import validate_capacity_aware_scene; from scenes.registry import SceneRegistry; scenes = [SceneRegistry().get_scene(str(index)) for index in range(1, 21)]; [validate_capacity_aware_scene(scene.meta.sumo_net) for scene in scenes]; print(f'{len(scenes)}/20 official capacity preflights passed')"`
+  Result: `20/20 official capacity preflights passed`.
+- Real 100-step RunService/SUMO EdgeMessage smoke:
+  `RunService(output_root=Path('.t10/fix5-real-smoke-final')).run_sync(RunRequest('1', 'capacity_aware_maxpressure', steps=100, seed=42, edge_delay_steps=2))`
+  Result: run ID `0af71d81ce6a`, `completed`, `requested_steps=100`, `final_simulation_time=100.0`, `channel_wait=2`, `algorithm_audit=98`, `action_applied=0`, `action_rejected=0`, and `illegal_transition=0`. The manifest records `layer=M3`, `safety_boundary=shared_action_validation`, `prediction_enabled=false`, and green limits `10..30`.
+- Python compatibility:
+  `python --version` returned `Python 3.14.7`; `python -m compileall algorithms cloud engine scenes` exited 0.
+- Integrity and protected inputs:
+  `git diff --check` exited 0. `Get-FileHash -Algorithm SHA256 -LiteralPath "赛题资料.7z"` remained `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`; `data/intersection_data` remains 163 tracked and 232 on-disk files; `git diff` and `git diff --cached` name no protected path. The pre-existing `progress.md`, `.t10/`, `.t9c/`, and untracked archive remain excluded from the scoped fix.
+
+### Files Changed
+
+- Modified `cloud/cloud_policy.py`, `algorithms/ca_max_pressure.py`, and `algorithms/capacity_aware_max_pressure.py`.
+- Modified `tests/test_cloud.py`, `tests/test_algorithms.py`, and `tests/test_capacity_aware_max_pressure.py`.
+- Appended this Task 10 report section.
+
+### Self Review and Concerns
+
+- Cloud, direct legacy, and capacity validators now recognize their current committed plan as an idempotent no-op without clearing a newer pending plan, but only after owner/reset/config and relevant nested-policy freshness checks.
+- Cloud and direct legacy planning/commit enforce monotonic observation history with stable `cloud_history_unavailable` and `legacy_history_unavailable` failures. The direct compatibility path may recompute an identical committed observation against current controller state, preserving `actions` then `[]`, while explicit `commit_plan(plan)` remains idempotent.
+- Composite pending/committed cache hits validate nested policy lifecycle before returning. Direct legacy subclasses again control selection through `phase_pressure()`; capacity legacy planning continues to use the frozen profile scorer, preserving purity and layer attribution.
+- No Runner, bridge, action-validation, transition-insertion, Task 11, progress/package, or protected-input surface was changed. The real smoke again selected safe no-action fallbacks, so it proves channel/audit/safety telemetry but not applied-action correlation; focused shared-bridge behavior tests retain that evidence.

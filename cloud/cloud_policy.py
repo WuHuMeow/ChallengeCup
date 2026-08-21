@@ -176,6 +176,13 @@ class CloudPolicy:
             )
             if committed_key == key:
                 return self._committed_plan
+            current_order = (state.step, float(state.timestamp))
+            committed_order = (
+                self._committed_plan.state_step,
+                self._committed_plan.state_timestamp,
+            )
+            if current_order <= committed_order:
+                raise RuntimeError("cloud_history_unavailable")
 
         predicted: dict[str, float] = {}
         next_prev_predicted = dict(self._prev_predicted)
@@ -245,10 +252,30 @@ class CloudPolicy:
             raise RuntimeError("cloud_plan_post_reset")
         if plan.config_fingerprint != self._config_fingerprint():
             raise RuntimeError("cloud_plan_config_changed")
+        if plan is self._committed_plan:
+            return False
+        if self._committed_plan is not None:
+            plan_key = (
+                plan.state_fingerprint,
+                plan.config_fingerprint,
+                plan.prediction_enabled,
+                plan.dispatch_enabled,
+            )
+            committed_key = (
+                self._committed_plan.state_fingerprint,
+                self._committed_plan.config_fingerprint,
+                self._committed_plan.prediction_enabled,
+                self._committed_plan.dispatch_enabled,
+            )
+            plan_order = (plan.state_step, plan.state_timestamp)
+            committed_order = (
+                self._committed_plan.state_step,
+                self._committed_plan.state_timestamp,
+            )
+            if plan_key != committed_key and plan_order <= committed_order:
+                raise RuntimeError("cloud_history_unavailable")
         if self._pending_plan is not None and plan is not self._pending_plan:
             raise RuntimeError("cloud_plan_superseded")
-        if self._pending_plan is None and plan is self._committed_plan:
-            return False
         if plan.base_revision != self._runtime_revision:
             raise RuntimeError("cloud_plan_stale_revision")
         if plan is not self._pending_plan:

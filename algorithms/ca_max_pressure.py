@@ -310,10 +310,30 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         state: JointState,
         *,
         profile: _LegacyPlanningProfile | None = None,
+        _reuse_committed: bool = True,
     ) -> LegacyDecisionPlan:
         """Build one immutable legacy decision without committing runtime state."""
-        effective, cloud_plan, predicted = self._profile_and_cloud_plan(state, profile)
+        direct_scoring = profile is None
         fingerprint = joint_state_fingerprint(state)
+        current_order = (state.step, float(state.timestamp))
+        if self._committed_legacy_plan is not None:
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if (
+                fingerprint != self._committed_legacy_plan.state_fingerprint
+                and current_order <= committed_order
+            ):
+                raise RuntimeError("legacy_history_unavailable")
+        for cached in (
+            self._pending_legacy_plan,
+            self._committed_legacy_plan,
+        ):
+            if cached is not None and cached.state_fingerprint == fingerprint:
+                self._validate_legacy_nested_plan(cached)
+
+        effective, cloud_plan, predicted = self._profile_and_cloud_plan(state, profile)
         cache_key = (fingerprint, effective)
         if self._pending_legacy_plan is not None:
             pending_key = (
@@ -326,14 +346,22 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
                 and self._pending_legacy_plan.base_revision
                 == self._legacy_runtime_revision
             ):
+                self._validate_legacy_nested_plan(self._pending_legacy_plan)
                 return self._pending_legacy_plan
         if self._committed_legacy_plan is not None:
             committed_key = (
                 self._committed_legacy_plan.state_fingerprint,
                 self._committed_legacy_plan.profile,
             )
-            if committed_key == cache_key:
+            if committed_key == cache_key and _reuse_committed:
+                self._validate_legacy_nested_plan(self._committed_legacy_plan)
                 return self._committed_legacy_plan
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if committed_key != cache_key and current_order <= committed_order:
+                raise RuntimeError("legacy_history_unavailable")
 
         phases = list(state.phase_states)
         by_index = {phase.phase_index: phase for phase in phases}
@@ -356,8 +384,12 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
                 predicted_arrivals = sum(
                     predicted.get(lane, 0.0) for lane in phase.incoming_lanes
                 )
-                scores[phase.phase_index] = self._phase_pressure_for(
-                    phase, predicted_arrivals, effective
+                scores[phase.phase_index] = (
+                    self.phase_pressure(phase, predicted_arrivals)
+                    if direct_scoring
+                    else self._phase_pressure_for(
+                        phase, predicted_arrivals, effective
+                    )
                 )
             viable = [
                 phase
@@ -563,6 +595,10 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         self._pending_legacy_plan = plan
         return plan
 
+    def _validate_legacy_nested_plan(self, plan: LegacyDecisionPlan) -> None:
+        if plan.cloud_plan is not None:
+            self.cloud_policy.validate_plan(plan.cloud_plan)
+
     def _validate_legacy_plan(self, plan: LegacyDecisionPlan) -> bool:
         """Validate a legacy plan, returning False only after its first commit."""
         if not isinstance(plan, LegacyDecisionPlan):
@@ -571,16 +607,29 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
             raise RuntimeError("legacy_plan_cross_owner")
         if plan.reset_epoch != self._legacy_reset_epoch:
             raise RuntimeError("legacy_plan_post_reset")
+        if plan is self._committed_legacy_plan:
+            self._validate_legacy_nested_plan(plan)
+            return False
+        if self._committed_legacy_plan is not None:
+            plan_key = (plan.state_fingerprint, plan.profile)
+            committed_key = (
+                self._committed_legacy_plan.state_fingerprint,
+                self._committed_legacy_plan.profile,
+            )
+            plan_order = (plan.state_step, plan.state_timestamp)
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if plan_key != committed_key and plan_order <= committed_order:
+                raise RuntimeError("legacy_history_unavailable")
         if self._pending_legacy_plan is not None and plan is not self._pending_legacy_plan:
             raise RuntimeError("legacy_plan_superseded")
-        if self._pending_legacy_plan is None and plan is self._committed_legacy_plan:
-            return False
         if plan.base_revision != self._legacy_runtime_revision:
             raise RuntimeError("legacy_plan_stale_revision")
         if plan is not self._pending_legacy_plan:
             raise RuntimeError("legacy_plan_not_pending")
-        if plan.cloud_plan is not None:
-            self.cloud_policy.validate_plan(plan.cloud_plan)
+        self._validate_legacy_nested_plan(plan)
         return True
 
     def validate_plan(self, plan: LegacyDecisionPlan) -> bool:
@@ -602,7 +651,7 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         self._pending_legacy_plan = None
 
     def step(self, state: JointState) -> List[ControlAction]:
-        plan = self.plan_decision(state)
+        plan = self.plan_decision(state, _reuse_committed=False)
         self.commit_plan(plan)
         return plan.control_actions()
 

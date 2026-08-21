@@ -172,3 +172,49 @@ def test_cloud_keeps_committed_history_while_a_newer_plan_is_pending():
     assert historical_plan is committed_plan
     policy.commit(newer_plan)
     assert policy._prev_hourly_flow == {"E0": 450.0}
+
+
+def test_cloud_duplicate_commit_preserves_a_newer_pending_plan():
+    """Recommitting A must not supersede or discard the pending plan B."""
+    policy = CloudPolicy()
+    committed = policy.plan(_make_state(), prediction=True, dispatch=True)
+    policy.commit(committed)
+    newer_state = dataclasses.replace(
+        _make_state(), step=101, timestamp=101.0, flows={"E0": 600.0}
+    )
+    newer = policy.plan(newer_state, prediction=True, dispatch=True)
+    before_duplicate = (_runtime_state(policy), policy._runtime_revision)
+
+    policy.commit(committed)
+
+    assert (_runtime_state(policy), policy._runtime_revision) == before_duplicate
+    assert policy._pending_plan is newer
+    policy.commit(newer)
+    after_newer = (_runtime_state(policy), policy._runtime_revision)
+    assert policy._runtime_revision == before_duplicate[1] + 1
+    policy.commit(newer)
+    assert (_runtime_state(policy), policy._runtime_revision) == after_newer
+
+
+def test_cloud_rejects_planning_and_committing_changed_old_history():
+    """Order 100 cannot be reconstructed after order 101 has committed."""
+    policy = CloudPolicy()
+    order_100 = _make_state()
+    changed_100 = dataclasses.replace(order_100, flows={"E0": 450.0})
+    historical = policy.plan(changed_100, prediction=True, dispatch=True)
+    first = policy.plan(order_100, prediction=True, dispatch=True)
+    policy.commit(first)
+    order_101 = dataclasses.replace(
+        order_100, step=101, timestamp=101.0, flows={"E0": 600.0}
+    )
+    second = policy.plan(order_101, prediction=True, dispatch=True)
+    policy.commit(second)
+    committed_runtime = (_runtime_state(policy), policy._runtime_revision)
+
+    with pytest.raises(RuntimeError, match="cloud_history_unavailable"):
+        policy.commit(historical)
+    assert (_runtime_state(policy), policy._runtime_revision) == committed_runtime
+
+    with pytest.raises(RuntimeError, match="cloud_history_unavailable"):
+        policy.plan(changed_100, prediction=True, dispatch=True)
+    assert (_runtime_state(policy), policy._runtime_revision) == committed_runtime

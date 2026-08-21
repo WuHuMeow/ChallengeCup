@@ -759,3 +759,52 @@ def test_capacity_keeps_committed_audit_while_a_newer_plan_is_pending(state):
     algorithm.commit_plan(newer_plan)
     assert newer_plan.actions
     assert committed_actions
+
+
+def test_capacity_duplicate_commit_preserves_a_newer_pending_plan(state):
+    """Recommitting A must leave the capacity and nested B transactions intact."""
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4())
+    committed = algorithm.plan_decision(state)
+    algorithm.commit_plan(committed)
+    newer = algorithm.plan_decision(
+        dataclasses.replace(state, step=11, timestamp=11.0, flows={"in_c": 600.0})
+    )
+    before_duplicate = (
+        _capacity_runtime_state(algorithm),
+        algorithm._decision_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    )
+
+    algorithm.commit_plan(committed)
+
+    assert (
+        _capacity_runtime_state(algorithm),
+        algorithm._decision_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    ) == before_duplicate
+    assert algorithm._pending_decision_plan is newer
+    algorithm.commit_plan(newer)
+    after_newer = (
+        _capacity_runtime_state(algorithm),
+        algorithm._decision_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    )
+    assert algorithm._decision_runtime_revision == before_duplicate[1] + 1
+    algorithm.commit_plan(newer)
+    assert (
+        _capacity_runtime_state(algorithm),
+        algorithm._decision_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    ) == after_newer
+
+
+def test_capacity_cached_plan_rejects_an_injected_policy_reset(state):
+    """A capacity cache hit cannot replay actions from a reset policy epoch."""
+    policy = CloudPolicy()
+    algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4(), policy)
+    assert algorithm.step(state)
+
+    policy.reset()
+
+    with pytest.raises(RuntimeError, match="cloud_plan_post_reset"):
+        algorithm.step(dataclasses.replace(state))

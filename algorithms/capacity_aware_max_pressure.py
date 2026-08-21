@@ -529,6 +529,7 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
                 and self._pending_decision_plan.base_revision
                 == self._decision_runtime_revision
             ):
+                self._validate_nested_decision_plan(self._pending_decision_plan)
                 return self._pending_decision_plan
         if self._committed_decision_plan is not None:
             committed_key = (
@@ -536,6 +537,7 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
                 self._committed_decision_plan.profile_fingerprint,
             )
             if committed_key == cache_key:
+                self._validate_nested_decision_plan(self._committed_decision_plan)
                 return self._committed_decision_plan
             current_order = (state.step, float(state.timestamp))
             committed_order = (
@@ -554,6 +556,12 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
         self._pending_decision_plan = plan
         return plan
 
+    def _validate_nested_decision_plan(self, plan: _DecisionSnapshot) -> None:
+        if plan.legacy_plan is not None:
+            super()._validate_legacy_plan(plan.legacy_plan)
+        elif plan.cloud_plan is not None:
+            self.cloud_policy.validate_plan(plan.cloud_plan)
+
     def validate_plan(self, plan: _DecisionSnapshot) -> bool:
         """Validate a capacity-aware plan before applying any nested transition."""
         if not isinstance(plan, _DecisionSnapshot):
@@ -562,18 +570,16 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             raise RuntimeError("decision_plan_cross_owner")
         if plan.reset_epoch != self._decision_reset_epoch:
             raise RuntimeError("decision_plan_post_reset")
+        if plan is self._committed_decision_plan:
+            self._validate_nested_decision_plan(plan)
+            return False
         if self._pending_decision_plan is not None and plan is not self._pending_decision_plan:
             raise RuntimeError("decision_plan_superseded")
-        if self._pending_decision_plan is None and plan is self._committed_decision_plan:
-            return False
         if plan.base_revision != self._decision_runtime_revision:
             raise RuntimeError("decision_plan_stale_revision")
         if plan is not self._pending_decision_plan:
             raise RuntimeError("decision_plan_not_pending")
-        if plan.legacy_plan is not None:
-            super()._validate_legacy_plan(plan.legacy_plan)
-        elif plan.cloud_plan is not None:
-            self.cloud_policy.validate_plan(plan.cloud_plan)
+        self._validate_nested_decision_plan(plan)
         return True
 
     def commit_plan(self, plan: _DecisionSnapshot) -> None:

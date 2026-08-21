@@ -177,7 +177,13 @@ def test_ca_mp_blocks_saturated_downstream_and_uses_safe_transition():
     algorithm = CAMaxPressureAlgorithm()
 
     first = algorithm.step(_phase_state(current=0, elapsed=20, phases=phases))
-    second = algorithm.step(_phase_state(current=1, elapsed=3, phases=phases))
+    second = algorithm.step(
+        dataclasses.replace(
+            _phase_state(current=1, elapsed=3, phases=phases),
+            step=101,
+            timestamp=11.0,
+        )
+    )
 
     assert first[0].value == 1
     assert "target=2" in first[0].reason
@@ -211,7 +217,13 @@ def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_pending_state():
     duration = next(action.value for action in first if action.action_type == "set_phase_duration")
     assert algorithm.min_green <= duration <= algorithm.max_green
 
-    algorithm.step(_phase_state(current=0, elapsed=20, phases=phases))
+    algorithm.step(
+        dataclasses.replace(
+            _phase_state(current=0, elapsed=20, phases=phases),
+            step=101,
+            timestamp=11.0,
+        )
+    )
     assert algorithm.pending_target_phase == 2
     algorithm.reset()
     assert algorithm.pending_target_phase is None
@@ -382,3 +394,149 @@ def test_ca_mp_keeps_committed_history_while_a_newer_plan_is_pending():
 
     assert historical_plan is committed_plan
     algorithm.commit_plan(newer_plan)
+
+
+def test_ca_mp_duplicate_commit_preserves_a_newer_pending_plan():
+    """A duplicate legacy commit is a no-op even while B is pending."""
+    phases = [_phase(0, 5, 10, 0, 10, 0.1)]
+    state = _phase_state(current=0, elapsed=20, phases=phases)
+    algorithm = CAMaxPressureAlgorithm()
+    committed = algorithm.plan_decision(state)
+    algorithm.commit_plan(committed)
+    newer = algorithm.plan_decision(
+        dataclasses.replace(state, step=101, timestamp=11.0, elapsed_phase_time=21.0)
+    )
+    before_duplicate = (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    )
+
+    algorithm.commit_plan(committed)
+
+    assert (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    ) == before_duplicate
+    assert algorithm._pending_legacy_plan is newer
+    algorithm.commit_plan(newer)
+    after_newer = (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    )
+    assert algorithm._legacy_runtime_revision == before_duplicate[1] + 1
+    algorithm.commit_plan(newer)
+    assert (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+        algorithm.cloud_policy._runtime_revision,
+    ) == after_newer
+
+
+def test_ca_mp_rejects_planning_and_committing_changed_old_history():
+    """The direct legacy transaction cannot advance from reconstructed history."""
+    algorithm = CAMaxPressureAlgorithm()
+    order_100 = _phase_state(
+        current=0, elapsed=20, phases=[], flows={"in_0": 100.0}
+    )
+    changed_100 = dataclasses.replace(order_100, flows={"in_0": 200.0})
+    historical = algorithm.plan_decision(changed_100)
+    first = algorithm.plan_decision(order_100)
+    algorithm.commit_plan(first)
+    order_101 = dataclasses.replace(
+        order_100, step=101, timestamp=11.0, flows={"in_0": 300.0}
+    )
+    second = algorithm.plan_decision(order_101)
+    algorithm.commit_plan(second)
+    committed_runtime = (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+    )
+
+    with pytest.raises(RuntimeError, match="legacy_history_unavailable"):
+        algorithm.commit_plan(historical)
+    assert (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+    ) == committed_runtime
+
+    with pytest.raises(RuntimeError, match="legacy_history_unavailable"):
+        algorithm.plan_decision(changed_100)
+    assert (
+        _ca_runtime_state(algorithm),
+        algorithm._legacy_runtime_revision,
+    ) == committed_runtime
+
+
+def test_ca_mp_cached_plan_rejects_an_injected_policy_reset():
+    """A composite cache hit cannot replay actions from a reset policy epoch."""
+    policy = CloudPolicy()
+    algorithm = CAMaxPressureAlgorithm(cloud_policy=policy)
+    phases = [_phase(0, 5, 10, 0, 10, 0.1)]
+    state = _phase_state(current=0, elapsed=20, phases=phases)
+    assert algorithm.step(state)
+
+    policy.reset()
+
+    with pytest.raises(RuntimeError, match="cloud_plan_post_reset"):
+        algorithm.plan_decision(dataclasses.replace(state))
+
+
+def test_ca_mp_repeated_selected_current_step_actions_then_no_action():
+    """Direct step must plan from its newly committed configured-phase state."""
+    state = _phase_state(
+        current=0,
+        elapsed=20,
+        phases=[_phase(0, 5, 10, 0, 10, 0.1)],
+    )
+    algorithm = CAMaxPressureAlgorithm()
+
+    first_actions = algorithm.step(state)
+    second_actions = algorithm.step(dataclasses.replace(state))
+
+    assert [(action.action_type, action.value) for action in first_actions] == [
+        ("set_phase", 0),
+        ("set_phase_duration", 30.0),
+    ]
+    assert second_actions == []
+
+    explicit = CAMaxPressureAlgorithm()
+    plan = explicit.plan_decision(state)
+    explicit.commit_plan(plan)
+    after_first_commit = (
+        _ca_runtime_state(explicit),
+        explicit._legacy_runtime_revision,
+        explicit.cloud_policy._runtime_revision,
+    )
+    explicit.commit_plan(plan)
+    assert (
+        _ca_runtime_state(explicit),
+        explicit._legacy_runtime_revision,
+        explicit.cloud_policy._runtime_revision,
+    ) == after_first_commit
+
+
+def test_ca_mp_subclass_phase_pressure_override_changes_selected_phase():
+    """The public scoring seam must control real direct-legacy selection."""
+
+    class PreferCurrentPhase(CAMaxPressureAlgorithm):
+        def phase_pressure(self, phase, predicted_arrivals):
+            pressure = super().phase_pressure(phase, predicted_arrivals)
+            return pressure + (10.0 if phase.phase_index == 0 else 0.0)
+
+    state = _phase_state(
+        current=0,
+        elapsed=20,
+        phases=[
+            _phase(0, 1, 10, 0, 10, 0.1),
+            _phase(1, 9, 10, 0, 10, 0.1),
+        ],
+    )
+
+    base_actions = CAMaxPressureAlgorithm().step(state)
+    overridden_actions = PreferCurrentPhase().step(state)
+
+    assert base_actions[0].value == 1
+    assert overridden_actions[0].value == 0
