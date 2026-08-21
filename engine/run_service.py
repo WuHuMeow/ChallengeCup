@@ -65,7 +65,10 @@ class RunService:
     def stop(self, run_id: str) -> bool:
         """Request one run to stop and wait for that run's owned work to finish."""
         current = self._states.get(run_id)
-        if current is None or current.status in TERMINAL_STATUSES:
+        if current is None:
+            return False
+        if current.status in TERMINAL_STATUSES:
+            self._wait_until_done(run_id)
             return False
         if current.status is RunStatus.STOPPING:
             self._wait_until_done(run_id)
@@ -88,8 +91,10 @@ class RunService:
                 raced.status is RunStatus.STOPPING
                 or raced.status in TERMINAL_STATUSES
             ):
-                if raced.status is RunStatus.STOPPING:
-                    self._wait_until_done(run_id)
+                self._wait_until_done(run_id)
+                return False
+            if self._artifact_status(artifacts) in TERMINAL_STATUSES:
+                self._wait_until_done(run_id)
                 return False
             raise
 
@@ -118,6 +123,14 @@ class RunService:
             done_event = self._done.get(run_id)
         if done_event is not None:
             done_event.wait()
+
+    @staticmethod
+    def _artifact_status(artifacts: RunArtifacts) -> RunStatus | None:
+        try:
+            payload = json.loads(artifacts.status.read_text(encoding="utf-8"))
+            return RunStatus(payload["status"])
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return None
 
     def switch_scene(
         self,

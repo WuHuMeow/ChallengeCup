@@ -111,10 +111,12 @@ files are not claimed there. Formal acceptance evidence is separate under
 `RunStatus` 取值：
 
 ```text
-queued, running, completed, stopped, ended_early,
-disconnected, interrupted, failed
+queued, starting, running, stopping, completed, interrupted,
+ended_early, disconnected, failed, stopped
 ```
 
+`starting` 和 `stopping` 是运行中的生命周期状态。用户停止运行的规范终态是
+`interrupted`；`stopped` 仅用于读取旧产物的兼容，不会作为新的停止结果写入。
 只有 `completed` 表示正常完成。验收层另使用 `pass`、`fail`、`not_run`，其中
 `not_run` 表示环境或证据未执行，不能解释成通过。
 

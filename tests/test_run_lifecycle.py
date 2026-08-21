@@ -103,6 +103,55 @@ class _ReleaseAfterStopRunner(_LifecycleRunner):
         return super().run(window, stop_event=stop_event, frame_sink=frame_sink)
 
 
+class _CompletedRunner(_LifecycleRunner):
+    published = threading.Event()
+    release = threading.Event()
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            RunStatus.COMPLETED.value,
+            "",
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+        )
+        type(self).published.set()
+        return RunResult(
+            self.artifacts.run_id,
+            RunStatus.COMPLETED,
+            "",
+            self.artifacts.run_dir,
+            algorithm=self.artifacts.algorithm,
+        )
+
+
+class _ArtifactTerminalRunner(_LifecycleRunner):
+    published = threading.Event()
+    release = threading.Event()
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            RunStatus.COMPLETED.value,
+            "",
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+        )
+        type(self).published.set()
+        assert type(self).release.wait(timeout=5)
+        return RunResult(
+            self.artifacts.run_id,
+            RunStatus.COMPLETED,
+            "",
+            self.artifacts.run_dir,
+            algorithm=self.artifacts.algorithm,
+        )
+
+
 def test_stop_waits_for_owned_future_and_is_idempotent(tmp_path):
     _LifecycleRunner.started.clear()
     _LifecycleRunner.calls.clear()
@@ -117,6 +166,91 @@ def test_stop_waits_for_owned_future_and_is_idempotent(tmp_path):
     assert service.stop(queued.run_id) is False
     assert json.loads((terminal.run_dir / "status.json").read_text())["status"] == "interrupted"
     service.shutdown()
+
+
+def test_stop_waits_after_terminal_state_publication_until_cleanup(
+    monkeypatch, tmp_path
+):
+    _CompletedRunner.published.clear()
+    _CompletedRunner.release.clear()
+    service = RunService(output_root=tmp_path, runner_factory=_CompletedRunner)
+    terminal_published = threading.Event()
+    original_transition = service._states.transition
+
+    def transition_with_terminal_pause(run_id, new_status, reason, **kwargs):
+        result = original_transition(run_id, new_status, reason, **kwargs)
+        if new_status is RunStatus.COMPLETED:
+            terminal_published.set()
+        if new_status is RunStatus.COMPLETED:
+            assert _CompletedRunner.published.is_set()
+            assert _CompletedRunner.release.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(service._states, "transition", transition_with_terminal_pause)
+    queued = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    assert terminal_published.wait(timeout=2)
+
+    stop_results = []
+    stop_errors = []
+    stopper = threading.Thread(
+        target=lambda: _capture_stop(service, queued.run_id, stop_results, stop_errors),
+        name="terminal-stopper",
+    )
+    stopper.start()
+    time.sleep(0.05)
+    assert stopper.is_alive()
+    assert stop_results == []
+    assert stop_errors == []
+
+    _CompletedRunner.release.set()
+    stopper.join(timeout=5)
+    service.shutdown()
+
+    assert not stopper.is_alive()
+    assert stop_results == [False]
+    assert service.get(queued.run_id).status is RunStatus.COMPLETED
+    assert json.loads((queued.run_dir / "status.json").read_text())["status"] == "completed"
+
+
+def test_stop_handles_terminal_artifact_before_state_publication(tmp_path):
+    _ArtifactTerminalRunner.published.clear()
+    _ArtifactTerminalRunner.release.clear()
+    service = RunService(output_root=tmp_path, runner_factory=_ArtifactTerminalRunner)
+    queued = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    assert _ArtifactTerminalRunner.published.wait(timeout=2)
+
+    stop_results = []
+    stop_errors = []
+    stopper = threading.Thread(
+        target=lambda: _capture_stop(service, queued.run_id, stop_results, stop_errors),
+        name="artifact-terminal-stopper",
+    )
+    stopper.start()
+    time.sleep(0.05)
+    assert stop_results == []
+    assert stop_errors == []
+    assert stopper.is_alive()
+
+    _ArtifactTerminalRunner.release.set()
+    stopper.join(timeout=5)
+    service.shutdown()
+
+    assert not stopper.is_alive()
+    assert stop_results == [False]
+    assert stop_errors == []
+    assert service.get(queued.run_id).status is RunStatus.COMPLETED
+    assert json.loads((queued.run_dir / "status.json").read_text())["status"] == "completed"
+
+
+def _capture_stop(service, run_id, results, errors):
+    try:
+        results.append(service.stop(run_id))
+    except Exception as exc:
+        errors.append(exc)
 
 
 def test_switch_scene_waits_for_old_run_then_queues_distinct_run(tmp_path):
@@ -252,6 +386,8 @@ def test_concurrent_stop_callers_are_serialized_and_idempotent(monkeypatch, tmp_
     try:
         _wait_for_status(service, queued.run_id, RunStatus.STOPPING)
         assert _ReleaseAfterStopRunner.stop_observed.wait(timeout=2)
+        assert stop_results == []
+        assert stop_errors == []
     finally:
         _ReleaseAfterStopRunner.release.set()
         for stopper in stoppers:
@@ -357,6 +493,35 @@ def test_runner_uses_simulation_seconds_and_records_derived_steps(tmp_path):
     assert manifest["derived_steps"] == 3
     assert manifest["step_length"] == 0.4
     assert status["status"] == "completed"
+
+
+@pytest.mark.parametrize("invocation", ["positional", "keyword"])
+def test_integer_runner_calls_return_legacy_list_with_artifacts(tmp_path, invocation):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    runner = SimulationRunner(
+        SceneRegistry().get_scene("1"),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        artifacts=artifacts,
+    )
+
+    result = runner.run(2) if invocation == "positional" else runner.run(steps=2)
+
+    assert isinstance(result, list)
+    assert result
+
+
+def test_formal_simulation_window_returns_run_result_with_artifacts(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    result = SimulationRunner(
+        SceneRegistry().get_scene("1"),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        artifacts=artifacts,
+    ).run(SimulationWindow(2.0, 0.0))
+
+    assert isinstance(result, RunResult)
+    assert result.status is RunStatus.COMPLETED
 
 
 class _DisconnectedBridge(_TimedBridge):

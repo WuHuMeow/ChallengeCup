@@ -448,7 +448,9 @@
         "description": "Stable lifecycle states used by runners, services, APIs, and reports.",
         "enum": [
           "queued",
+          "starting",
           "running",
+          "stopping",
           "completed",
           "stopped",
           "ended_early",

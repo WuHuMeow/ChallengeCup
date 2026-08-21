@@ -231,7 +231,7 @@ class SimulationRunner:
             raise ValueError("provide either window or steps, not both")
         requested = steps if steps is not None else window
         seconds_authoritative = isinstance(requested, SimulationWindow)
-        legacy_return = not isinstance(requested, SimulationWindow) and self.artifacts is None
+        legacy_return = not isinstance(requested, SimulationWindow)
         resolved_window, target_steps = self._resolve_window(requested)
         target_seconds = resolved_window.duration_seconds
         self.collector = MetricsCollector(self.output_csv)

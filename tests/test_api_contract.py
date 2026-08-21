@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from api.server import create_app
+from core.run_models import RunStatus
 from scripts.export_api_contract import export_contracts
 
 
@@ -21,6 +22,20 @@ def test_openapi_contains_canonical_pdf_endpoints():
         "/api/edge/control",
     ]:
         assert path in paths
+
+
+def test_runtime_run_status_matches_checked_in_openapi_contract():
+    runtime = create_app().openapi()["components"]["schemas"]["RunStatus"]["enum"]
+    checked_in = json.loads(
+        (Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )["components"]["schemas"]["RunStatus"]["enum"]
+
+    assert runtime == checked_in
+    assert runtime == [item.value for item in RunStatus]
+    assert "interrupted" in runtime
+    assert "stopped" in runtime
 
 
 def test_exported_openapi_and_postman_are_parseable(tmp_path):

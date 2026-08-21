@@ -36,7 +36,7 @@ class FakeRunService:
         current = self.records[run_id]
         self.records[run_id] = RunResult(
             current.run_id,
-            RunStatus.STOPPED,
+            RunStatus.INTERRUPTED,
             "stop requested",
             current.run_dir,
         )
@@ -100,7 +100,18 @@ def test_submit_read_and_stop_run(client, service):
     assert response.json()["algorithm"] == "fixed_time"
     assert service.requests[0].intersection_id == "1"
     assert client.get("/api/runs/run-1").json()["status"] == "queued"
-    assert client.post("/api/runs/run-1/stop").json()["status"] == "stopped"
+    assert client.post("/api/runs/run-1/stop").json()["status"] == "interrupted"
+
+
+def test_legacy_stopped_status_remains_readable(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1",
+        RunStatus.STOPPED,
+        "legacy stop",
+        service.root / "run-1",
+    )
+
+    assert client.get("/api/runs/run-1").json()["status"] == "stopped"
 
 
 def test_canonical_run_endpoint_rejects_legacy_algorithm_alias(client):

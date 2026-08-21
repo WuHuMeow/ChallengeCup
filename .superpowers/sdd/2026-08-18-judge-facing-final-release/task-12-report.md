@@ -1,151 +1,300 @@
-# Task 12 Report: Lifecycle-Safe RunService and SimulationRunner
+# Task 12 Implementation Report
 
-## Status
+Date: 2026-08-21
 
-IMPLEMENTED. Task 12 was resumed on `codex/judge-final-release` from base
-`71bd4b0`. The lifecycle state machine, per-run ownership, seconds-based runner
-window, atomic artifacts, exact-PID cleanup, and scene-switch synchronization
-are implemented and verified.
+Branch: `codex/judge-final-release`
+
+Baseline: `71bd4b05acc866d79e96bcecb2cb703fedbaa8ec`
+
+Commit message: `fix: make run lifecycle and scene switching safe`
+
+## Outcome
+
+Implemented the lifecycle-safe `RunService` and `SimulationRunner` contract.
+Runs now follow a monotonic `queued -> starting -> running -> stopping ->
+terminal` graph, preserve terminal results, use `interrupted` for new user-stop
+evidence, wait for each run's owned work during stop and scene switch, derive
+runner termination from `SimulationWindow` seconds, and atomically persist
+`manifest.json` and `status.json` alongside compatible `run_metadata.json`.
+
+`TraCIBridge` records the exact `Popen` object and PID created by TraCI. Cleanup
+closes TraCI, waits for that process, and applies terminate/kill fallback only to
+that exact handle. No process-name scan or process-name kill exists in production
+code. Task 11's `SafetyExecutor.apply()` path and action/event evidence remain
+unchanged.
 
 ## TDD Evidence
 
-The recovered diff's existing Task 12 focused baseline was run first with the
-project interpreter and an external same-volume basetemp:
+### RED
 
-```powershell
-.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py tests/test_run_service.py tests/test_runner_channel.py tests/test_artifacts.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-baseline-20260821-b
+Command:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py tests/test_run_service.py tests/test_runner_channel.py tests/test_artifacts.py -q
 ```
 
-Result: `56 passed in 19.35s`.
+Expected failure observed before production implementation:
 
-The three deterministic recovery-race tests were then added at the public
-`RunService.submit/get/stop/switch_scene` seam. The first RED run reproduced
-the queued-stop race:
-
-```powershell
-.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py::test_stop_between_queued_observation_and_start_preserves_interrupted tests/test_run_lifecycle.py::test_concurrent_stop_callers_are_serialized_and_idempotent tests/test_run_lifecycle.py::test_switch_scene_waits_when_another_caller_is_already_stopping -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-race-red-20260821-a
+```text
+ERROR tests/test_run_lifecycle.py
+ModuleNotFoundError: No module named 'engine.run_state'
+1 error in 0.84s
 ```
 
-Result: `F..`; the queued run ended `failed` with `invalid run transition
-stopping -> starting` instead of canonical `interrupted`. The recovery handoff
-already contained the concurrent-stop and already-stopping switch wait fixes
-when they were reread, so those two cases were GREEN on re-entry; the handoff's
-prior audit is the retained RED evidence for those defects. The final tests
-still force all three interleavings deterministically and assert the public
-behavior.
+The repository's configured `output/tmp` pytest base directory is ACL-blocked.
+Subsequent runs therefore used explicit `.task12-pytest-*` base-temp paths. One
+attempt using the configured directory produced fixture setup `PermissionError`
+only and was not treated as a behavioral result.
 
-The minimal implementation change closes the same stale-stop window at both
-startup transitions. A stop that wins before `starting` or `running` is
-committed now finalizes `interrupted`; it cannot fall through to generic
-failure. The final race rerun was:
+### GREEN and race expansion
 
-```powershell
-.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py::test_stop_between_queued_observation_and_start_preserves_interrupted tests/test_run_lifecycle.py::test_concurrent_stop_callers_are_serialized_and_idempotent tests/test_run_lifecycle.py::test_switch_scene_waits_when_another_caller_is_already_stopping -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-race-green-current-20260821-a
+Initial required focused GREEN:
+
+```text
+55 passed in 22.28s
 ```
 
-Result: `3 passed in 3.34s`.
+Affected suite including lifecycle, service, runner, artifacts, models,
+timebase, resilience, seed, and events:
 
-## Verification
-
-Required focused matrix:
-
-```powershell
-.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py tests/test_run_service.py tests/test_runner_channel.py tests/test_artifacts.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-focused-green-20260821-a
+```text
+92 passed in 23.14s
 ```
 
-Result: `59 passed in 18.09s`.
+Race-focused tests then deterministically covered:
 
-Full project suite (repo-local basetemp is required by fixed-time provenance
-tests):
+- stop between a queued observation and the worker's starting transition;
+- two concurrent stop callers;
+- scene switch while another caller already owns stopping;
+- canceling a queued run without signaling or starting the active run.
 
-```powershell
-.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .task12-pytest-final-full-ours
+The first final full run exposed the stale queued-observation race as
+`stopping -> starting`, producing `failed`. After re-reading the lifecycle on a
+rejected starting transition, the race suite returned:
+
+```text
+14 passed in 12.88s
 ```
 
-Result: `592 passed in 121.79s (0:02:01)`.
+The required final focused command returned:
 
-The same full command with an external basetemp reached `588 passed` but had
-four expected fixed-time provenance failures because those tests reject source
-files outside the repository. No product failure was inferred from that
-environment-only attempt.
-
-## Real SUMO Smoke and Ownership
-
-SUMO `1.27.1` was available. A real scene 1 fixed-time run used
-`RunService.run_sync(RunRequest("1", "fixed_time", steps=100,
-warmup_seconds=0))` with output root `.task12-real-sumo-100`.
-
-- Run ID: `7c69507a6cba`
-- Result: `completed`
-- Requested/derived steps: `100` / `100`
-- Requested seconds: `100.0`
-- Final simulation time: `100.0`
-- `manifest.json` exact `sumo_pid`: `25052`
-- `run_metadata.json` exact `sumo_pid`: `25052`
-
-Post-run ownership check:
-
-```powershell
-Get-Process -Id 25052 -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^sumo(gui)?\.exe$' }
+```text
+59 passed in 18.45s
 ```
 
-Result: exact PID `25052` absent; `0` remaining SUMO processes. Cleanup is
-performed by the owning bridge's recorded process object and never by a global
-SUMO name scan.
+## Final Verification
 
-## Static and Protected-Input Checks
+Final full suite command:
 
-- `.venv\Scripts\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests`: `COMPILEALL PASS`.
-- `git diff --check`: `DIFF CHECK PASS` (only existing LF/CRLF warnings).
-- `赛题资料.7z` SHA-256: `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`.
-- `data/intersection_data`: `163` Git-tracked files and `232` files on disk.
-- Diff of `赛题资料.7z`, `data/intersection_data`, `.t9c`, `.t10`, and `.t11`: empty.
+```text
+.\.venv\Scripts\python.exe -m pytest -q --basetemp=.task12-pytest-commit-full
+```
+
+Result:
+
+```text
+592 passed, 1 warning in 94.77s
+```
+
+The warning is pytest's cache provider being unable to write the pre-existing
+ACL-blocked `.pytest_cache`; the explicit test base directory worked and all
+tests passed.
+
+Additional gates:
+
+```text
+python -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests visualization
+COMPILEALL_OK
+
+git diff --check
+exit 0
+
+python -m flake8 <Task 12 production and test files> --ignore=E501,W503
+exit 0
+```
+
+A production-path search for `taskkill`, `pkill`, `killall`, process-name SUMO
+enumeration, and name-based SUMO kill logic returned no matches.
+
+## Real SUMO and PID Evidence
+
+Executed a real fixed-time scene 1 run through `RunService` with the explicit
+legacy smoke request `steps=100`. The service adapted it to a
+`SimulationWindow`, while the runner and evidence remained seconds-based.
+
+Final run:
+
+```text
+run_id: 5b1b4d404815
+run_dir: output/evidence/task-12-lifecycle-smoke-20260821/i1/fixed_time/x1/s42/5b1b4d404815
+result status: completed
+status.json: completed
+run_metadata.json: completed
+requested_seconds: 100.0
+derived_steps: 100
+step_length: 1.0
+final_simulation_time: 100.0
+owned SUMO PID: 17416
+exact PID alive after runner cleanup: false
+SUMO PIDs before: []
+SUMO PIDs after: []
+```
+
+The verification queried PID `17416` exactly after cleanup and separately
+compared read-only pre/post SUMO inventories. It did not terminate or kill by
+name.
+
+## Protected Inputs
+
+```text
+赛题资料.7z SHA-256:
+12a6f2fd69acbcbbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f
+
+data/intersection_data tracked files: 163
+data/intersection_data files on disk: 232
+```
+
+`git diff --name-only -- data/intersection_data .t9c .t10 .t11` returned no
+paths. `赛题资料.7z`, `.t9c`, `.t10`, `.t11`, and official scene data were not
+modified. Task 10's parked CloudPolicy compatibility finding was not touched.
 
 ## Files Changed
 
-Task 12 implementation and tests:
+Production:
 
-- Added `engine/run_state.py` and `tests/test_run_lifecycle.py`.
-- Modified `core/run_models.py`, `engine/artifacts.py`, `engine/run_service.py`,
-  `engine/runner.py`, and `engine/traci_bridge.py`.
-- Modified `tests/test_artifacts.py`, `tests/test_run_models.py`,
-  `tests/test_run_service.py`, and `tests/test_runner_channel.py`.
-- Added this report.
+- `core/run_models.py`
+- `engine/artifacts.py`
+- `engine/run_state.py`
+- `engine/run_service.py`
+- `engine/runner.py`
+- `engine/traci_bridge.py`
 
-The existing controller `progress.md`, protected inputs, `.t9c`, `.t10`,
-`.t11`, and generated pytest/SUMO evidence directories are intentionally not
-part of the scoped commit.
+Tests:
 
-## Self Review
+- `tests/test_artifacts.py`
+- `tests/test_run_lifecycle.py`
+- `tests/test_run_models.py`
+- `tests/test_run_service.py`
+- `tests/test_runner_channel.py`
 
-- `RunStateMachine` owns the monotonic transition graph and rejects terminal
-  overwrites. `stopped` is read-compatible only; new user-stop evidence is
-  `interrupted`.
-- `RunService.stop()` claims a stop through the state-machine lock, treats a
-  competing claim as idempotent, and waits on that run's exact future/done
-  event. `switch_scene()` waits when another caller already owns `stopping`
-  before submitting a replacement.
-- Each run allocates a unique directory, stop event, done event, future,
-  runner, and artifact set. No cross-run event or process lookup is used.
-- `SimulationRunner` accepts `SimulationWindow`, derives steps from the
-  validated scene step length, preserves the integer smoke adapter, and writes
-  terminal metadata for completed, interrupted, disconnected, ended-early, and
-  failed exits.
-- `RunArtifacts.write_manifest()` and `write_status()` use atomic replacement;
-  terminal status is immutable and `run_metadata.json` remains available for
-  legacy consumers.
-- `TraCIBridge.close()` closes TraCI and waits/terminates/kills only its
-  recorded child process object. The exact PID remains available for evidence
-  after cleanup.
+Report:
+
+- `.superpowers/sdd/2026-08-18-judge-facing-final-release/task-12-report.md`
+
+The pre-existing modification to `progress.md` and pre-existing untracked
+archive/scratch paths are intentionally excluded from the Task 12 commit.
+
+## Self-Review
+
+- State transitions are serialized inside `RunStateMachine`; skipped,
+  backward, unknown, and terminal-overwriting transitions raise.
+- `RunArtifacts.write_status()` independently validates on-disk transitions,
+  and `write_metadata()` checks terminal `status.json` before replacement so
+  the compatibility and canonical status files cannot diverge after terminal.
+- Atomic JSON writes use a unique same-directory temporary file followed by
+  `Path.replace()`; no temporary files remained in artifact tests.
+- `stop()` returns `True` only to the caller that initiates stopping, but an
+  idempotent concurrent caller still waits for the owned run to finish before
+  returning `False`.
+- `switch_scene()` cannot submit the replacement until the old run's done event
+  is set. Queued cancellation finalizes without constructing or starting SUMO.
+- The runner distinguishes `completed`, `interrupted`, `disconnected`,
+  `ended_early`, and `failed`; the legacy `stopped` value is read-mapped to
+  `interrupted` and is not a permitted new state-machine transition.
+- Formal service calls pass `SimulationWindow`; integer and `steps=` forms are
+  retained only as the narrow smoke compatibility adapter.
+- Exact-process cleanup retains the PID after reaping for manifest/metadata
+  evidence and never enumerates or kills SUMO by name.
 
 ## Concerns
 
-- The existing metadata version extraction reports SUMO server version as
-  `22` in the smoke artifact even though the installed binary is `1.27.1`;
-  this predates Task 12's ownership work and is outside this scoped fix.
-- The recovery tree received the concurrent-stop and switch wait corrections
-  while this session was auditing the uncommitted diff. They were preserved,
-  covered by deterministic tests, and included in the final scoped review.
-- No independent reviewer or subagent was dispatched; this was the required
-  single-writer self-review.
+- The worktree's existing `.pytest_cache` and configured `output/tmp` are
+  ACL-blocked. Verification used explicit Task 12 base-temp directories and all
+  tests passed.
+- Recursive cleanup of generated `.task12-pytest-*` directories was blocked by
+  the command safety policy. They remain untracked and are not staged. A
+  separately present `.task12-pytest-final-full-ours` and
+  `.task12-real-sumo-100` directories were not created or modified by this
+  implementation.
+- Task 10's parked same-observation `CloudPolicy.predict()` /
+  `dispatch_params()` compatibility finding remains intentionally out of scope.
+
+## Re-entry Verification Addendum
+
+The single-writer recovery session reran the required race and verification
+matrix on the final tree. The focused command returned `59 passed in 18.09s`.
+The three deterministic recovery tests returned `3 passed in 3.34s`; the first
+RED run had reproduced `stopping -> starting` becoming `failed`. The recovery
+handoff's concurrent-stop and already-stopping switch fixes were already
+present when reread and were preserved rather than overwritten.
+
+The no-cache, repo-local full command returned `592 passed in 121.79s
+(0:02:01)`. A same-volume real SUMO run produced run ID `7c69507a6cba`,
+completed 100 steps at final simulation time `100.0`, and recorded exact PID
+`25052` in both `manifest.json` and `run_metadata.json`. Immediately afterward
+PID `25052` was absent and the remaining SUMO process count was `0`.
+
+Fresh static gates were `COMPILEALL PASS` for
+`algorithms api cloud core engine experiments ml scenes scripts tests` and
+`DIFF CHECK PASS`. The protected archive hash was
+`12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`;
+official data remained `163` tracked / `232` on disk, with no protected-path
+diff. The installed SUMO binary is `1.27.1`; the existing metadata extractor
+still records server version `22`, which remains outside this Task 12 scope.
+
+## Fix-Round Addendum (2026-08-21)
+
+This follow-up closes the lifecycle compatibility review gaps without changing
+the existing controller changes in `progress.md` or this report's earlier
+evidence.
+
+### RED evidence
+
+Lifecycle race tests were added first and failed as expected:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-red-lifecycle
+2 failed, 14 passed in 12.26s
+```
+
+The failures reproduced an early terminal `stop()` return and a terminal
+`status.json` overwrite exception. Legacy return tests then failed before the
+predicate change:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-red-legacy -k "integer_runner_calls_return_legacy_list_with_artifacts or formal_simulation_window_returns_run_result_with_artifacts"
+2 failed, 1 passed, 16 deselected in 2.59s
+```
+
+The API contract comparison failed against the stale checked-in enum:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-red-api
+1 failed, 15 passed in 13.16s
+```
+
+### GREEN evidence
+
+The combined lifecycle and API tests passed after the minimal fixes:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-green-core2
+35 passed in 25.22s
+```
+
+The required focused verification passed:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_run_service.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-fix-focused
+87 passed in 34.98s
+```
+
+`git diff --check` passed. The fix-round changes are limited to
+`engine/run_service.py`, `engine/runner.py`, `tests/test_run_lifecycle.py`,
+`tests/test_api.py`, `tests/test_api_contract.py`, `docs/api/openapi.json`,
+`docs/interface.md`, and this report.
+
+Remaining concerns are unchanged from the prior report: the configured
+pytest/output directories are ACL-blocked, generated `.task12-*` paths remain
+untracked and unstaged, and Task 10's parked CloudPolicy compatibility finding
+is out of scope.
