@@ -39,11 +39,12 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
         if target == state.current_phase:
             return []
         return [
-            ControlAction(
-                tls_id=state.tls_id,
-                action_type="set_phase",
-                value=target,
-                reason=f"classic_maxpressure target={target} pressure={pressures[target]:g}",
+            ControlAction.for_simulation_time(
+                state.tls_id,
+                "set_phase",
+                target,
+                f"classic_maxpressure target={target} pressure={pressures[target]:g}",
+                state.timestamp,
             )
         ]
 

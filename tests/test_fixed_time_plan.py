@@ -125,6 +125,8 @@ def test_fixed_time_step_installs_the_frozen_program_once(tmp_path):
             {"duration": 3.0, "state": "yr"},
         ],
     }
+    assert actions[0].issued_at == state.timestamp
+    assert actions[0].expires_at == state.timestamp + 60.0
     assert algorithm.step(state) == []
 
 

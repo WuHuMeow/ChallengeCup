@@ -1,5 +1,7 @@
 """Safety event and completed-vehicle metric contract tests."""
 
+import pytest
+
 from core.movements import MovementKey, MovementState, PhaseMovementState
 from core.types import (
     ActionResult,
@@ -189,6 +191,26 @@ def test_rejected_phase_parameter_error_is_not_an_illegal_transition():
     assert events == ()
 
 
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "minimum_green_violation",
+        "yellow_clearance_violation",
+        "all_red_clearance_violation",
+    ],
+)
+def test_timing_rejection_is_not_an_illegal_transition(reason_code):
+    action = ControlAction("tls0", "set_phase", 1, "timing candidate")
+
+    events = SafetyObservationCollector("run-1").observe(
+        None,
+        _state(3.0),
+        (ActionResult(action, False, "timing not complete", reason_code),),
+    )
+
+    assert events == ()
+
+
 def test_observed_green_to_green_jump_emits_illegal_transition():
     events = SafetyObservationCollector("run-1").observe(
         _state(1.0, current_phase=0, signal_states=("Gr", "yr", "rG")),
@@ -210,7 +232,7 @@ def test_observed_sequential_phase_change_is_not_an_illegal_transition():
     assert "illegal_transition" not in {event.event_type for event in events}
 
 
-def test_successful_program_switch_suppresses_one_topology_transition_check():
+def test_program_result_does_not_suppress_an_observed_illegal_transition():
     collector = SafetyObservationCollector("run-1")
     before_switch = _state(1.0, current_phase=0)
     switch_snapshot = _state(2.0, current_phase=0)
@@ -231,7 +253,8 @@ def test_successful_program_switch_suppresses_one_topology_transition_check():
         (),
     )
 
-    assert "illegal_transition" not in {event.event_type for event in events}
+    assert [event.event_type for event in events] == ["illegal_transition"]
+    assert events[0].source == "derived_signal_transition"
 
 
 def test_speed_delta_emits_harsh_braking_event():

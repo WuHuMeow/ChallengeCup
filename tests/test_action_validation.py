@@ -73,3 +73,39 @@ def test_clearance_duration_rejects_less_than_the_remaining_simulation_seconds()
         "yellow_clearance requires 3 simulation seconds; "
         "elapsed=2.5 remaining=0.5 requested_duration=0.1",
     )
+
+
+def test_action_window_rejects_a_stale_action_at_simulation_time():
+    action = ControlAction(
+        "tls",
+        "set_phase",
+        2,
+        issued_at=4.0,
+        expires_at=5.0,
+    )
+
+    result = action_validation.validate_action_window(action, 5.1)
+
+    assert result == (
+        "stale_action",
+        "action expired at simulation_seconds=5; current=5.1 issued=4",
+    )
+
+
+def test_action_without_a_window_remains_backward_compatible():
+    assert action_validation.validate_action_window(
+        ControlAction("tls", "set_phase", 2),
+        100.0,
+    ) == (None, None)
+
+
+def test_action_is_stale_at_its_exact_expiry_boundary():
+    action = ControlAction(
+        "tls",
+        "set_phase",
+        2,
+        issued_at=4.0,
+        expires_at=5.0,
+    )
+
+    assert action_validation.validate_action_window(action, 5.0)[0] == "stale_action"

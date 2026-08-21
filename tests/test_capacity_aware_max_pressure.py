@@ -171,6 +171,11 @@ def test_capacity_controller_delegates_min_green_to_the_safety_executor(state):
         ("set_phase", 1),
         ("set_phase_duration", 30.0),
     ]
+    assert all(
+        action.issued_at == state.timestamp
+        and action.expires_at == state.timestamp + 60.0
+        for action in actions
+    )
 
 
 def test_dynamic_green_averages_only_strictly_positive_phase_scores(state):
@@ -324,7 +329,11 @@ def test_legacy_phase_states_audit_records_exact_action_and_existing_results():
     assert actions[0].value == 1
     assert actions[1].action_type == "set_phase_duration"
     assert [result.action for result in results] == actions
-    assert all(result.accepted for result in results)
+    assert [result.accepted for result in results] == [False, False]
+    assert [result.reason_code for result in results] == [
+        "clearance_path_unavailable",
+        "phase_change_rejected",
+    ]
     assert audit["final_decision"]["action"] == actions[0].action_type
     assert [(action["action_type"], action["value"]) for action in audit["final_decision"]["actions"]] == [
         (action.action_type, action.value) for action in actions

@@ -7,6 +7,7 @@ import pytest
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
+from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
 from algorithms.capacity_aware_max_pressure import (
     CapacityAwareConfig,
     CapacityAwareMaxPressureAlgorithm,
@@ -38,6 +39,20 @@ class CountingAlgorithm(FixedTimeAlgorithm):
 class InvalidActionAlgorithm(FixedTimeAlgorithm):
     def step(self, state):
         return [ControlAction(state.tls_id, "set_phase", "north", "bad phase")]
+
+
+class StaleActionAlgorithm(CountingAlgorithm):
+    def step(self, state):
+        return [
+            ControlAction(
+                state.tls_id,
+                "set_phase_duration",
+                5.0,
+                "stale delayed decision",
+                issued_at=0.0,
+                expires_at=0.0,
+            )
+        ]
 
 
 class RejectedCapacityActionBridge(MockBridge):
@@ -241,6 +256,25 @@ def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_pa
     assert rejected["simulation_seconds"] == "12.5"
 
 
+def test_runner_records_stale_action_rejection_and_safe_fallback(tmp_path):
+    bridge = MockBridge()
+    bridge._current_step = 1
+    artifacts = RunArtifacts.create(tmp_path, "1", "stale", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        StaleActionAlgorithm(),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = next(row for row in events if row["type"] == "action_rejected")
+    assert rejected["reason"] == "stale_action"
+    assert "fallback=fixed_timing_unchanged" in rejected["detail"]
+    assert bridge._applied_actions == []
+
+
 def test_half_second_channel_releases_after_exactly_two_ticks(tmp_path):
     """A two-step delay is one simulation second, and delivers states 0, 1, 2."""
     algorithm = CountingAlgorithm()
@@ -256,6 +290,29 @@ def test_half_second_channel_releases_after_exactly_two_ticks(tmp_path):
     runner.run(5)
 
     assert algorithm.steps == [0, 1, 2]
+
+
+def test_delayed_valid_control_action_is_applied_before_message_expiry(tmp_path):
+    bridge = MockBridge(step_length=0.1)
+    artifacts = RunArtifacts.create(tmp_path, "1", "actuated", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        RuleAdaptiveAlgorithm(
+            min_green=0.1,
+            max_green=60.0,
+            queue_threshold=0.0,
+        ),
+        bridge=bridge,
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.2),
+    ).run(5)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert not any(row["reason"] == "stale_action" for row in events)
+    assert any(row["type"] == "action_applied" for row in events)
+    assert bridge._applied_actions[0].issued_at == 0.1
+    assert bridge._applied_actions[0].expires_at == 60.1
 
 
 def test_successful_run_writes_completed_metadata(tmp_path):
@@ -310,7 +367,7 @@ def test_runner_audit_correlates_shared_rejected_action_result(tmp_path):
     assert outcome["action_type"] == "set_phase"
     assert outcome["value"] == 2
     assert outcome["accepted"] is False
-    assert outcome["reason_code"] == "illegal_phase_transition"
+    assert outcome["reason_code"] == "clearance_path_unavailable"
 
 
 def test_runner_audit_keeps_green_request_while_bridge_executes_clearance(tmp_path):
@@ -354,6 +411,33 @@ def test_runner_audit_keeps_green_request_while_bridge_executes_clearance(tmp_pa
         [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
         [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
     ]
+
+
+def test_runner_uses_capacity_algorithm_non_default_minimum_green(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path,
+        "1",
+        "capacity_aware_maxpressure",
+        1.0,
+        42,
+    )
+    bridge = ClearanceCapacityActionBridge()
+    config = CapacityAwareConfig(True, True, False, 12.0, 30.0, 0.9)
+
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(config),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    assert bridge._applied_actions == []
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [
+        row["reason"]
+        for row in events
+        if row["type"] == "action_rejected"
+    ] == ["minimum_green_violation", "phase_change_rejected"]
 
 
 class _StartRecordingBridge(MockBridge):

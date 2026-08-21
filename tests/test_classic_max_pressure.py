@@ -44,6 +44,8 @@ def test_classic_pressure_uses_downstream_queue_and_service_rate():
 
     assert actions[0].action_type == "set_phase"
     assert actions[0].value == 1
+    assert actions[0].issued_at == state.timestamp
+    assert actions[0].expires_at == state.timestamp + 60.0
 
 
 def test_classic_pressure_breaks_equal_scores_by_current_phase_then_index():

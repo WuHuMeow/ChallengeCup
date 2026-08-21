@@ -6,6 +6,45 @@ from collections.abc import Mapping
 from core.types import ControlAction
 
 
+def validate_action_window(
+    action: ControlAction,
+    simulation_seconds: float,
+) -> tuple[str | None, str | None]:
+    """Validate optional action issue/expiry metadata in simulation seconds."""
+    if action.issued_at is None and action.expires_at is None:
+        return None, None
+    if action.issued_at is None or action.expires_at is None:
+        return (
+            "invalid_action_window",
+            "action validity requires both issued_at and expires_at",
+        )
+    try:
+        issued_at = float(action.issued_at)
+        expires_at = float(action.expires_at)
+        current = float(simulation_seconds)
+    except (TypeError, ValueError):
+        return "invalid_action_window", "action validity must be numeric"
+    if not all(math.isfinite(value) for value in (issued_at, expires_at, current)):
+        return "invalid_action_window", "action validity must be finite"
+    if issued_at < 0 or expires_at < issued_at:
+        return (
+            "invalid_action_window",
+            f"invalid action window issued={issued_at:g} expires={expires_at:g}",
+        )
+    if current < issued_at:
+        return (
+            "action_not_yet_valid",
+            f"action issued at simulation_seconds={issued_at:g}; current={current:g}",
+        )
+    if current >= expires_at:
+        return (
+            "stale_action",
+            f"action expired at simulation_seconds={expires_at:g}; "
+            f"current={current:g} issued={issued_at:g}",
+        )
+    return None, None
+
+
 def validate_phase_change_timing(
     action: ControlAction,
     *,

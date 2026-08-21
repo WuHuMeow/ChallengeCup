@@ -13,7 +13,12 @@ from typing import List, Optional
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
 from core.run_models import RunStatus
-from core.types import ControlAction, SafetyEvent, Scene
+from core.types import (
+    CONTROL_ACTION_VALIDITY_SECONDS,
+    ControlAction,
+    SafetyEvent,
+    Scene,
+)
 from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
 from engine.edge_channel import EdgeChannel, EdgeMessage
@@ -88,7 +93,12 @@ class SimulationRunner:
         self._channel_run_id = (
             artifacts.run_id if artifacts is not None else f"runner-{id(self)}"
         )
-        self.safety_executor = SafetyExecutor()
+        default_min_green = float(
+            get_config().get("algorithms.ca_maxpressure.min_green", 10.0)
+        )
+        self.safety_executor = SafetyExecutor(
+            lambda: getattr(self.algorithm, "min_green", default_min_green)
+        )
         if self.state_channel is not None:
             self.state_channel.bind_contract(self._channel_run_id, ("joint-state.v1",))
         self.safety_collector = SafetyObservationCollector(
@@ -293,7 +303,7 @@ class SimulationRunner:
                     run_id=self._channel_run_id,
                     simulation_time=simulation_time,
                     sent_at=simulation_time,
-                    expires_at=simulation_time + 60.0,
+                    expires_at=simulation_time + CONTROL_ACTION_VALIDITY_SECONDS,
                     payload_version="joint-state.v1",
                     payload=raw_state,
                 ))

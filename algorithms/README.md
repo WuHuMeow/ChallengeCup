@@ -22,7 +22,9 @@ name
 
 算法只输出决策，不直接调用 TraCI。Runner 将动作交给唯一的
 `SafetyExecutor.apply()` 边界；执行器返回与算法原始请求关联的
-`tuple[ActionResult, ...]`，并独占 bridge 的私有信号写入端。
+`tuple[ActionResult, ...]`，并独占 bridge 的私有信号写入端。生产算法使用
+`state.timestamp` 签发带 60 仿真秒有效期的动作；执行器按算法当前 `min_green` 校验
+当前及新进入绿灯的时长，并只沿可达黄灯/全红路径执行绿灯切换。
 
 ## CA-MP
 

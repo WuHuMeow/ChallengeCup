@@ -84,6 +84,8 @@ def test_rule_adaptive_returns_control_actions():
     for action in result:
         assert isinstance(action, ControlAction)
         assert action.tls_id == "tls_0"
+        assert action.issued_at == 100.0
+        assert action.expires_at == 160.0
 
 
 def test_ca_maxpressure_returns_control_actions():
@@ -520,6 +522,11 @@ def test_ca_mp_repeated_selected_current_step_actions_then_no_action():
         ("set_phase", 0),
         ("set_phase_duration", 30.0),
     ]
+    assert all(
+        action.issued_at == state.timestamp
+        and action.expires_at == state.timestamp + 60.0
+        for action in first_actions
+    )
     assert second_actions == []
 
     explicit = CAMaxPressureAlgorithm()

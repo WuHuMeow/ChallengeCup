@@ -35,8 +35,14 @@ class _LegacyPlannedAction:
     value: int | float
     reason: str
 
-    def control_action(self) -> ControlAction:
-        return ControlAction(self.tls_id, self.action_type, self.value, self.reason)
+    def control_action(self, simulation_seconds: float) -> ControlAction:
+        return ControlAction.for_simulation_time(
+            self.tls_id,
+            self.action_type,
+            self.value,
+            self.reason,
+            simulation_seconds,
+        )
 
 
 @dataclass(frozen=True)
@@ -64,7 +70,10 @@ class LegacyDecisionPlan:
     next_max_green: float
 
     def control_actions(self) -> list[ControlAction]:
-        return [action.control_action() for action in self.actions]
+        return [
+            action.control_action(self.state_timestamp)
+            for action in self.actions
+        ]
 
 
 class CAMaxPressureAlgorithm(BaseControlAlgorithm):

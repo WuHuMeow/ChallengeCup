@@ -44,11 +44,12 @@ class RuleAdaptiveAlgorithm(BaseControlAlgorithm):
         # 排队严重且未达最大绿灯：延长当前相位。
         if max_queue > self.queue_threshold and state.elapsed_phase_time < self.max_green:
             return [
-                ControlAction(
-                    tls_id=state.tls_id,
-                    action_type="set_phase_duration",
-                    value=5.0,
-                    reason="queue_high_extend_green",
+                ControlAction.for_simulation_time(
+                    state.tls_id,
+                    "set_phase_duration",
+                    5.0,
+                    "queue_high_extend_green",
+                    state.timestamp,
                 )
             ]
 
@@ -56,11 +57,12 @@ class RuleAdaptiveAlgorithm(BaseControlAlgorithm):
         # TODO: 后续根据实际相位数量取模，避免硬编码。
         next_phase = (state.current_phase + 1) % max(len(state.queues), 2)
         return [
-            ControlAction(
-                tls_id=state.tls_id,
-                action_type="set_phase",
-                value=next_phase,
-                reason="queue_low_next_phase",
+            ControlAction.for_simulation_time(
+                state.tls_id,
+                "set_phase",
+                next_phase,
+                "queue_low_next_phase",
+                state.timestamp,
             )
         ]
 

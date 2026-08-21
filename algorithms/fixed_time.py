@@ -29,17 +29,18 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
             return []
         self._program_applied = True
         return [
-            ControlAction(
-                tls_id=state.tls_id,
-                action_type="set_program",
-                value={
+            ControlAction.for_simulation_time(
+                state.tls_id,
+                "set_program",
+                {
                     "program_id": self.resolved_timing_plan.program_id,
                     "phases": [
                         {"duration": phase.duration, "state": phase.state}
                         for phase in self.resolved_timing_plan.phases
                     ],
                 },
-                reason="install frozen fixed-time plan",
+                "install frozen fixed-time plan",
+                state.timestamp,
             )
         ]
 

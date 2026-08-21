@@ -186,3 +186,194 @@ These are 100-step scene 1 smokes with seed 42, not formal experiment results.
   for the final whole-branch fix wave.
 - Review was self-review only as required; no subagent or independent reviewer
   was dispatched.
+
+## Fix Round 1: Safety Executor Review Gaps
+
+### Status
+
+DONE_WITH_CONCERNS. All three Critical and four Important review findings are
+closed on top of reviewed base `ead46720749236afee9cf171ec2a75cf6d02701a`.
+Task 12 was not started. The parked Task 10 same-observation `CloudPolicy`
+compatibility issue remains unchanged and out of scope.
+
+### Review Finding Closure
+
+- Green `set_phase_duration` requests now preserve the remaining minimum green.
+  Paired durations for newly selected greens must satisfy the full live minimum,
+  and unpaired or unavoidable intermediate greens require a safe nominal
+  duration before they can be entered.
+- `set_program` accepts only a validated program definition at clean startup,
+  where step, simulation time, and elapsed phase time are all zero. Mid-run and
+  string-only program switches are rejected as `unsafe_program_switch`.
+- A green-to-green request must have a reachable yellow/all-red path. A direct
+  graph edge does not authorize a direct write, and a missing path rejects as
+  `clearance_path_unavailable`.
+- Timing rejections remain structured `action_rejected` rows. Only an actual
+  illegal graph edge can produce the `illegal_transition` hard-gate event.
+- `ControlAction` now has backward-compatible optional `issued_at` and
+  `expires_at` fields. Production algorithms issue actions at the observation's
+  simulation timestamp with the same 60-second horizon as `EdgeMessage`; an
+  action is stale when `current >= expires_at`.
+- Stale actions reject as `stale_action` and report the deterministic no-write
+  fallback (`preserve_current_phase` or `fixed_timing_unchanged`). Delayed but
+  unexpired edge actions remain executable.
+- A requested direct-clearance duration below the nominal interval rejects as
+  `clearance_duration_corrected`; any nominal duration written to the private
+  bridge is represented as an internal fallback rather than acceptance of the
+  unsafe original duration.
+- Runner gives `SafetyExecutor` a live provider for the algorithm's current
+  `min_green`, so dynamic cloud/controller changes and non-default configured
+  values are read for every action batch.
+
+### TDD Evidence
+
+The resumed implementation retained the following behavior-level RED/GREEN
+results from its isolated `.t11` checkpoints:
+
+- Critical 1 green durations: RED `2 failed, 19 passed`; GREEN `21 passed`.
+- Critical 2 startup-only program installation: RED `1 failed, 1 passed`;
+  GREEN `9 passed`.
+- Critical 3 reachable clearance path: RED `2 failed`; GREEN `25 passed`.
+- Important 1 event semantics: RED `4 failed`; GREEN `22 passed`.
+- Important 2 action validity contract: RED `4 failed`; GREEN `10 passed`.
+- Production validity metadata: RED `4 failed`; GREEN `5 passed`.
+- Important 3 clearance reporting: corrected RED `1 failed, 1 passed`; GREEN
+  `26 passed`.
+- Important 4 dynamic minimum green: RED `2 failed`; GREEN `28 passed`.
+- Unpaired nominal green coverage: RED `1 failed`; executor GREEN `28 passed`.
+- Clean-startup elapsed gate: RED `1 failed`; GREEN `36 passed`.
+- Delayed validity horizon: RED `7 failed`; GREEN `7 passed`.
+- Pre-self-review expanded affected suite: `238 passed in 2.12s`.
+
+Final self-review found that a legal path could substitute an unavoidable
+intermediate green whose nominal duration was below the live minimum. The exact
+TDD cycle was:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py::test_unavoidable_intermediate_green_requires_a_safe_nominal_duration -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\red-intermediate-green-minimum-fix1-20260821-1
+```
+
+- RED: `1 failed in 0.12s`; both original actions were incorrectly accepted.
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py::test_unavoidable_intermediate_green_requires_a_safe_nominal_duration -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\green-intermediate-green-minimum-fix1-20260821-1
+```
+
+- GREEN: `1 passed in 0.05s`.
+- Executor regression after the fix: `30 passed in 0.06s`.
+
+### Final Verification
+
+All commands in this section ran on the final implementation and documentation
+tree prepared for the fix commit.
+
+- Required focused suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py tests/test_action_validation.py tests/test_safety_metrics.py tests/test_runner_channel.py tests/test_fixed_time_plan.py tests/test_algorithms.py -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\focused-fix-round1-final-20260821-1
+```
+
+  Result: `115 passed in 1.24s`, no warnings.
+
+- Expanded executor/runner/algorithm/bridge/channel suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/test_safety_executor.py tests/test_action_validation.py tests/test_safety_metrics.py tests/test_runner_channel.py tests/test_fixed_time_plan.py tests/test_algorithms.py tests/test_classic_max_pressure.py tests/test_capacity_aware_max_pressure.py tests/test_mock_bridge.py tests/test_traci_outputs.py tests/test_events.py tests/test_edge_channel.py -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\affected-239-fix-round1-final-20260821-1
+```
+
+  Result: `239 passed in 2.13s`, no warnings.
+
+- Full project suite:
+
+```powershell
+.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.t11\full-fix-round1-final-20260821-1
+```
+
+  Result: `563 passed in 91.40s`, no warnings. A fresh `--collect-only` also
+  reported exactly `563 tests collected`; there are no duplicate top-level test
+  names. The handoff estimate of at least 564 was one high: the committed base
+  report recorded 543 tests and this diff adds 20 discovered cases.
+
+- `python --version; python -m compileall algorithms cloud core engine
+  experiments scenes`: Python `3.14.7`, exit 0.
+- `git diff --check`: exit 0.
+- `rg --pcre2 -n "(?<!_)apply_actions\(" algorithms cloud core engine
+  experiments scenes scripts -g '*.py'`: no matches.
+
+### Final-Tree Real SUMO Evidence
+
+These are fresh 100-step intersection 1 runs with seed 42 on the final code
+tree. All completed at simulation time `100.0`, used SUMO version field `22`,
+and wrote 100 `simulation_log.csv` rows.
+
+- Fixed time:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 1 --algorithm fixed_time --steps 100 --seed 42 --output-dir .t11\real-smoke-fixed-fix1-20260821-2
+```
+
+  Run `f542685ab3a0`, `completed`, 35 event rows. The only action was an
+  accepted `set_program` at step 0 / simulation time 0.0 with reason
+  `install frozen fixed-time plan`; rejections `0`, `illegal_transition=0`.
+
+- Classic MaxPressure:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 1 --algorithm classic_maxpressure --steps 100 --seed 42 --output-dir .t11\real-smoke-classic-fix1-20260821-2
+```
+
+  Run `c766e0765a05`, `completed`, 119 event rows. `action_applied=14`,
+  `action_rejected=70`: `minimum_green_violation=56` and
+  `yellow_clearance_violation=14`; `illegal_transition=0`.
+
+- Capacity-aware MaxPressure:
+
+```powershell
+.venv\Scripts\python.exe -m experiments.runner --intersection 1 --algorithm capacity_aware_maxpressure --steps 100 --seed 42 --output-dir .t11\real-smoke-capacity-fix1-20260821-2
+```
+
+  Run `d49718b3e634`, `completed`, 307 event rows including 100 audit rows.
+  `action_applied=28`, `action_rejected=144`:
+  `minimum_green_violation=58`, `yellow_clearance_violation=14`, and paired
+  `phase_change_rejected=72`; `illegal_transition=0`.
+
+### Protected Inputs and Scope
+
+- `赛题资料.7z` SHA-256 remains
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`.
+- `data/intersection_data` remains 163 tracked files and 232 disk files.
+- Worktree and staged protected-path diff counts are both zero.
+- `progress.md`, `.t9c`, `.t10`, `.t11`, the archive, output/cache files, and
+  official data are excluded from the fix commit.
+
+### Files Changed in Fix Round 1
+
+- Production contract and safety: `core/types.py`,
+  `engine/action_validation.py`, `engine/safety_executor.py`,
+  `engine/safety.py`, and `engine/runner.py`.
+- Production algorithms: `algorithms/fixed_time.py`,
+  `algorithms/rule_adaptive.py`, `algorithms/classic_max_pressure.py`,
+  `algorithms/ca_max_pressure.py`, and
+  `algorithms/capacity_aware_max_pressure.py`.
+- Live docs: `algorithms/README.md`, `docs/interface.md`, and
+  `docs/architecture/interface.md`.
+- Tests: `tests/test_action_validation.py`, `tests/test_algorithms.py`,
+  `tests/test_capacity_aware_max_pressure.py`,
+  `tests/test_classic_max_pressure.py`, `tests/test_fixed_time_plan.py`,
+  `tests/test_runner_channel.py`, `tests/test_safety_executor.py`, and
+  `tests/test_safety_metrics.py`.
+
+### Self Review and Concerns
+
+- Reviewed original-action/result mapping when the executor inserts an internal
+  phase or duration; every algorithm action retains its own result and reason.
+- Reviewed current, target, and substituted intermediate greens against the
+  same live minimum-green snapshot for each action batch.
+- Reviewed startup program installation, action expiry at the exact boundary,
+  delayed unexpired delivery, graph reachability, and timing-event separation.
+- The earlier report's concern that timing failures appear as
+  `illegal_transition` is superseded by this fix and by the final real runs.
+- The only retained product concern is the explicitly parked Task 10
+  `CloudPolicy.predict()` / `dispatch_params()` compatibility issue. Fix Round 1
+  was self-reviewed only, as required; no subagent or independent reviewer was
+  dispatched.

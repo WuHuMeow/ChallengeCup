@@ -50,7 +50,6 @@ class SafetyObservationCollector:
         self._active_collision_pairs: set[tuple[str, str]] = set()
         self._active_teleports: set[str] = set()
         self._active_conflicts: set[tuple[str, str]] = set()
-        self._suppress_next_transition_check = False
         self.set_conflict_definitions(conflict_definitions)
 
     def set_conflict_definitions(
@@ -67,7 +66,6 @@ class SafetyObservationCollector:
         self._active_collision_pairs.clear()
         self._active_teleports.clear()
         self._active_conflicts.clear()
-        self._suppress_next_transition_check = False
 
     def observe(
         self,
@@ -115,23 +113,12 @@ class SafetyObservationCollector:
         self._active_collision_pairs = collision_pairs
         if previous is not None:
             events.extend(self._red_light_events(previous, current))
-            if self._suppress_next_transition_check:
-                self._suppress_next_transition_check = False
-            else:
-                events.extend(self._observed_transition_events(previous, current))
+            events.extend(self._observed_transition_events(previous, current))
         for result in action_results:
-            if result.accepted and result.action.action_type == "set_program":
-                self._suppress_next_transition_check = True
             if (
                 not result.accepted
                 and result.action.action_type == "set_phase"
-                and result.reason_code
-                in {
-                    "illegal_phase_transition",
-                    "minimum_green_violation",
-                    "yellow_clearance_violation",
-                    "all_red_clearance_violation",
-                }
+                and result.reason_code == "illegal_phase_transition"
             ):
                 events.append(
                     self._event(

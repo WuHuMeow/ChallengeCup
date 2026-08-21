@@ -292,6 +292,9 @@ class JointState:
         self.teleport_vehicle_ids = tuple(self.teleport_vehicle_ids)
 
 
+CONTROL_ACTION_VALIDITY_SECONDS = 60.0
+
+
 @dataclass
 class ControlAction:
     """控制动作，由算法输出，经 engine/traci_bridge 写入 SUMO。"""
@@ -300,12 +303,33 @@ class ControlAction:
     action_type: str  # "set_phase" / "set_phase_duration" / "set_program"
     value: Any
     reason: str = ""
+    issued_at: float | None = None
+    expires_at: float | None = None
 
     ALLOWED_ACTION_TYPES: ClassVar[frozenset[str]] = frozenset({
         "set_phase",
         "set_phase_duration",
         "set_program",
     })
+
+    @classmethod
+    def for_simulation_time(
+        cls,
+        tls_id: str,
+        action_type: str,
+        value: Any,
+        reason: str,
+        simulation_seconds: float,
+    ) -> "ControlAction":
+        issued_at = float(simulation_seconds)
+        return cls(
+            tls_id,
+            action_type,
+            value,
+            reason,
+            issued_at=issued_at,
+            expires_at=issued_at + CONTROL_ACTION_VALIDITY_SECONDS,
+        )
 
 
 @dataclass(frozen=True)

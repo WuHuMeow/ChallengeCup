@@ -124,8 +124,14 @@ class _PlannedAction:
     value: int | float
     reason: str
 
-    def control_action(self) -> ControlAction:
-        return ControlAction(self.tls_id, self.action_type, self.value, self.reason)
+    def control_action(self, simulation_seconds: float) -> ControlAction:
+        return ControlAction.for_simulation_time(
+            self.tls_id,
+            self.action_type,
+            self.value,
+            self.reason,
+            simulation_seconds,
+        )
 
 
 @dataclass(frozen=True)
@@ -689,7 +695,10 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             [action.action_type for action in snapshot.actions],
         )
         self.commit_plan(snapshot)
-        return [action.control_action() for action in snapshot.actions]
+        return [
+            action.control_action(snapshot.state_timestamp)
+            for action in snapshot.actions
+        ]
 
     def init(self, scene) -> None:
         validate_capacity_aware_scene(scene.meta.sumo_net)

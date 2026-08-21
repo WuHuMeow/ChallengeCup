@@ -193,18 +193,25 @@ class BaseControlAlgorithm(ABC):
 
 ### ControlAction 与 ActionResult
 
-`ControlAction` 字段为 `tls_id`、`action_type`、`value`、`reason`。
+`ControlAction` 字段为 `tls_id`、`action_type`、`value`、`reason`，以及可选的
+`issued_at`、`expires_at` 仿真秒有效期。两个有效期字段同时省略时保持历史调用兼容；
+生产算法按 `state.timestamp` 签发动作，并使用 60 仿真秒有效期。执行时刻满足
+`current >= expires_at` 的动作以 `stale_action` 拒绝。
 
 | `action_type` | `value` | TraCI 调用 |
 |---|---|---|
 | `set_phase` | 合法整数相位 | `trafficlight.setPhase` |
 | `set_phase_duration` | 秒数 | `trafficlight.setPhaseDuration` |
-| `set_program` | 程序 ID | `trafficlight.setProgram` |
+| `set_program` | 含 `program_id` 和相位定义的固定配时程序 | `trafficlight.setProgramLogic` + `trafficlight.setProgram` |
 
 `SafetyExecutor.apply(actions, state, bridge) -> tuple[ActionResult, ...]` 是唯一的信号
-动作写入入口。执行器验证动作和仿真秒边界、插入所需黄灯/全红相位，再调用 bridge 的
-私有低层写入端。每个结果仍包含算法原始动作、`accepted`、`detail` 和结构化
-`reason_code`；拒绝动作会写入事件日志，调用方不需要从 warning 文本猜测结果。
+动作写入入口。执行器验证动作有效期和仿真秒边界、从算法当前配置读取最小绿灯、拒绝
+会缩短当前或新进入绿灯的时长，并只沿可达黄灯/全红路径切换绿灯，再调用 bridge 的
+私有低层写入端。`set_program` 只接受通过结构校验且在 `step`、仿真时间、当前相位
+已持续时间均为零时安装的固定配时定义。每个结果仍包含算法原始动作、`accepted`、
+`detail` 和结构化 `reason_code`；拒绝动作会写入事件日志，调用方不需要从 warning
+文本猜测结果。只有非法拓扑边才生成 `illegal_transition` 安全事件，最小绿灯、黄灯和
+全红计时拒绝仅保留为结构化 `action_rejected`。
 
 `events.csv` keeps the legacy `step`, `type`, and `detail` columns and adds
 `run_id`, `intersection_id`, `algorithm`, `status`, `reason`, `accepted`,
