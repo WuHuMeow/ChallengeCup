@@ -11,6 +11,7 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
+from core.timebase import SimulationWindow
 from core.types import Scene
 from scenes.registry import SceneRegistry
 from engine.run_service import RunService
@@ -27,14 +28,14 @@ class RecordingRunner:
         self.artifacts = kwargs["artifacts"]
         type(self).calls.append(kwargs)
 
-    def run(self, steps, stop_event=None):
-        type(self).run_steps.append(steps)
-        status = "stopped" if stop_event and stop_event.is_set() else "completed"
+    def run(self, window, stop_event=None, frame_sink=None):
+        type(self).run_steps.append(window)
+        status = "interrupted" if stop_event and stop_event.is_set() else "completed"
         self.artifacts.metrics.write_text("step\n0\n", encoding="utf-8")
         now = datetime.now(timezone.utc).isoformat()
         self.artifacts.write_metadata(
             status,
-            "stop requested" if status == "stopped" else "",
+            "stop requested" if status == "interrupted" else "",
             [self.artifacts.metrics],
             started_at=now,
             ended_at=now,
@@ -143,7 +144,7 @@ def test_run_service_derives_steps_from_tenth_second_scene_window(tmp_path):
     result = service.run_sync(RunRequest("12", "fixed_time"))
 
     assert result.status is RunStatus.COMPLETED
-    assert RecordingRunner.run_steps[-1] == 36000
+    assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
 
 
 def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
@@ -169,7 +170,7 @@ def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
     result = service.run_sync(RunRequest("1", "fixed_time"))
 
     assert result.status is RunStatus.COMPLETED
-    assert RecordingRunner.run_steps[-1] == 3600
+    assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
 
 
 def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
@@ -333,10 +334,12 @@ class BlockingRunner(RecordingRunner):
     release = threading.Event()
     started = threading.Event()
 
-    def run(self, steps, stop_event=None):
+    def run(self, window, stop_event=None, frame_sink=None):
         type(self).started.set()
-        type(self).release.wait(timeout=5)
-        return super().run(steps, stop_event=stop_event)
+        while not type(self).release.wait(timeout=0.01):
+            if stop_event is not None and stop_event.is_set():
+                break
+        return super().run(window, stop_event=stop_event)
 
 
 def test_concurrent_submissions_are_queued_with_unique_run_ids(tmp_path):
@@ -368,5 +371,5 @@ def test_stop_sets_the_matching_run_event(tmp_path):
     BlockingRunner.release.set()
     service.shutdown(wait=True)
 
-    assert service.get(queued.run_id).status is RunStatus.STOPPED
+    assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
     assert service.stop("missing") is False

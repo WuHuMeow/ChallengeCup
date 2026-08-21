@@ -40,7 +40,9 @@ def test_run_request_keeps_explicit_steps_for_smoke_compatibility():
 def test_run_status_values_are_stable():
     assert [item.value for item in RunStatus] == [
         "queued",
+        "starting",
         "running",
+        "stopping",
         "completed",
         "stopped",
         "ended_early",

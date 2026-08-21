@@ -45,8 +45,11 @@ class RunStatus(str, Enum):
     """Stable lifecycle states used by runners, services, APIs, and reports."""
 
     QUEUED = "queued"
+    STARTING = "starting"
     RUNNING = "running"
+    STOPPING = "stopping"
     COMPLETED = "completed"
+    # Read compatibility for evidence created before interrupted became canonical.
     STOPPED = "stopped"
     ENDED_EARLY = "ended_early"
     DISCONNECTED = "disconnected"

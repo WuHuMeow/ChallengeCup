@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import re
+import subprocess
 import sys
 from collections import Counter, deque
 from pathlib import Path
@@ -99,6 +100,8 @@ class TraCIBridge:
         self._approach_lanes_by_vehicle: dict[str, str] = {}
         self._conflict_definitions: tuple[ConflictDefinition, ...] = ()
         self._pending_startup_actions: tuple[ControlAction, ...] = ()
+        self._owned_process: subprocess.Popen | None = None
+        self._owned_pid: int | None = None
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -186,6 +189,13 @@ class TraCIBridge:
         cmd = self._build_cmd()
         logger.info("启动 SUMO: %s", " ".join(cmd))
         traci.start(cmd)
+        try:
+            process = getattr(traci.getConnection(), "_process", None)
+        except Exception:
+            process = None
+        self._owned_process = process
+        if process is not None:
+            self._owned_pid = int(process.pid)
 
         tls_ids = tuple(traci.trafficlight.getIDList())
         if not tls_ids:
@@ -753,10 +763,35 @@ class TraCIBridge:
     def conflict_definitions(self) -> tuple[ConflictDefinition, ...]:
         return self._conflict_definitions
 
+    @property
+    def process_id(self) -> int | None:
+        """Return the exact SUMO child PID most recently owned by this bridge."""
+        return self._owned_pid
+
     def close(self) -> None:
-        """关闭 SUMO 仿真进程；可重复调用，未加载时为 no-op。"""
-        if traci.isLoaded():
-            traci.close()
+        """Close TraCI and reap only this bridge's recorded SUMO child."""
+        process = self._owned_process
+        if process is not None and self._owned_pid is None:
+            self._owned_pid = int(process.pid)
+        close_error: Exception | None = None
+        try:
+            if traci.isLoaded():
+                traci.close(wait=False)
+        except Exception as exc:
+            close_error = exc
+        if process is not None and process.poll() is None:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+        self._owned_process = None
+        if close_error is not None:
+            raise close_error
 
     def step(self) -> Optional[float]:
         """推进一个仿真步。

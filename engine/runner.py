@@ -9,11 +9,12 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
-from core.run_models import RunStatus
+from core.run_models import RunResult, RunStatus
+from core.timebase import SimulationWindow, seconds_for_steps, steps_for_seconds
 from core.types import (
     CONTROL_ACTION_VALIDITY_SECONDS,
     ActionResult,
@@ -215,11 +216,24 @@ class SimulationRunner:
 
     def run(
         self,
-        steps: Optional[int] = None,
+        window: SimulationWindow | int | None = None,
         stop_event: Optional[Event] = None,
-    ) -> List[dict]:
-        """Run the simulation and persist one truthful terminal state."""
-        steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
+        frame_sink: Callable[[object], None] | None = None,
+        *,
+        steps: Optional[int] = None,
+    ) -> RunResult | List[dict]:
+        """Run for an authoritative seconds window and persist one terminal state.
+
+        The integer form and ``steps=`` keyword remain a narrow compatibility
+        adapter for smoke scripts. RunService always supplies SimulationWindow.
+        """
+        if window is not None and steps is not None:
+            raise ValueError("provide either window or steps, not both")
+        requested = steps if steps is not None else window
+        seconds_authoritative = isinstance(requested, SimulationWindow)
+        legacy_return = not isinstance(requested, SimulationWindow) and self.artifacts is None
+        resolved_window, target_steps = self._resolve_window(requested)
+        target_seconds = resolved_window.duration_seconds
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
         self._previous_safety_state = None
@@ -229,46 +243,74 @@ class SimulationRunner:
         body_exception = False
         last_step = 0
 
+        if self.artifacts is not None:
+            self.artifacts.write_manifest({
+                "requested_seconds": target_seconds,
+                "warmup_seconds": resolved_window.warmup_seconds,
+                "derived_steps": target_steps,
+                "step_length": float(getattr(self.bridge, "step_length", 1.0)),
+                "sumo_pid": None,
+            })
+
         try:
-            self.algorithm.init(self.scene)
-            self.bridge.start()
-            self.safety_collector.set_conflict_definitions(
-                getattr(self.bridge, "conflict_definitions", ())
-            )
-            self._sumo_version_value = self._sumo_version()
-            if self.event_logger:
-                self.event_logger.log(
-                    0,
-                    "run_start",
-                    f"intersection={self.scene.meta.intersection_id}"
-                    f" algorithm={self.algorithm.name}",
-                )
-            self._apply_pending_startup_actions()
-            for step in range(steps):
-                last_step = step
-                if stop_event is not None and stop_event.is_set():
-                    status = RunStatus.STOPPED
-                    reason = "stop requested"
-                    break
-                tick_outcome = self._tick(step)
-                if tick_outcome == "disconnected":
-                    status = RunStatus.DISCONNECTED
-                    reason = self._terminal_reason
-                    break
-                if tick_outcome == "configured_end":
-                    status = RunStatus.COMPLETED
-                    break
-                if tick_outcome == "exhausted":
-                    if step + 1 < steps:
-                        status = RunStatus.ENDED_EARLY
-                        reason = "SUMO exhausted before target steps"
-                    else:
-                        status = RunStatus.COMPLETED
-                    break
+            if stop_event is not None and stop_event.is_set():
+                status = RunStatus.INTERRUPTED
+                reason = "stop requested"
             else:
-                status = RunStatus.COMPLETED
-            if status is not RunStatus.DISCONNECTED:
-                self._flush_final_safety_observation()
+                self.algorithm.init(self.scene)
+                self.bridge.start()
+                if self.artifacts is not None:
+                    self.artifacts.write_manifest({
+                        "sumo_pid": getattr(self.bridge, "process_id", None),
+                    })
+            if status is RunStatus.INTERRUPTED:
+                pass
+            else:
+                self.safety_collector.set_conflict_definitions(
+                    getattr(self.bridge, "conflict_definitions", ())
+                )
+                self._sumo_version_value = self._sumo_version()
+                if self.event_logger:
+                    self.event_logger.log(
+                        0,
+                        "run_start",
+                        f"intersection={self.scene.meta.intersection_id}"
+                        f" algorithm={self.algorithm.name}",
+                    )
+                self._apply_pending_startup_actions()
+                for step in range(target_steps):
+                    last_step = step
+                    if stop_event is not None and stop_event.is_set():
+                        status = RunStatus.INTERRUPTED
+                        reason = "stop requested"
+                        break
+                    tick_outcome = self._tick(step)
+                    if tick_outcome == "disconnected":
+                        status = RunStatus.DISCONNECTED
+                        reason = self._terminal_reason
+                        break
+                    if tick_outcome == "configured_end":
+                        status = RunStatus.COMPLETED
+                        break
+                    if tick_outcome == "exhausted":
+                        if (
+                            seconds_authoritative
+                            and self._last_simulation_time < target_seconds
+                        ) or (
+                            not seconds_authoritative and step + 1 < target_steps
+                        ):
+                            status = RunStatus.ENDED_EARLY
+                            reason = "SUMO exhausted before requested seconds"
+                        else:
+                            status = RunStatus.COMPLETED
+                        break
+                    if seconds_authoritative and self._last_simulation_time >= target_seconds:
+                        status = RunStatus.COMPLETED
+                        break
+                else:
+                    status = RunStatus.COMPLETED
+                if status is not RunStatus.DISCONNECTED:
+                    self._flush_final_safety_observation()
         except KeyboardInterrupt:
             status = RunStatus.INTERRUPTED
             reason = "KeyboardInterrupt"
@@ -350,7 +392,9 @@ class SimulationRunner:
                         started_at=started_at,
                         ended_at=datetime.now(timezone.utc).isoformat(),
                         sumo_version=self._sumo_version_value,
-                        requested_steps=steps,
+                        requested_steps=target_steps,
+                        requested_seconds=target_seconds,
+                        warmup_seconds=resolved_window.warmup_seconds,
                         final_simulation_time=self._last_simulation_time,
                         step_length=getattr(self.bridge, "step_length", None),
                         configured_end_time=getattr(
@@ -364,6 +408,7 @@ class SimulationRunner:
                             None,
                         ),
                         algorithm_manifest=self.algorithm.manifest,
+                        sumo_pid=getattr(self.bridge, "process_id", None),
                     )
                 except Exception as exc:
                     cleanup_errors.append(exc)
@@ -373,7 +418,34 @@ class SimulationRunner:
             if cleanup_errors and not body_exception:
                 raise cleanup_errors[0]
 
-        return self.metrics_history
+        if legacy_return:
+            return self.metrics_history
+        run_dir = self.artifacts.run_dir if self.artifacts is not None else self.output_csv.parent
+        run_id = self.artifacts.run_id if self.artifacts is not None else ""
+        summary = None
+        if self.artifacts is not None and self.artifacts.summary.exists():
+            summary = json.loads(self.artifacts.summary.read_text(encoding="utf-8"))
+        return RunResult(
+            run_id,
+            status,
+            reason,
+            run_dir,
+            summary,
+            self.algorithm.name,
+        )
+
+    def _resolve_window(
+        self,
+        requested: SimulationWindow | int | None,
+    ) -> tuple[SimulationWindow, int]:
+        step_length = float(getattr(self.bridge, "step_length", 1.0))
+        if isinstance(requested, SimulationWindow):
+            return requested, steps_for_seconds(requested.duration_seconds, step_length)
+        if requested is None:
+            requested = int(get_config().get("sumo.default_simulation_steps", 36000))
+        if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:
+            raise ValueError("legacy steps must be an integer > 0")
+        return SimulationWindow(seconds_for_steps(requested, step_length), 0.0), requested
 
     def _tick(self, step: int) -> str:
         """Advance one step and return continue, exhausted, or disconnected."""

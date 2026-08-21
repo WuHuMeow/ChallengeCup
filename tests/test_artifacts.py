@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from engine.artifacts import RunArtifacts
 
 
@@ -92,3 +94,41 @@ def test_run_metadata_records_movement_capacity_inputs(tmp_path):
         "minimum_gap_m": 2.5,
         "capacity_spacing_m": 7.5,
     }
+
+
+def test_manifest_and_status_are_atomic_and_terminal_status_is_immutable(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+
+    artifacts.write_manifest({
+        "run_id": "cannot-replace",
+        "requested_seconds": 10.0,
+        "derived_steps": 100,
+    })
+    artifacts.write_status("queued", "")
+    artifacts.write_status("starting", "")
+    artifacts.write_status("running", "")
+    artifacts.write_status("completed", "")
+
+    manifest = json.loads(artifacts.manifest.read_text(encoding="utf-8"))
+    status = json.loads(artifacts.status.read_text(encoding="utf-8"))
+    assert manifest["run_id"] == artifacts.run_id
+    assert manifest["requested_seconds"] == 10.0
+    assert status["status"] == "completed"
+    assert status["started_at"]
+    assert status["ended_at"]
+    assert not list(artifacts.run_dir.glob("*.tmp"))
+
+    with pytest.raises(ValueError, match="terminal"):
+        artifacts.write_status("failed", "late failure")
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == "completed"
+
+    with pytest.raises(ValueError, match="terminal"):
+        artifacts.write_metadata(
+            "failed",
+            "late failure",
+            [],
+            started_at="start",
+            ended_at="end",
+            sumo_version="test",
+        )
+    assert not artifacts.metadata.exists()

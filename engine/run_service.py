@@ -1,37 +1,29 @@
-"""Serialized orchestration for single, batch, and API simulation runs."""
+"""Thread-safe orchestration for isolated simulation runs."""
 
 from __future__ import annotations
 
 import json
 import threading
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
 from core.run_models import RunRequest, RunResult, RunStatus
-from core.timebase import seconds_for_steps, steps_for_seconds
+from core.timebase import SimulationWindow, seconds_for_steps, steps_for_seconds
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel
+from engine.run_state import RunStateMachine, TERMINAL_STATUSES
 from engine.runner import SimulationRunner
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
 
-TERMINAL_STATUSES = frozenset({
-    RunStatus.COMPLETED,
-    RunStatus.STOPPED,
-    RunStatus.ENDED_EARLY,
-    RunStatus.DISCONNECTED,
-    RunStatus.INTERRUPTED,
-    RunStatus.FAILED,
-})
-
-
 class RunService:
-    """Run simulations through one worker to protect the global TraCI client."""
+    """Serialize TraCI ownership while exposing run-scoped lifecycle control."""
 
     def __init__(
         self,
@@ -46,33 +38,105 @@ class RunService:
         self.algorithm_registry = algorithm_registry or get_algorithm_registry()
         self.max_workers = 1
         self._executor = ThreadPoolExecutor(max_workers=self.max_workers)
-        self._records: dict[str, RunResult] = {}
+        self._states = RunStateMachine()
         self._stops: dict[str, threading.Event] = {}
-        self._lock = threading.Lock()
+        self._done: dict[str, threading.Event] = {}
+        self._futures: dict[str, Future[RunResult]] = {}
+        self._runners: dict[str, object] = {}
+        self._artifacts: dict[str, RunArtifacts] = {}
+        self._lock = threading.RLock()
 
     def submit(self, request: RunRequest) -> RunResult:
         """Queue a validated request and return its isolated run identity."""
         request, artifacts, stop_event, queued = self._prepare(request)
-        self._executor.submit(self._execute, request, artifacts, stop_event)
+        future = self._executor.submit(self._execute, request, artifacts, stop_event)
+        with self._lock:
+            self._futures[queued.run_id] = future
         return queued
 
     def run_sync(self, request: RunRequest) -> RunResult:
-        """Execute one request synchronously through the same internal path."""
+        """Execute one request synchronously through the same lifecycle path."""
         request, artifacts, stop_event, _ = self._prepare(request)
         return self._execute(request, artifacts, stop_event)
 
     def get(self, run_id: str) -> RunResult | None:
-        with self._lock:
-            return self._records.get(run_id)
+        return self._states.get(run_id)
 
     def stop(self, run_id: str) -> bool:
-        with self._lock:
-            result = self._records.get(run_id)
-            stop_event = self._stops.get(run_id)
-        if stop_event is None or result is None or result.status in TERMINAL_STATUSES:
+        """Request one run to stop and wait for that run's owned work to finish."""
+        current = self._states.get(run_id)
+        if current is None or current.status in TERMINAL_STATUSES:
             return False
+        if current.status is RunStatus.STOPPING:
+            self._wait_until_done(run_id)
+            return False
+
+        with self._lock:
+            stop_event = self._stops.get(run_id)
+            done_event = self._done.get(run_id)
+            future = self._futures.get(run_id)
+            artifacts = self._artifacts.get(run_id)
+        if stop_event is None or done_event is None or artifacts is None:
+            return False
+
         stop_event.set()
+        try:
+            self._states.transition(run_id, RunStatus.STOPPING, "stop requested")
+        except ValueError:
+            raced = self._states.get(run_id)
+            if raced is not None and (
+                raced.status is RunStatus.STOPPING
+                or raced.status in TERMINAL_STATUSES
+            ):
+                if raced.status is RunStatus.STOPPING:
+                    self._wait_until_done(run_id)
+                return False
+            raise
+
+        if future is not None and future.cancel():
+            self._write_terminal_metadata(
+                artifacts,
+                RunStatus.INTERRUPTED,
+                "stop requested before start",
+            )
+            self._states.transition(
+                run_id,
+                RunStatus.INTERRUPTED,
+                "stop requested before start",
+            )
+            done_event.set()
+            return True
+
+        if future is not None:
+            future.result()
+        else:
+            done_event.wait()
         return True
+
+    def _wait_until_done(self, run_id: str) -> None:
+        with self._lock:
+            done_event = self._done.get(run_id)
+        if done_event is not None:
+            done_event.wait()
+
+    def switch_scene(
+        self,
+        run_id: str,
+        request: RunRequest,
+    ) -> tuple[RunResult, RunResult]:
+        """Finish the old run before allocating and queuing the replacement."""
+        if self.get(run_id) is None:
+            raise KeyError(run_id)
+        self.stop(run_id)
+        old = self.get(run_id)
+        if old is not None and old.status is RunStatus.STOPPING:
+            with self._lock:
+                done_event = self._done[run_id]
+            done_event.wait()
+            old = self.get(run_id)
+        assert old is not None
+        new = self.submit(request)
+        return old, new
 
     def shutdown(self, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait)
@@ -99,6 +163,7 @@ class RunService:
         self._validate(request)
         artifacts = self._create_artifacts(request)
         stop_event = threading.Event()
+        done_event = threading.Event()
         queued = RunResult(
             artifacts.run_id,
             RunStatus.QUEUED,
@@ -106,9 +171,21 @@ class RunService:
             artifacts.run_dir,
             algorithm=request.algorithm,
         )
+        artifacts.write_manifest({
+            "requested_seconds": request.duration_seconds,
+            "warmup_seconds": request.warmup_seconds,
+            "requested_steps": request.steps,
+            "step_length_override": request.step_length_override,
+            "edge_delay_steps": request.edge_delay_steps,
+            "edge_directions": list(request.edge_directions),
+            "variant": asdict(request.variant),
+            "algorithm_params": dict(request.algorithm_params),
+        })
+        self._states.register(queued, artifacts)
         with self._lock:
-            self._records[artifacts.run_id] = queued
             self._stops[artifacts.run_id] = stop_event
+            self._done[artifacts.run_id] = done_event
+            self._artifacts[artifacts.run_id] = artifacts
         return request, artifacts, stop_event, queued
 
     def _execute(
@@ -117,19 +194,32 @@ class RunService:
         artifacts: RunArtifacts,
         stop_event: threading.Event,
     ) -> RunResult:
-        self._store(
-            RunResult(
-                artifacts.run_id,
-                RunStatus.RUNNING,
-                "",
-                artifacts.run_dir,
-                algorithm=request.algorithm,
-            )
-        )
+        run_id = artifacts.run_id
+        with self._lock:
+            done_event = self._done[run_id]
         try:
+            current = self._states.get(run_id)
+            if current is not None and current.status is RunStatus.STOPPING:
+                return self._finish_interrupted_before_start(artifacts)
+            try:
+                self._states.transition(run_id, RunStatus.STARTING, "")
+            except ValueError:
+                raced = self._states.get(run_id)
+                if raced is not None and raced.status is RunStatus.STOPPING:
+                    return self._finish_interrupted_before_start(artifacts)
+                raise
+
             scene = self.registry.get_scene(request.intersection_id)
-            requested_steps = self._requested_steps(request, scene.meta.sumo_cfg)
             step_length = self._step_length(request, scene.meta.sumo_cfg)
+            window = self._window(request, step_length)
+            derived_steps = steps_for_seconds(window.duration_seconds, step_length)
+            artifacts.write_manifest({
+                "requested_seconds": window.duration_seconds,
+                "warmup_seconds": window.warmup_seconds,
+                "derived_steps": derived_steps,
+                "step_length": step_length,
+                "scene_sumo_cfg": str(scene.meta.sumo_cfg),
+            })
             bundle = VariantGenerator().generate_bundle(
                 scene.meta,
                 request.flow_multiplier,
@@ -158,42 +248,97 @@ class RunService:
                 artifacts=artifacts,
                 state_channel=state_channel,
             )
-            runner.run(requested_steps, stop_event=stop_event)
-            if not artifacts.metadata.exists():
-                now = datetime.now(timezone.utc).isoformat()
-                artifacts.write_metadata(
-                    RunStatus.FAILED.value,
-                    "runner did not write run metadata",
-                    [],
-                    started_at=now,
-                    ended_at=now,
-                    sumo_version="unknown",
-                    requested_steps=requested_steps,
+            with self._lock:
+                self._runners[run_id] = runner
+
+            current = self._states.get(run_id)
+            if current is not None and current.status is RunStatus.STOPPING:
+                return self._finish_interrupted_before_start(artifacts)
+            try:
+                self._states.transition(run_id, RunStatus.RUNNING, "")
+            except ValueError:
+                raced = self._states.get(run_id)
+                if raced is not None and raced.status is RunStatus.STOPPING:
+                    return self._finish_interrupted_before_start(artifacts)
+                raise
+            returned = runner.run(window, stop_event=stop_event)
+            result = (
+                returned
+                if isinstance(returned, RunResult)
+                else self._result_from_artifacts(artifacts)
+            )
+            result = self._canonical_result(result)
+            current = self._states.get(run_id)
+            if current is not None and current.status not in TERMINAL_STATUSES:
+                result = self._states.transition(
+                    run_id,
+                    result.status,
+                    result.reason,
+                    summary=result.summary,
                 )
+            return result
         except Exception as exc:
-            if not artifacts.metadata.exists():
-                now = datetime.now(timezone.utc).isoformat()
-                artifacts.write_metadata(
-                    RunStatus.FAILED.value,
-                    str(exc) or type(exc).__name__,
-                    [],
-                    started_at=now,
-                    ended_at=now,
-                    sumo_version="unknown",
-                    requested_steps=requested_steps if "requested_steps" in locals() else None,
-                )
-        result = self._result_from_artifacts(artifacts)
-        self._store(result)
-        return result
+            reason = str(exc) or type(exc).__name__
+            current = self._states.get(run_id)
+            if current is not None and current.status in TERMINAL_STATUSES:
+                return current
+            self._write_terminal_metadata(
+                artifacts,
+                RunStatus.FAILED,
+                reason,
+                requested_steps=(
+                    derived_steps if "derived_steps" in locals() else None
+                ),
+                window=window if "window" in locals() else None,
+                step_length=step_length if "step_length" in locals() else None,
+            )
+            return self._states.transition(run_id, RunStatus.FAILED, reason)
+        finally:
+            with self._lock:
+                self._runners.pop(run_id, None)
+            done_event.set()
+
+    def _finish_interrupted_before_start(self, artifacts: RunArtifacts) -> RunResult:
+        reason = "stop requested before SUMO start"
+        self._write_terminal_metadata(artifacts, RunStatus.INTERRUPTED, reason)
+        return self._states.transition(
+            artifacts.run_id,
+            RunStatus.INTERRUPTED,
+            reason,
+        )
 
     @staticmethod
-    def _requested_steps(request: RunRequest, sumo_cfg: Path) -> int:
-        """Resolve a request's compatibility step count at the scene boundary."""
-        if request.steps is not None:
-            return request.steps
-        return steps_for_seconds(
-            request.duration_seconds, RunService._step_length(request, sumo_cfg)
+    def _write_terminal_metadata(
+        artifacts: RunArtifacts,
+        status: RunStatus,
+        reason: str,
+        *,
+        requested_steps: int | None = None,
+        window: SimulationWindow | None = None,
+        step_length: float | None = None,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        artifacts.write_metadata(
+            status.value,
+            reason,
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="unknown",
+            requested_steps=requested_steps,
+            requested_seconds=window.duration_seconds if window else None,
+            warmup_seconds=window.warmup_seconds if window else None,
+            step_length=step_length,
         )
+
+    @staticmethod
+    def _window(request: RunRequest, step_length: float) -> SimulationWindow:
+        if request.steps is not None:
+            return SimulationWindow(
+                seconds_for_steps(request.steps, step_length),
+                0.0,
+            )
+        return SimulationWindow(request.duration_seconds, request.warmup_seconds)
 
     @staticmethod
     def _step_length(request: RunRequest, sumo_cfg: Path) -> float:
@@ -211,18 +356,30 @@ class RunService:
         summary = None
         if artifacts.summary.exists():
             summary = json.loads(artifacts.summary.read_text(encoding="utf-8"))
+        status = RunStatus(payload["status"])
+        if status is RunStatus.STOPPED:
+            status = RunStatus.INTERRUPTED
         return RunResult(
             artifacts.run_id,
-            RunStatus(payload["status"]),
+            status,
             payload.get("reason", ""),
             artifacts.run_dir,
             summary,
             artifacts.algorithm,
         )
 
-    def _store(self, result: RunResult) -> None:
-        with self._lock:
-            self._records[result.run_id] = result
+    @staticmethod
+    def _canonical_result(result: RunResult) -> RunResult:
+        if result.status is not RunStatus.STOPPED:
+            return result
+        return RunResult(
+            result.run_id,
+            RunStatus.INTERRUPTED,
+            result.reason,
+            result.run_dir,
+            result.summary,
+            result.algorithm,
+        )
 
     @staticmethod
     def _validate(request: RunRequest) -> None:

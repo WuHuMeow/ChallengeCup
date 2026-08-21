@@ -774,7 +774,7 @@ def test_invalid_action_is_logged_and_does_not_stop_run(tmp_path):
     assert payload["status"] == "completed"
 
 
-def test_stop_event_writes_stopped_terminal_state(tmp_path):
+def test_stop_event_writes_interrupted_terminal_state(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     stop_event = threading.Event()
     stop_event.set()
@@ -788,9 +788,9 @@ def test_stop_event_writes_stopped_terminal_state(tmp_path):
 
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
-    assert payload["status"] == "stopped"
+    assert payload["status"] == "interrupted"
     assert [row["detail"] for row in events if row["type"] == "terminal"] == [
-        "stopped"
+        "interrupted"
     ]
 
 
