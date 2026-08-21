@@ -19,6 +19,7 @@ from engine.collector import MetricsCollector, StepLogger
 from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.events import EventLogger
 from engine.safety import SafetyObservationCollector
+from engine.safety_executor import SafetyExecutor
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.metrics import compute_metrics
 from experiments.summary import write_run_summary
@@ -87,6 +88,7 @@ class SimulationRunner:
         self._channel_run_id = (
             artifacts.run_id if artifacts is not None else f"runner-{id(self)}"
         )
+        self.safety_executor = SafetyExecutor()
         if self.state_channel is not None:
             self.state_channel.bind_contract(self._channel_run_id, ("joint-state.v1",))
         self.safety_collector = SafetyObservationCollector(
@@ -314,7 +316,11 @@ class SimulationRunner:
                     )
             else:
                 actions = self.algorithm.step(control_state)
-            action_results = self.bridge.apply_actions(actions) or []
+            action_results = self.safety_executor.apply(
+                actions,
+                raw_state,
+                self.bridge,
+            )
             if (
                 control_state is not None
                 and self.event_logger
@@ -342,6 +348,10 @@ class SimulationRunner:
                             f"reason={result.action.reason!r} "
                             f"detail={result.detail}"
                         ),
+                        reason=result.reason_code,
+                        action=result.action,
+                        accepted=result.accepted,
+                        simulation_seconds=float(raw_state.timestamp),
                     )
             safety_events = self.safety_collector.observe(
                 self._previous_safety_state, raw_state, tuple(action_results)

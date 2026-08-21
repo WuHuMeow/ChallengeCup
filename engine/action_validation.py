@@ -6,6 +6,55 @@ from collections.abc import Mapping
 from core.types import ControlAction
 
 
+def validate_phase_change_timing(
+    action: ControlAction,
+    *,
+    current_phase: int,
+    elapsed_phase_time: float,
+    required_seconds: float,
+    reason_code: str,
+    requirement: str,
+) -> tuple[str | None, str | None]:
+    """Return a structured rejection when a phase clearance is incomplete."""
+    if (
+        action.action_type != "set_phase"
+        or action.value == current_phase
+        or elapsed_phase_time >= required_seconds
+    ):
+        return None, None
+    return (
+        reason_code,
+        f"{requirement} requires {required_seconds:g} simulation seconds; "
+        f"elapsed={elapsed_phase_time:g}",
+    )
+
+
+def validate_clearance_duration(
+    action: ControlAction,
+    *,
+    elapsed_phase_time: float,
+    required_seconds: float,
+    reason_code: str,
+    requirement: str,
+) -> tuple[str | None, str | None]:
+    """Reject a duration that would end yellow/all-red clearance too early."""
+    if action.action_type != "set_phase_duration":
+        return None, None
+    try:
+        duration = float(action.value)
+    except (TypeError, ValueError):
+        return None, None
+    remaining = max(0.0, required_seconds - elapsed_phase_time)
+    if duration >= remaining:
+        return None, None
+    return (
+        reason_code,
+        f"{requirement} requires {required_seconds:g} simulation seconds; "
+        f"elapsed={elapsed_phase_time:g} remaining={remaining:g} "
+        f"requested_duration={duration:g}",
+    )
+
+
 def validate_control_action(
     action: ControlAction,
     tls_id: str | None,

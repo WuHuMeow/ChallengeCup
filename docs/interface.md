@@ -138,7 +138,8 @@ class BaseControlAlgorithm(ABC):
 
 - `step()` 只做决策，不启动 SUMO、不写文件、不直接调用 TraCI。
 - 返回 `[]` 表示本步不干预。
-- 控制动作由 `TraCIBridge.apply_actions()` 执行并逐项返回 `ActionResult`。
+- 控制动作统一由 `SafetyExecutor.apply()` 验证和执行，并逐项返回与算法原始请求关联的
+  `ActionResult`；算法和 Runner 不直接调用 bridge 的私有信号写入端。
 
 ### JointState
 
@@ -200,8 +201,10 @@ class BaseControlAlgorithm(ABC):
 | `set_phase_duration` | 秒数 | `trafficlight.setPhaseDuration` |
 | `set_program` | 程序 ID | `trafficlight.setProgram` |
 
-`TraCIBridge.apply_actions(actions) -> list[ActionResult]`。每个结果包含原动作、
-`accepted` 和 `detail`；拒绝动作会写入事件日志，调用方不需要从 warning 文本猜测结果。
+`SafetyExecutor.apply(actions, state, bridge) -> tuple[ActionResult, ...]` 是唯一的信号
+动作写入入口。执行器验证动作和仿真秒边界、插入所需黄灯/全红相位，再调用 bridge 的
+私有低层写入端。每个结果仍包含算法原始动作、`accepted`、`detail` 和结构化
+`reason_code`；拒绝动作会写入事件日志，调用方不需要从 warning 文本猜测结果。
 
 `events.csv` keeps the legacy `step`, `type`, and `detail` columns and adds
 `run_id`, `intersection_id`, `algorithm`, `status`, `reason`, `accepted`,
@@ -217,10 +220,10 @@ and action fields. Lifecycle events use `status`/`reason`; action rows use
 1. 上游排队和下游排队分别按容量归一化；
 2. 将 `CloudPolicy.predict()` 的预测到达量按 `prediction_weight` 加入压力；
 3. 当 `outgoing_occupancy >= overflow_occupancy_threshold` 时阻断该相位，避免向已饱和下游继续放行；
-4. 先满足 `min_green`，并在 `max_green` 到期时选择可行替代相位；
-5. 切换时优先经过真实 SUMO 黄灯/全红相位；
+4. 在 `max_green` 到期时选择可行替代相位，并把最终绿灯请求交给共享安全执行器；
+5. `SafetyExecutor` 按仿真秒执行 `min_green`，并插入真实 SUMO 黄灯/全红相位；
 6. 绿灯时长按相对压力动态计算，并限制在 `min_green..max_green`；
-7. `reset()` 清理待切换相位和云策略状态。
+7. `reset()` 清理控制器配置和云策略状态。
 
 校准使用 `experiments/tuning.py`：
 

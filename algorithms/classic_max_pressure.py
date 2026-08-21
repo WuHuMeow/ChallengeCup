@@ -38,23 +38,6 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
         self.decision_history.append(target)
         if target == state.current_phase:
             return []
-        legal_targets = {
-            candidate
-            for source, candidate in state.legal_phase_transitions
-            if source == state.current_phase
-        }
-        if target not in legal_targets:
-            return []
-        current = next(
-            (
-                phase
-                for phase in state.phase_movements
-                if phase.phase_index == state.current_phase
-            ),
-            None,
-        )
-        if current is None or state.elapsed_phase_time < current.nominal_duration:
-            return []
         return [
             ControlAction(
                 tls_id=state.tls_id,

@@ -167,7 +167,7 @@ def test_ca_mp_uses_capacity_normalized_pressure():
     assert isinstance(actions[1].value, float)
 
 
-def test_ca_mp_blocks_saturated_downstream_and_uses_safe_transition():
+def test_ca_mp_blocks_saturated_downstream_and_requests_the_selected_green():
     phases = [
         _phase(0, 8, 10, 0, 10, 0.95),
         _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
@@ -185,13 +185,13 @@ def test_ca_mp_blocks_saturated_downstream_and_uses_safe_transition():
         )
     )
 
-    assert first[0].value == 1
+    assert first[0].value == 2
     assert "target=2" in first[0].reason
     assert second[0].value == 2
-    assert second[1].action_type == "set_phase_duration"
+    assert first[1].action_type == "set_phase_duration"
 
 
-def test_ca_mp_respects_minimum_green_before_switching():
+def test_ca_mp_delegates_minimum_green_to_the_safety_executor():
     phases = [
         _phase(0, 1, 10, 0, 10, 0.1),
         _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
@@ -202,10 +202,13 @@ def test_ca_mp_respects_minimum_green_before_switching():
         _phase_state(current=0, elapsed=5, phases=phases)
     )
 
-    assert actions == []
+    assert [(action.action_type, action.value) for action in actions] == [
+        ("set_phase", 2),
+        ("set_phase_duration", 54.0),
+    ]
 
 
-def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_pending_state():
+def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_configured_state():
     phases = [
         _phase(0, 1, 10, 0, 10, 0.1),
         _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
@@ -224,9 +227,9 @@ def test_ca_mp_dynamic_green_is_clamped_and_reset_clears_pending_state():
             timestamp=11.0,
         )
     )
-    assert algorithm.pending_target_phase == 2
+    assert algorithm._configured_phase == 2
     algorithm.reset()
-    assert algorithm.pending_target_phase is None
+    assert algorithm._configured_phase is None
 
 
 def test_ca_mp_frozen_base_green_survives_cloud_dispatch():
@@ -262,7 +265,6 @@ def test_ca_maxpressure_empty_queues_returns_empty():
 
 def _ca_runtime_state(algorithm: CAMaxPressureAlgorithm):
     return (
-        algorithm.pending_target_phase,
         algorithm._configured_phase,
         algorithm.base_green,
         algorithm.min_green,
@@ -305,15 +307,33 @@ def test_ca_mp_decision_plan_is_pure_then_commits_once_for_equivalent_state():
     after_first_commit = _ca_runtime_state(algorithm)
     algorithm.commit_plan(plan)
     assert _ca_runtime_state(algorithm) == after_first_commit
-    assert algorithm.pending_target_phase == 2
-    assert [(action.action_type, action.value) for action in planned_actions] == [
-        ("set_phase", 1),
-        ("set_phase_duration", 3.0),
+    assert algorithm._configured_phase == 2
+    assert [(action.action_type, action.value) for action in planned_actions[:1]] == [
+        ("set_phase", 2),
+    ]
+    assert planned_actions[1].action_type == "set_phase_duration"
+    assert algorithm.min_green <= planned_actions[1].value <= algorithm.max_green
+
+
+def test_ca_mp_delegates_transition_sequence_to_the_safety_executor():
+    phases = [
+        _phase(0, 1, 10, 0, 10, 0.1),
+        _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
+        _phase(2, 9, 10, 0, 10, 0.1),
     ]
 
+    actions = CAMaxPressureAlgorithm().step(
+        _phase_state(current=0, elapsed=20, phases=phases)
+    )
 
-def test_ca_mp_pending_wait_and_complete_reasons_come_from_planning_branch():
-    """Transition wait and completion must not collapse into one inferred reason."""
+    assert actions[0].action_type == "set_phase"
+    assert actions[0].value == 2
+    assert actions[1].action_type == "set_phase_duration"
+    assert actions[1].value >= 10.0
+
+
+def test_ca_mp_clearance_phases_remain_executor_owned_in_every_snapshot():
+    """Algorithm snapshots keep requesting the selected green during clearance."""
     phases = [
         _phase(0, 1, 10, 0, 10, 0.1),
         _phase(1, 0, 1, 0, 1, 0.0, signal_state="yrr"),
@@ -331,9 +351,9 @@ def test_ca_mp_pending_wait_and_complete_reasons_come_from_planning_branch():
     waiting_plan = algorithm.plan_decision(waiting)
     complete_plan = algorithm.plan_decision(complete)
 
-    assert waiting_plan.decision_reason == "pending_transition_wait"
-    assert waiting_plan.control_actions() == []
-    assert complete_plan.decision_reason == "pending_transition_complete"
+    assert waiting_plan.decision_reason == "dispatch_safety_executor"
+    assert waiting_plan.control_actions()[0].value == 2
+    assert complete_plan.decision_reason == "dispatch_safety_executor"
     assert complete_plan.control_actions()[0].value == 2
 
 

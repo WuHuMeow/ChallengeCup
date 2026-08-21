@@ -38,7 +38,7 @@ def test_mock_bridge_apply_actions_returns_one_result_per_action():
         ControlAction(tls_id="tls_0", action_type="set_phase", value=1, reason="test"),
         ControlAction(tls_id="tls_0", action_type="set_phase_duration", value=30.0),
     ]
-    results = bridge.apply_actions(actions)
+    results = bridge._apply_actions(actions)
     assert [result.accepted for result in results] == [True, True]
     assert [result.action for result in results] == actions
     assert len(bridge._applied_actions) == 2
@@ -54,7 +54,7 @@ def test_mock_bridge_rejected_action_has_structured_result():
         reason="invalid phase",
     )
 
-    results = bridge.apply_actions([action])
+    results = bridge._apply_actions([action])
 
     assert len(results) == 1
     assert results[0].action == action

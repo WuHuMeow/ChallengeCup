@@ -20,8 +20,9 @@ reset()
 name
 ```
 
-算法只输出决策，不直接调用 TraCI。`TraCIBridge.apply_actions()` 执行动作并返回
-`list[ActionResult]`。
+算法只输出决策，不直接调用 TraCI。Runner 将动作交给唯一的
+`SafetyExecutor.apply()` 边界；执行器返回与算法原始请求关联的
+`tuple[ActionResult, ...]`，并独占 bridge 的私有信号写入端。
 
 ## CA-MP
 
@@ -30,10 +31,10 @@ name
 1. 上游与下游排队按各自容量归一化；
 2. 预测到达量按 `prediction_weight` 加入压力；
 3. 下游占用率达到 `overflow_occupancy_threshold` 时阻断该相位；
-4. 满足最小绿灯，并在最大绿灯到期时寻找替代相位；
-5. 切换时经过真实黄灯/全红相位；
+4. 在最大绿灯到期时寻找替代相位，并输出最终绿灯请求；
+5. `SafetyExecutor` 执行最小绿灯约束并插入真实黄灯/全红相位；
 6. 绿灯时长按压力动态缩放到 `min_green..max_green`；
-7. `reset()` 清理待切换目标和云策略状态。
+7. `reset()` 清理控制器配置和云策略状态。
 
 参数来自 `config/default.yaml::algorithms.ca_maxpressure`，运行级覆盖只允许：
 

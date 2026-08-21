@@ -1,0 +1,270 @@
+import importlib
+
+import pytest
+
+from core.movements import PhaseMovementState
+from core.types import ActionResult, ControlAction, JointState
+from engine.mock_bridge import MockBridge
+
+
+def _phases() -> tuple[PhaseMovementState, ...]:
+    return (
+        PhaseMovementState(0, "Grr", (), 30.0),
+        PhaseMovementState(1, "yrr", (), 3.0),
+        PhaseMovementState(2, "rrr", (), 1.0),
+        PhaseMovementState(3, "rGG", (), 30.0),
+    )
+
+
+def _state(*, current_phase: int = 0, elapsed: float = 30.0) -> JointState:
+    return JointState(
+        step=100,
+        timestamp=12.5,
+        tls_id="tls",
+        current_phase=current_phase,
+        current_phase_name=f"p{current_phase}",
+        elapsed_phase_time=elapsed,
+        phase_movements=_phases(),
+        legal_phase_transitions=((0, 1), (1, 2), (2, 3)),
+    )
+
+
+def _executor():
+    return importlib.import_module("engine.safety_executor").SafetyExecutor()
+
+
+def _bridge(*, current_phase: int = 0) -> MockBridge:
+    bridge = MockBridge(tls_id="tls", phase_count=4)
+    bridge._current_step = current_phase
+    return bridge
+
+
+def _phase_and_duration_actions() -> list[ControlAction]:
+    return [
+        ControlAction("tls", "set_phase", 3, "higher pressure"),
+        ControlAction("tls", "set_phase_duration", 30.0, "dynamic green"),
+    ]
+
+
+class _PrivateSinkBridge:
+    def __init__(self):
+        self.written = []
+
+    def _apply_actions(self, actions):
+        self.written.extend(actions)
+        return [ActionResult(action, True, "applied") for action in actions]
+
+
+def test_next_transition_returns_the_first_yellow_in_simulation_seconds():
+    transition = _executor().next_transition(0, 3, _phases())
+
+    assert transition == (1, 3.0)
+
+
+def test_next_transition_advances_from_yellow_to_all_red():
+    transition = _executor().next_transition(1, 3, _phases())
+
+    assert transition == (2, 1.0)
+
+
+def test_phase_change_before_min_green_is_rejected_without_a_signal_write():
+    state = _state(elapsed=9.5)
+    bridge = _bridge()
+    action = ControlAction("tls", "set_phase", 3, "higher pressure")
+
+    results = _executor().apply([action], state, bridge)
+
+    assert isinstance(results, tuple)
+    assert results[0].action is action
+    assert results[0].accepted is False
+    assert results[0].reason_code == "minimum_green_violation"
+    assert "min_green" in results[0].detail
+    assert bridge._applied_actions == []
+
+
+def test_phase_change_inserts_yellow_and_preserves_action_result_correlation():
+    state = _state(elapsed=10.0)
+    bridge = _bridge()
+    actions = _phase_and_duration_actions()
+
+    results = _executor().apply(actions, state, bridge)
+
+    assert [result.action for result in results] == actions
+    assert [result.accepted for result in results] == [True, True]
+    assert [
+        (action.action_type, action.value) for action in bridge._applied_actions
+    ] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 3.0),
+    ]
+
+
+def test_direct_yellow_request_uses_the_nominal_clearance_duration():
+    state = _state(elapsed=10.0)
+    bridge = _bridge()
+    actions = [
+        ControlAction("tls", "set_phase", 1, "direct clearance request"),
+        ControlAction("tls", "set_phase_duration", 0.1, "unsafe shortcut"),
+    ]
+
+    results = _executor().apply(actions, state, bridge)
+
+    assert [result.action for result in results] == actions
+    assert [result.accepted for result in results] == [True, True]
+    assert [
+        (applied.action_type, applied.value) for applied in bridge._applied_actions
+    ] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 3.0),
+    ]
+
+
+def test_yellow_cannot_be_shortened_before_its_simulation_second_boundary():
+    state = _state(current_phase=1, elapsed=2.5)
+    bridge = _bridge(current_phase=1)
+    action = ControlAction("tls", "set_phase", 3)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "yellow_clearance_violation"
+    assert bridge._applied_actions == []
+
+
+def test_completed_yellow_inserts_all_red_with_its_own_duration():
+    state = _state(current_phase=1, elapsed=3.0)
+    bridge = _bridge(current_phase=1)
+    action = ControlAction("tls", "set_phase", 3)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.action is action
+    assert result.accepted is True
+    assert [
+        (applied.action_type, applied.value) for applied in bridge._applied_actions
+    ] == [
+        ("set_phase", 2),
+        ("set_phase_duration", 1.0),
+    ]
+
+
+def test_completed_yellow_routes_through_an_unavoidable_intermediate_green():
+    phases = (
+        PhaseMovementState(0, "Grr", (), 30.0),
+        PhaseMovementState(1, "yrr", (), 3.0),
+        PhaseMovementState(2, "rGr", (), 30.0),
+        PhaseMovementState(3, "ryr", (), 3.0),
+        PhaseMovementState(4, "rrG", (), 30.0),
+    )
+    state = JointState(
+        step=10,
+        timestamp=10.0,
+        tls_id="tls",
+        current_phase=1,
+        current_phase_name="p1",
+        elapsed_phase_time=3.0,
+        phase_movements=phases,
+        legal_phase_transitions=((0, 1), (1, 2), (2, 3), (3, 4)),
+    )
+    bridge = MockBridge(tls_id="tls", phase_count=5)
+    bridge._current_step = 1
+    actions = [
+        ControlAction("tls", "set_phase", 4, "selected final green"),
+        ControlAction("tls", "set_phase_duration", 30.0, "selected duration"),
+    ]
+
+    results = _executor().apply(actions, state, bridge)
+
+    assert [result.action for result in results] == actions
+    assert [result.accepted for result in results] == [True, True]
+    assert [
+        (applied.action_type, applied.value) for applied in bridge._applied_actions
+    ] == [
+        ("set_phase", 2),
+        ("set_phase_duration", 30.0),
+    ]
+
+
+def test_all_red_cannot_be_shortened_before_its_simulation_second_boundary():
+    state = _state(current_phase=2, elapsed=0.5)
+    bridge = _bridge(current_phase=2)
+    action = ControlAction("tls", "set_phase", 3)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "all_red_clearance_violation"
+    assert bridge._applied_actions == []
+
+
+def test_standalone_duration_cannot_shorten_the_remaining_yellow_clearance():
+    state = _state(current_phase=1, elapsed=2.5)
+    bridge = _bridge(current_phase=1)
+    action = ControlAction("tls", "set_phase_duration", 0.1)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "yellow_clearance_violation"
+    assert bridge._applied_actions == []
+
+
+def test_standalone_duration_cannot_shorten_the_remaining_all_red_clearance():
+    state = _state(current_phase=2, elapsed=0.5)
+    bridge = _bridge(current_phase=2)
+    action = ControlAction("tls", "set_phase_duration", 0.1)
+
+    result = _executor().apply([action], state, bridge)[0]
+
+    assert result.accepted is False
+    assert result.reason_code == "all_red_clearance_violation"
+    assert bridge._applied_actions == []
+
+
+def test_fallback_preserves_the_known_current_phase_deterministically():
+    actions = _executor().fallback(_state(current_phase=2, elapsed=0.5))
+
+    assert [(action.action_type, action.value) for action in actions] == [
+        ("set_phase", 2)
+    ]
+    assert actions[0].reason == "safety_fallback_preserve_current_phase"
+
+
+def test_fallback_leaves_fixed_timing_untouched_without_phase_topology():
+    state = JointState(
+        step=1,
+        timestamp=1.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=1.0,
+    )
+
+    assert _executor().fallback(state) == []
+
+
+def test_apply_is_the_public_boundary_for_the_private_bridge_sink():
+    state = JointState(
+        step=1,
+        timestamp=1.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=1.0,
+    )
+    bridge = _PrivateSinkBridge()
+    action = ControlAction("tls", "set_phase_duration", 5.0)
+
+    result = _executor().apply([action], state, bridge)
+
+    assert result == (ActionResult(action, True, "applied"),)
+    assert bridge.written[0].value == 5.0
+
+
+@pytest.mark.parametrize(
+    "minimum",
+    [0.0, -1.0, float("nan"), float("inf"), float("-inf")],
+)
+def test_executor_rejects_an_invalid_minimum_green_configuration(minimum):
+    with pytest.raises(ValueError, match="min_green_seconds"):
+        importlib.import_module("engine.safety_executor").SafetyExecutor(minimum)

@@ -12,6 +12,7 @@ from cloud.cloud_policy import CloudPolicy
 from core.movements import MovementKey, MovementState, PhaseMovementState
 from core.types import JointState, PhaseTrafficState, QueueState
 from engine.mock_bridge import MockBridge
+from engine.safety_executor import SafetyExecutor
 
 
 def _movement(
@@ -161,6 +162,17 @@ def test_dynamic_green_is_clamped_to_the_frozen_layer_limits(state):
     assert duration == 30.0
 
 
+def test_capacity_controller_delegates_min_green_to_the_safety_executor(state):
+    state.elapsed_phase_time = 9.5
+
+    actions = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3()).step(state)
+
+    assert [(action.action_type, action.value) for action in actions] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 30.0),
+    ]
+
+
 def test_dynamic_green_averages_only_strictly_positive_phase_scores(state):
     """A zero-score candidate must not dilute a 20-point selected pressure."""
     scored = {
@@ -216,6 +228,7 @@ def test_m2_m3_have_distinct_boundary_identity_and_serializable_audit(state):
     assert m2.manifest["layer"] == "M2"
     assert m3.manifest["layer"] == "M3"
     assert m2.manifest["safety_boundary"] != m3.manifest["safety_boundary"]
+    assert m3.manifest["safety_boundary"] == "safety_executor"
     assert m3_audit["selection_reason"] == "highest_viable_pressure"
     assert m3_audit["final_decision"]["action"] == "set_phase"
     assert m3_audit["phase_scores"]["0"]["movements"][0]["movement_id"] == "in_a->out_a"
@@ -302,7 +315,9 @@ def test_legacy_phase_states_audit_records_exact_action_and_existing_results():
     algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
 
     actions = algorithm.step(legacy_state)
-    results = MockBridge(tls_id="tls_legacy").apply_actions(actions)
+    results = SafetyExecutor().apply(
+        actions, legacy_state, MockBridge(tls_id="tls_legacy")
+    )
     audit = algorithm.audit_record(legacy_state, results)
 
     assert actions[0].action_type == "set_phase"
@@ -502,7 +517,6 @@ def _legacy_decision_state(
 
 def _capacity_runtime_state(algorithm: CapacityAwareMaxPressureAlgorithm):
     return (
-        algorithm.pending_target_phase,
         algorithm._configured_phase,
         algorithm.base_green,
         algorithm.min_green,
@@ -636,8 +650,8 @@ def test_m3_legacy_disables_prediction_and_keeps_frozen_green_limits():
     assert algorithm.max_green == algorithm.manifest["max_green"] == 30.0
 
 
-def test_legacy_audit_reports_distinct_pending_wait_and_complete_reasons():
-    """Top-level evidence must name the actual pending transition branch."""
+def test_legacy_audit_delegates_clearance_state_to_the_safety_executor():
+    """Legacy audit records the green request, never algorithm-owned clearance."""
     algorithm = CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3())
     initial = _legacy_decision_state(with_transition=True)
     algorithm.step(initial)
@@ -658,11 +672,11 @@ def test_legacy_audit_reports_distinct_pending_wait_and_complete_reasons():
     complete_audit = algorithm.audit_record(complete)
     complete_actions = algorithm.step(complete)
 
-    assert waiting_audit["selection_reason"] == "pending_target_in_progress"
-    assert waiting_audit["decision_reason"] == "pending_transition_wait"
-    assert waiting_actions == []
-    assert complete_audit["selection_reason"] == "pending_target_in_progress"
-    assert complete_audit["decision_reason"] == "pending_transition_complete"
+    assert waiting_audit["selection_reason"] == "highest_viable_pressure"
+    assert waiting_audit["decision_reason"] == "dispatch_safety_executor"
+    assert waiting_actions[0].value == 2
+    assert complete_audit["selection_reason"] == "highest_viable_pressure"
+    assert complete_audit["decision_reason"] == "dispatch_safety_executor"
     assert complete_actions[0].value == 2
 
 

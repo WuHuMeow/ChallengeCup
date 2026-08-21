@@ -1000,15 +1000,15 @@ class TraCIBridge:
             transitions.extend((phase_index, target) for target in targets)
         return tuple(dict.fromkeys(transitions))
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
-        """将算法输出的控制动作写入 SUMO。
+    def _apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
+        """Write an executor-approved action batch to SUMO.
 
-        set_phase 的 value 必须是合法相位索引 int；每个动作均返回可审计的
-        ActionResult，拒绝原因由调用方写入事件日志。
+        This private sink retains domain validation as defense in depth. Production
+        callers must enter through :meth:`engine.safety_executor.SafetyExecutor.apply`.
 
         Args:
-            actions: 控制动作列表，支持 set_phase / set_phase_duration /
-                set_program；未知类型打 warning 并跳过。
+            actions: Executor-approved set_phase / set_phase_duration / set_program
+                actions.
         """
         results: list[ActionResult] = []
         for action in actions:

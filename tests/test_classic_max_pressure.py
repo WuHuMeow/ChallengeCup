@@ -60,7 +60,7 @@ def test_classic_pressure_breaks_equal_scores_by_current_phase_then_index():
     assert algorithm.decision_history == [0]
 
 
-def test_classic_pressure_waits_for_the_legal_transition_phase_to_expire():
+def test_classic_delegates_clearance_timing_to_the_safety_executor():
     state = _state()
     state.current_phase = 2
     state.elapsed_phase_time = 2.0
@@ -70,12 +70,9 @@ def test_classic_pressure_waits_for_the_legal_transition_phase_to_expire():
         PhaseMovementState(2, "rr", (), 3),
     )
     state.legal_phase_transitions = ((2, 1),)
-    algorithm = ClassicMaxPressureAlgorithm()
 
-    assert algorithm.step(state) == []
+    actions = ClassicMaxPressureAlgorithm().step(state)
 
-    state.elapsed_phase_time = 3.0
-    actions = algorithm.step(state)
     assert [(action.action_type, action.value) for action in actions] == [
         ("set_phase", 1)
     ]

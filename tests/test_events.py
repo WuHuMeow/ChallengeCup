@@ -52,9 +52,14 @@ def test_events_csv_lifecycle_and_actions(tmp_path):
     assert types[0] == "run_start" and types[-1] == "terminal"
     assert types.count("terminal") == 1
     assert "action_applied" in types
-    detail = next(r["detail"] for r in rows if r["type"] == "action_applied")
+    applied = next(r for r in rows if r["type"] == "action_applied")
+    detail = applied["detail"]
     assert rows[-1]["detail"] == "completed"
     assert "测试动作" in detail
+    assert applied["simulation_seconds"] == "0.0"
+    assert applied["accepted"] == "true"
+    assert applied["action_type"] == "set_phase"
+    assert applied["action_value"] == "1"
 
 
 @pytest.mark.parametrize(

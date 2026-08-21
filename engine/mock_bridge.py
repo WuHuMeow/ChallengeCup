@@ -117,8 +117,8 @@ class MockBridge:
         ]
         return vehicles[:: self.vehicle_sample_rate]
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
-        """Validate and record control actions without contacting SUMO."""
+    def _apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
+        """Low-level sink used only by ``SafetyExecutor.apply``."""
         results: list[ActionResult] = []
         for action in actions:
             _, reason_code, error = validate_control_action(

@@ -58,7 +58,6 @@ class LegacyDecisionPlan:
     selection_reason: str
     decision_reason: str
     actions: tuple[_LegacyPlannedAction, ...]
-    next_pending_target_phase: int | None
     next_configured_phase: int | None
     next_base_green: float
     next_min_green: float
@@ -109,17 +108,12 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         )
         self.min_green = float(cfg.get("min_green", 10))
         self.max_green = float(cfg.get("max_green", 90))
-        self.yellow_duration = float(cfg.get("yellow_duration", 3))
-        self.all_red_duration = float(cfg.get("all_red_duration", 1))
-        self.pending_target_phase: int | None = None
         self._configured_phase: int | None = None
         self._initial_base_green = self.base_green
         self._initial_min_green = self.min_green
         self._initial_max_green = self.max_green
         self._initial_overflow_threshold = self.overflow_threshold
         self._initial_prediction_weight = self.prediction_weight
-        self._initial_yellow_duration = self.yellow_duration
-        self._initial_all_red_duration = self.all_red_duration
         self._legacy_plan_owner = object()
         self._legacy_reset_epoch = 0
         self._legacy_runtime_revision = 0
@@ -149,32 +143,6 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         return phase is not None and any(
             value in phase.signal_state for value in "Gg"
         )
-
-    def _transition_duration(self, phase: PhaseTrafficState) -> float:
-        if any(value in phase.signal_state for value in "yY"):
-            return self.yellow_duration
-        return self.all_red_duration
-
-    @staticmethod
-    def _transition_after(
-        current_phase: int,
-        target_phase: int,
-        phases: list[PhaseTrafficState],
-    ) -> PhaseTrafficState | None:
-        ordered = sorted(phases, key=lambda phase: phase.phase_index)
-        if not ordered:
-            return None
-        positions = {phase.phase_index: index for index, phase in enumerate(ordered)}
-        if current_phase not in positions:
-            return None
-        index = positions[current_phase]
-        for offset in range(1, len(ordered)):
-            candidate = ordered[(index + offset) % len(ordered)]
-            if candidate.phase_index == target_phase:
-                return None
-            if not CAMaxPressureAlgorithm._is_green(candidate):
-                return candidate
-        return None
 
     def _dynamic_duration(
         self,
@@ -364,13 +332,11 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
                 raise RuntimeError("legacy_history_unavailable")
 
         phases = list(state.phase_states)
-        by_index = {phase.phase_index: phase for phase in phases}
         green_phases = [phase for phase in phases if self._is_green(phase)]
         scores: dict[int, float] = {}
         viable: list[PhaseTrafficState] = []
         selected_phase: int | None = None
         actions: tuple[_LegacyPlannedAction, ...] = ()
-        next_pending = self.pending_target_phase
         next_configured = self._configured_phase
 
         if not phases:
@@ -429,140 +395,72 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
                         if len(tied) > 1
                         else "highest_viable_pressure"
                     )
-                current = by_index.get(state.current_phase)
-
+                current = next(
+                    (
+                        phase
+                        for phase in phases
+                        if phase.phase_index == state.current_phase
+                    ),
+                    None,
+                )
                 if (
-                    self.pending_target_phase is not None
-                    and state.current_phase == self.pending_target_phase
+                    self._is_green(current)
+                    and state.elapsed_phase_time >= effective.max_green
+                    and selected_phase == state.current_phase
                 ):
-                    selected_phase = self.pending_target_phase
-                    selection_reason = "pending_target_reached"
-                    decision_reason = "pending_target_reached"
-                    actions = self._activation_actions(
-                        state,
-                        selected_phase,
-                        self._planned_duration(
-                            scores.get(selected_phase, 0.0), scores, effective
-                        ),
-                        f"pending_target_reached target={selected_phase}",
-                    )
-                    next_pending = None
-                    next_configured = selected_phase
-                elif self.pending_target_phase is not None and not self._is_green(current):
-                    selected_phase = self.pending_target_phase
-                    selection_reason = "pending_target_in_progress"
-                    if (
-                        current is None
-                        or state.elapsed_phase_time < self._transition_duration(current)
-                    ):
-                        decision_reason = "pending_transition_wait"
+                    alternatives = [
+                        phase
+                        for phase in viable
+                        if phase.phase_index != state.current_phase
+                    ]
+                    if alternatives:
+                        selected = max(
+                            alternatives,
+                            key=lambda phase: (
+                                scores[phase.phase_index],
+                                -phase.phase_index,
+                            ),
+                        )
+                        selected_phase = selected.phase_index
+                        highest_alternative = scores[selected_phase]
+                        tied_alternatives = tuple(
+                            sorted(
+                                phase.phase_index
+                                for phase in alternatives
+                                if scores[phase.phase_index] == highest_alternative
+                            )
+                        )
+                        selection_reason = (
+                            "max_green_forced_equal_score_smallest_index"
+                            if len(tied_alternatives) > 1
+                            else "max_green_forced_alternative"
+                        )
+
+                if selected_phase == state.current_phase:
+                    if self._configured_phase == state.current_phase:
+                        decision_reason = "already_configured"
                     else:
-                        decision_reason = "pending_transition_complete"
+                        decision_reason = "dispatch_legacy_phase_state"
                         actions = self._activation_actions(
                             state,
                             selected_phase,
                             self._planned_duration(
-                                scores.get(selected_phase, 0.0), scores, effective
+                                scores[selected_phase], scores, effective
                             ),
-                            f"transition_complete target={selected_phase}",
+                            f"max_pressure target={selected_phase}",
                         )
-                        next_pending = None
                         next_configured = selected_phase
                 else:
-                    if (
-                        self._is_green(current)
-                        and state.elapsed_phase_time >= effective.max_green
-                        and selected_phase == state.current_phase
-                    ):
-                        alternatives = [
-                            phase
-                            for phase in viable
-                            if phase.phase_index != state.current_phase
-                        ]
-                        if alternatives:
-                            selected = max(
-                                alternatives,
-                                key=lambda phase: (
-                                    scores[phase.phase_index],
-                                    -phase.phase_index,
-                                ),
-                            )
-                            selected_phase = selected.phase_index
-                            highest_alternative = scores[selected_phase]
-                            tied_alternatives = tuple(
-                                sorted(
-                                    phase.phase_index
-                                    for phase in alternatives
-                                    if scores[phase.phase_index]
-                                    == highest_alternative
-                                )
-                            )
-                            selection_reason = (
-                                "max_green_forced_equal_score_smallest_index"
-                                if len(tied_alternatives) > 1
-                                else "max_green_forced_alternative"
-                            )
-
-                    if selected_phase == state.current_phase:
-                        if self._configured_phase == state.current_phase:
-                            decision_reason = "already_configured"
-                        else:
-                            decision_reason = "dispatch_legacy_phase_state"
-                            actions = self._activation_actions(
-                                state,
-                                selected_phase,
-                                self._planned_duration(
-                                    scores[selected_phase], scores, effective
-                                ),
-                                f"max_pressure target={selected_phase}",
-                            )
-                            next_pending = None
-                            next_configured = selected_phase
-                    elif (
-                        self._is_green(current)
-                        and state.elapsed_phase_time < effective.min_green
-                    ):
-                        decision_reason = "minimum_green_not_elapsed"
-                    else:
-                        transition = self._transition_after(
-                            state.current_phase,
-                            selected_phase,
-                            phases,
-                        )
-                        if transition is None:
-                            decision_reason = "direct_switch"
-                            actions = self._activation_actions(
-                                state,
-                                selected_phase,
-                                self._planned_duration(
-                                    scores[selected_phase], scores, effective
-                                ),
-                                f"direct_switch target={selected_phase}",
-                            )
-                            next_pending = None
-                            next_configured = selected_phase
-                        else:
-                            decision_reason = "safe_transition"
-                            next_pending = selected_phase
-                            next_configured = None
-                            transition_duration = self._transition_duration(transition)
-                            actions = (
-                                _LegacyPlannedAction(
-                                    state.tls_id,
-                                    "set_phase",
-                                    int(transition.phase_index),
-                                    (
-                                        f"safe_transition phase={transition.phase_index} "
-                                        f"target={selected_phase}"
-                                    ),
-                                ),
-                                _LegacyPlannedAction(
-                                    state.tls_id,
-                                    "set_phase_duration",
-                                    float(transition_duration),
-                                    f"transition_duration target={selected_phase}",
-                                ),
-                            )
+                    decision_reason = "dispatch_safety_executor"
+                    actions = self._activation_actions(
+                        state,
+                        selected_phase,
+                        self._planned_duration(
+                            scores[selected_phase], scores, effective
+                        ),
+                        f"max_pressure target={selected_phase}",
+                    )
+                    next_configured = selected_phase
 
         plan = LegacyDecisionPlan(
             owner_token=self._legacy_plan_owner,
@@ -586,7 +484,6 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
             selection_reason=selection_reason,
             decision_reason=decision_reason,
             actions=actions,
-            next_pending_target_phase=next_pending,
             next_configured_phase=next_configured,
             next_base_green=effective.base_green,
             next_min_green=effective.min_green,
@@ -639,7 +536,6 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         """Commit controller and cloud next-state exactly once."""
         if not self._validate_legacy_plan(plan):
             return
-        self.pending_target_phase = plan.next_pending_target_phase
         self._configured_phase = plan.next_configured_phase
         self.base_green = plan.next_base_green
         self.min_green = plan.next_min_green
@@ -656,15 +552,12 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         return plan.control_actions()
 
     def reset(self) -> None:
-        self.pending_target_phase = None
         self._configured_phase = None
         self.base_green = self._initial_base_green
         self.min_green = self._initial_min_green
         self.max_green = self._initial_max_green
         self.overflow_threshold = self._initial_overflow_threshold
         self.prediction_weight = self._initial_prediction_weight
-        self.yellow_duration = self._initial_yellow_duration
-        self.all_red_duration = self._initial_all_red_duration
         self._legacy_reset_epoch += 1
         self._legacy_runtime_revision = 0
         self._pending_legacy_plan = None

@@ -446,7 +446,7 @@ def test_invalid_phase_returns_rejection_without_calling_traci():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"
     with patch.object(traci.trafficlight, "setPhase") as set_phase:
-        results = bridge.apply_actions([
+        results = bridge._apply_actions([
             ControlAction("tls", "set_phase", "north", "invalid phase")
         ])
     assert [result.accepted for result in results] == [False]
@@ -472,7 +472,7 @@ def test_invalid_actions_return_explicit_rejections_without_side_effects():
         patch.object(traci.trafficlight, "setProgram") as set_program,
         patch("engine.traci_bridge.MovementStateBuilder", return_value=object()),
     ):
-        results = bridge.apply_actions(actions)
+        results = bridge._apply_actions(actions)
     assert [result.accepted for result in results] == [False] * 5
     assert [result.detail for result in results] == [
         "unknown tls_id: 'other'",
@@ -504,7 +504,7 @@ def test_traci_rejects_out_of_range_phase_and_unknown_program():
         patch.object(traci.trafficlight, "setPhase") as set_phase,
         patch.object(traci.trafficlight, "setProgram") as set_program,
     ):
-        results = bridge.apply_actions(actions)
+        results = bridge._apply_actions(actions)
 
     assert [result.accepted for result in results] == [False, False]
     assert [result.reason_code for result in results] == [
@@ -534,7 +534,7 @@ def test_traci_rejects_non_sequential_green_to_green_phase_jump():
         patch.object(traci.trafficlight, "getPhase", return_value=0),
         patch.object(traci.trafficlight, "setPhase") as set_phase,
     ):
-        result = bridge.apply_actions(
+        result = bridge._apply_actions(
             [ControlAction("tls", "set_phase", 2, "unsafe direct jump")]
         )[0]
 
@@ -561,7 +561,7 @@ def test_traci_rejects_domain_actions_when_program_domain_is_unavailable():
         patch.object(traci.trafficlight, "setPhaseDuration") as set_duration,
         patch.object(traci.trafficlight, "setProgram") as set_program,
     ):
-        results = bridge.apply_actions(actions)
+        results = bridge._apply_actions(actions)
 
     assert [result.accepted for result in results] == [False, True, False]
     assert get_programs.call_count == 2
@@ -584,7 +584,7 @@ def test_traci_rejects_phase_action_when_current_phase_is_unavailable():
         ),
         patch.object(traci.trafficlight, "setPhase") as set_phase,
     ):
-        result = bridge.apply_actions(
+        result = bridge._apply_actions(
             [ControlAction("tls", "set_phase", 1)]
         )[0]
 
@@ -614,7 +614,7 @@ def test_valid_actions_are_applied_and_not_rejected():
         patch.object(traci.trafficlight, "setProgram") as set_program,
         patch("engine.traci_bridge.MovementStateBuilder", return_value=object()),
     ):
-        results = bridge.apply_actions(actions)
+        results = bridge._apply_actions(actions)
     assert [result.accepted for result in results] == [True, True, True]
     assert [result.action for result in results] == actions
     set_phase.assert_called_once_with("tls", 2)
@@ -653,7 +653,7 @@ def test_plan_backed_program_is_defined_then_activated():
         patch.object(traci.trafficlight, "setProgram") as set_program,
         patch("engine.traci_bridge.MovementStateBuilder", return_value=object()),
     ):
-        result = bridge.apply_actions([action])[0]
+        result = bridge._apply_actions([action])[0]
 
     assert result.accepted is True
     assert define.call_args.args[0] == "tls"
@@ -680,7 +680,7 @@ def test_successful_program_switch_rebuilds_movement_topology():
         patch.object(traci.trafficlight, "setProgram") as set_program,
         patch("engine.traci_bridge.MovementStateBuilder", return_value=new_builder) as builder,
     ):
-        result = bridge.apply_actions(
+        result = bridge._apply_actions(
             [ControlAction("tls", "set_program", "program_1")]
         )[0]
 
@@ -709,7 +709,7 @@ def test_failed_program_topology_rebuild_restores_previous_program_and_builder()
             side_effect=RuntimeError("broken topology"),
         ),
     ):
-        result = bridge.apply_actions(
+        result = bridge._apply_actions(
             [ControlAction("tls", "set_program", "program_1")]
         )[0]
 
@@ -732,7 +732,7 @@ def test_mock_bridge_uses_the_same_action_rejection_contract():
         ControlAction("tls", "unknown", 1),
         ControlAction("tls", "set_phase", 1),
     ]
-    results = bridge.apply_actions(actions)
+    results = bridge._apply_actions(actions)
     assert [result.accepted for result in results] == [
         False, False, False, False, False, True
     ]
@@ -755,7 +755,7 @@ def test_mock_bridge_rejects_the_same_domain_errors_as_traci():
         ControlAction("tls", "set_program", "missing"),
     ]
 
-    results = bridge.apply_actions(actions)
+    results = bridge._apply_actions(actions)
 
     assert [result.accepted for result in results] == [False] * 4
     assert bridge._applied_actions == []

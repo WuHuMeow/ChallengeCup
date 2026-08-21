@@ -75,6 +75,60 @@ class RejectedCapacityActionBridge(MockBridge):
         )
 
 
+class ClearanceCapacityActionBridge(MockBridge):
+    def __init__(self):
+        super().__init__(tls_id="tls_clearance", phase_count=4)
+        self._phases = (
+            PhaseMovementState(
+                0,
+                "Grr",
+                (MovementState(
+                    MovementKey("in_current", "out_current"),
+                    1.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                ),),
+                30.0,
+            ),
+            PhaseMovementState(1, "yrr", (), 3.0),
+            PhaseMovementState(2, "rrr", (), 1.0),
+            PhaseMovementState(
+                3,
+                "rGG",
+                (MovementState(
+                    MovementKey("in_target", "out_target"),
+                    9.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                ),),
+                30.0,
+            ),
+        )
+
+    def get_state(self):
+        current_phase = (0, 1, 2, 3)[self._current_step]
+        elapsed = (10.0, 3.0, 1.0, 0.0)[self._current_step]
+        return JointState(
+            step=self._current_step,
+            timestamp=(0.0, 3.0, 4.0, 5.0)[self._current_step],
+            tls_id=self.tls_id,
+            current_phase=current_phase,
+            current_phase_name=f"p{current_phase}",
+            elapsed_phase_time=elapsed,
+            phase_movements=self._phases,
+            legal_phase_transitions=((0, 1), (1, 2), (2, 3)),
+        )
+
+    def step(self):
+        self._current_step += 1
+        return (0.0, 3.0, 4.0, 5.0)[self._current_step]
+
+
+class _SafetyExecutorSpy:
+    def __init__(self):
+        self.calls = []
+
+    def apply(self, actions, state, bridge):
+        self.calls.append((tuple(actions), state, bridge))
+        return ()
+
+
 def make_scene() -> Scene:
     return Scene(SceneMeta(
         intersection_id="1", name="test",
@@ -145,6 +199,27 @@ def test_runner_binding_rejects_prebuffered_message_from_another_run(tmp_path):
     ]
 
 
+def test_runner_routes_every_action_batch_through_the_safety_executor(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = MockBridge()
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+    )
+    safety_executor = _SafetyExecutorSpy()
+    runner.safety_executor = safety_executor
+
+    runner.run(1)
+
+    assert len(safety_executor.calls) == 1
+    actions, state, called_bridge = safety_executor.calls[0]
+    assert actions == ()
+    assert state.timestamp == 0.0
+    assert called_bridge is bridge
+
+
 def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):
     """Channel rejection evidence must retain envelope time rather than runner step."""
     bridge = MockBridge(step_length=12.5)
@@ -213,7 +288,7 @@ def test_capacity_aware_run_metadata_records_the_frozen_prediction_manifest(tmp_
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
     audit = next(json.loads(row["detail"]) for row in events if row["type"] == "algorithm_audit")
     assert audit["layer"] == "M3"
-    assert audit["safety_boundary"] == "shared_action_validation"
+    assert audit["safety_boundary"] == "safety_executor"
     assert audit["final_decision"]["action"] == "no_action"
 
 
@@ -236,6 +311,49 @@ def test_runner_audit_correlates_shared_rejected_action_result(tmp_path):
     assert outcome["value"] == 2
     assert outcome["accepted"] is False
     assert outcome["reason_code"] == "illegal_phase_transition"
+
+
+def test_runner_audit_keeps_green_request_while_bridge_executes_clearance(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42
+    )
+    bridge = ClearanceCapacityActionBridge()
+
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3()),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(3)
+
+    assert [
+        (action.action_type, action.value) for action in bridge._applied_actions
+    ] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 3.0),
+        ("set_phase", 2),
+        ("set_phase_duration", 1.0),
+        ("set_phase", 3),
+        ("set_phase_duration", 30.0),
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audits = [
+        json.loads(row["detail"])
+        for row in events
+        if row["type"] == "algorithm_audit"
+    ]
+    assert [audit["selected_phase"] for audit in audits] == [3, 3, 3]
+    assert [
+        [
+            (result["action_type"], result["value"], result["accepted"])
+            for result in audit["final_decision"]["action_results"]
+        ]
+        for audit in audits
+    ] == [
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+    ]
 
 
 class _StartRecordingBridge(MockBridge):

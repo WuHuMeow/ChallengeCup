@@ -81,11 +81,11 @@ class CapacityAwareConfig:
 
     @classmethod
     def m3(cls) -> "CapacityAwareConfig":
-        return cls(True, True, False, 10.0, 30.0, 0.9, "M3", "shared_action_validation")
+        return cls(True, True, False, 10.0, 30.0, 0.9, "M3", "safety_executor")
 
     @classmethod
     def m4(cls) -> "CapacityAwareConfig":
-        return cls(True, True, True, 10.0, 30.0, 0.9, "M4", "shared_action_validation")
+        return cls(True, True, True, 10.0, 30.0, 0.9, "M4", "safety_executor")
 
     @classmethod
     def default(cls) -> "CapacityAwareConfig":
@@ -409,7 +409,6 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             weight = self._capacity_prediction_weight
         phase_scores: list[tuple[int, PhaseScore]] = []
         movement_pressures: list[tuple[int, tuple[_MovementPressure, ...]]] = []
-        by_index = {phase.phase_index: phase for phase in state.phase_movements}
         for phase in state.phase_movements:
             if not any(signal in phase.signal_state for signal in "Gg"):
                 continue
@@ -467,15 +466,8 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
                 )
             if selected_phase == state.current_phase:
                 decision_reason = "current_phase_selected"
-            elif selected_phase not in legal_targets:
-                decision_reason = "safe_fallback_illegal_target"
-            elif (
-                state.current_phase not in by_index
-                or state.elapsed_phase_time < self.config.min_green
-            ):
-                decision_reason = "minimum_green_not_elapsed"
             else:
-                decision_reason = "dispatch_shared_action_validation"
+                decision_reason = "dispatch_safety_executor"
                 duration = self._duration(scores[selected_phase].score, scores)
                 actions = (
                     _PlannedAction(
