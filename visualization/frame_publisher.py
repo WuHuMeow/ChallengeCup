@@ -1,0 +1,45 @@
+"""Bounded publication of the latest SUMO GUI frame per run."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import threading
+
+
+@dataclass(frozen=True)
+class FrameRecord:
+    run_id: str
+    sequence: int
+    simulation_time: float
+    png: bytes
+    captured_at: float
+
+
+class FramePublisher:
+    """Keep one immutable, newest frame for each active run."""
+
+    def __init__(self) -> None:
+        self._frames: dict[str, FrameRecord] = {}
+        self._lock = threading.RLock()
+
+    def publish(self, record: FrameRecord) -> None:
+        with self._lock:
+            previous = self._frames.get(record.run_id)
+            if previous is None or record.sequence > previous.sequence:
+                self._frames[record.run_id] = record
+
+    def latest(self, run_id: str) -> FrameRecord | None:
+        with self._lock:
+            return self._frames.get(run_id)
+
+    def size(self, run_id: str) -> int:
+        with self._lock:
+            return int(run_id in self._frames)
+
+    def clear(self, run_id: str) -> None:
+        with self._lock:
+            self._frames.pop(run_id, None)
+
+    def clear_all(self) -> None:
+        with self._lock:
+            self._frames.clear()

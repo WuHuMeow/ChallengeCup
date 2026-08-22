@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Callable
 
 from algorithms.registry import AlgorithmRegistry, get_algorithm_registry
+from api.realtime import RealtimeHub
 from core.run_models import RunRequest, RunResult, RunStatus
 from core.timebase import SimulationWindow, seconds_for_steps, steps_for_seconds
 from engine.artifacts import CorruptStatusArtifactError, RunArtifacts
@@ -28,6 +30,7 @@ from experiments.evidence import (
 )
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
+from visualization.frame_publisher import FramePublisher
 
 
 class RunService:
@@ -39,6 +42,8 @@ class RunService:
         runner_factory: Callable[..., object] = SimulationRunner,
         registry: SceneRegistry | None = None,
         algorithm_registry: AlgorithmRegistry | None = None,
+        frame_publisher: FramePublisher | None = None,
+        realtime_hub: RealtimeHub | None = None,
     ) -> None:
         self.output_root = Path(output_root)
         self.runner_factory = runner_factory
@@ -53,6 +58,8 @@ class RunService:
         self._runners: dict[str, object] = {}
         self._artifacts: dict[str, RunArtifacts] = {}
         self._lock = threading.RLock()
+        self.frame_publisher = frame_publisher or FramePublisher()
+        self.realtime_hub = realtime_hub or RealtimeHub()
 
     def submit(self, request: RunRequest) -> RunResult:
         """Queue a validated request and return its isolated run identity."""
@@ -105,6 +112,7 @@ class RunService:
                 self._wait_until_done(run_id)
                 return False
             raise
+        self._publish_status(run_id, RunStatus.STOPPING, "stop requested")
 
         if future is not None and future.cancel():
             try:
@@ -119,6 +127,7 @@ class RunService:
                     reason,
                     persist_artifact=False,
                 )
+                self._publish_status(run_id, status, reason)
                 return True
             finally:
                 done_event.set()
@@ -164,6 +173,32 @@ class RunService:
 
     def shutdown(self, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait)
+        self.realtime_hub.close()
+        self.frame_publisher.clear_all()
+
+    def _publish_status(
+        self,
+        run_id: str,
+        status: RunStatus,
+        reason: str = "",
+        simulation_time: float = 0.0,
+    ) -> None:
+        self.realtime_hub.publish(
+            run_id,
+            {
+                "type": "status",
+                "status": status.value,
+                "reason": reason,
+                "simulation_time": float(simulation_time),
+            },
+        )
+
+    @staticmethod
+    def _runner_accepts_argument(runner: object, name: str) -> bool:
+        try:
+            return name in inspect.signature(runner.run).parameters
+        except (TypeError, ValueError):
+            return False
 
     def _create_artifacts(self, request: RunRequest) -> RunArtifacts:
         root = request.output_root or self.output_root
@@ -219,6 +254,7 @@ class RunService:
             )
         )
         self._states.register(queued, artifacts)
+        self._publish_status(artifacts.run_id, RunStatus.QUEUED)
         with self._lock:
             self._stops[artifacts.run_id] = stop_event
             self._done[artifacts.run_id] = done_event
@@ -240,6 +276,7 @@ class RunService:
                 return self._finish_interrupted_before_start(artifacts)
             try:
                 self._states.transition(run_id, RunStatus.STARTING, "")
+                self._publish_status(run_id, RunStatus.STARTING)
             except ValueError:
                 raced = self._states.get(run_id)
                 if raced is not None and raced.status is RunStatus.STOPPING:
@@ -325,6 +362,9 @@ class RunService:
             )
             if isinstance(runner, SimulationRunner):
                 runner.seal_evidence = False
+                runner.event_sink = lambda message: self.realtime_hub.publish(
+                    run_id, message
+                )
             with self._lock:
                 self._runners[run_id] = runner
 
@@ -333,12 +373,16 @@ class RunService:
                 return self._finish_interrupted_before_start(artifacts)
             try:
                 self._states.transition(run_id, RunStatus.RUNNING, "")
+                self._publish_status(run_id, RunStatus.RUNNING)
             except ValueError:
                 raced = self._states.get(run_id)
                 if raced is not None and raced.status is RunStatus.STOPPING:
                     return self._finish_interrupted_before_start(artifacts)
                 raise
-            returned = runner.run(window, stop_event=stop_event)
+            run_kwargs: dict[str, object] = {"stop_event": stop_event}
+            if self._runner_accepts_argument(runner, "frame_sink"):
+                run_kwargs["frame_sink"] = self.frame_publisher.publish
+            returned = runner.run(window, **run_kwargs)
             result = (
                 returned
                 if isinstance(returned, RunResult)
@@ -382,11 +426,13 @@ class RunService:
                     result.reason,
                     summary=result.summary,
                 )
+                self._publish_status(run_id, result.status, result.reason)
             return result
         except Exception as exc:
             reason = str(exc) or type(exc).__name__
             current = self._states.get(run_id)
             if current is not None and current.status in TERMINAL_STATUSES:
+                self._publish_status(run_id, current.status, current.reason)
                 return current
             artifact_status = self._artifact_status(artifacts)
             if artifact_status in TERMINAL_STATUSES:
@@ -394,12 +440,14 @@ class RunService:
                 terminal_reason = self._metadata_reason(artifacts, reason)
                 if seal_reason:
                     terminal_reason = f"{terminal_reason}; {seal_reason}"
-                return self._states.transition(
+                result = self._states.transition(
                     run_id,
                     artifact_status,
                     terminal_reason,
                     summary=self._read_summary(artifacts),
                 )
+                self._publish_status(run_id, result.status, result.reason)
+                return result
             status, terminal_reason = self._terminalize_partial_evidence(
                 artifacts,
                 RunStatus.FAILED,
@@ -410,12 +458,14 @@ class RunService:
                 window=window if "window" in locals() else None,
                 step_length=step_length if "step_length" in locals() else None,
             )
-            return self._states.transition(
+            result = self._states.transition(
                 run_id,
                 status,
                 terminal_reason,
                 persist_artifact=False,
             )
+            self._publish_status(run_id, result.status, result.reason)
+            return result
         except KeyboardInterrupt as exc:
             reason = str(exc) or type(exc).__name__
             artifact_status = self._artifact_status(artifacts)
@@ -430,12 +480,15 @@ class RunService:
                     )
                 current = self._states.get(run_id)
                 if current is not None and current.status not in TERMINAL_STATUSES:
-                    self._states.transition(
+                    result = self._states.transition(
                         run_id,
                         artifact_status,
                         terminal_reason,
                         summary=self._read_summary(artifacts),
                     )
+                    self._publish_status(run_id, result.status, result.reason)
+                elif current is not None:
+                    self._publish_status(run_id, current.status, current.reason)
                 raise
             else:
                 status, terminal_reason = self._terminalize_partial_evidence(
@@ -450,12 +503,15 @@ class RunService:
                 )
             current = self._states.get(run_id)
             if current is not None and current.status not in TERMINAL_STATUSES:
-                self._states.transition(
+                result = self._states.transition(
                     run_id,
                     status,
                     terminal_reason,
                     persist_artifact=False,
                 )
+                self._publish_status(run_id, result.status, result.reason)
+            elif current is not None:
+                self._publish_status(run_id, current.status, current.reason)
             raise
         except BaseException as exc:
             reason = str(exc) or type(exc).__name__
@@ -471,12 +527,15 @@ class RunService:
                     window=window if "window" in locals() else None,
                     step_length=step_length if "step_length" in locals() else None,
                 )
-                self._states.transition(
+                result = self._states.transition(
                     run_id,
                     status,
                     terminal_reason,
                     persist_artifact=False,
                 )
+                self._publish_status(run_id, result.status, result.reason)
+            elif current is not None:
+                self._publish_status(run_id, current.status, current.reason)
             raise
         finally:
             with self._lock:
@@ -489,12 +548,14 @@ class RunService:
             RunStatus.INTERRUPTED,
             "stop requested before SUMO start",
         )
-        return self._states.transition(
+        result = self._states.transition(
             artifacts.run_id,
             status,
             reason,
             persist_artifact=False,
         )
+        self._publish_status(result.run_id, result.status, result.reason)
+        return result
 
     def _terminalize_partial_evidence(
         self,
@@ -700,7 +761,7 @@ class RunService:
         if request.steps is not None and request._steps_explicit:
             return SimulationWindow(
                 seconds_for_steps(request.steps, step_length),
-                0.0,
+                request.warmup_seconds,
                 explicit_steps=request.steps,
             )
         return SimulationWindow(request.duration_seconds, request.warmup_seconds)

@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from collections import Counter, deque
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -35,6 +36,7 @@ from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.movement_state import MovementStateBuilder
 from engine.safety import ConflictDefinition
+from visualization.frame_publisher import FrameRecord
 
 logger = logging.getLogger(__name__)
 _TRACI_LIFECYCLE_LOCK = threading.RLock()
@@ -109,6 +111,7 @@ class TraCIBridge:
         self._owned_pid: int | None = None
         self._connection: object | None = None
         self._connection_label: str | None = None
+        self._frame_sequence = 0
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -777,6 +780,30 @@ class TraCIBridge:
 
     def get_controlled_links(self, tls_id: str) -> object:
         return traci.trafficlight.getControlledLinks(tls_id)
+
+    def capture_gui_frame(self, view_id: str = "View #0") -> FrameRecord | None:
+        """Capture one run-scoped GUI frame without retaining a temp file."""
+        if self.artifacts is None:
+            return None
+        temporary = self.artifacts.run_dir / f".frame-{uuid4().hex}.png"
+        try:
+            traci.gui.screenshot(view_id, str(temporary))
+            png = temporary.read_bytes()
+            if not png:
+                return None
+            self._frame_sequence += 1
+            return FrameRecord(
+                self.artifacts.run_id,
+                self._frame_sequence,
+                float(traci.simulation.getTime()),
+                png,
+                time.time(),
+            )
+        except Exception:
+            logger.debug("SUMO GUI frame capture unavailable", exc_info=True)
+            return None
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def get_signal_program(self, tls_id: str) -> object:
         programs = traci.trafficlight.getAllProgramLogics(tls_id)

@@ -88,6 +88,41 @@ def test_build_cmd_redirects_all_sumo_outputs(tmp_path):
     assert cmd[cmd.index("--emissions.volumetric-fuel") + 1] == "true"
 
 
+def test_capture_gui_frame_is_run_scoped_and_removes_temp_png(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    bridge = TraCIBridge(Path("demo_1.sumocfg"), artifacts=artifacts)
+
+    def write_screenshot(view_id, path):
+        assert view_id == "View #0"
+        Path(path).write_bytes(b"png-bytes")
+
+    with (
+        patch.object(traci.gui, "screenshot", side_effect=write_screenshot),
+        patch.object(traci.simulation, "getTime", return_value=12.5),
+    ):
+        record = bridge.capture_gui_frame()
+
+    assert record is not None
+    assert record.run_id == artifacts.run_id
+    assert record.sequence == 1
+    assert record.simulation_time == 12.5
+    assert record.png == b"png-bytes"
+    assert not list(artifacts.run_dir.glob(".frame-*.png"))
+
+
+def test_capture_gui_frame_returns_none_when_gui_is_unavailable(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    bridge = TraCIBridge(Path("demo_1.sumocfg"), artifacts=artifacts)
+
+    with patch.object(
+        traci.gui, "screenshot", side_effect=Exception("headless SUMO")
+    ):
+        record = bridge.capture_gui_frame()
+
+    assert record is None
+    assert not list(artifacts.run_dir.glob(".frame-*.png"))
+
+
 def test_build_cmd_redirects_configured_queue_output(tmp_path):
     config = tmp_path / "demo_11.sumocfg"
     config.write_text(

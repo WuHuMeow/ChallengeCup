@@ -843,8 +843,12 @@ def test_default_smoke_cli_requests_100_actual_steps(tmp_path):
     assert len(specs) == 1
     assert specs[0].to_payload()["steps"] == 100
     assert specs[0].to_payload()["steps_origin"] == "explicit"
+    assert specs[0].duration_seconds == 100
+    assert specs[0].warmup_seconds == 0
     assert {request.steps for request in requests} == {100}
     assert {request.steps_origin for request in requests} == {"explicit"}
+    assert {request.duration_seconds for request in requests} == {100}
+    assert {request.warmup_seconds for request in requests} == {0}
     restored = type(specs[0]).from_payload(specs[0].to_payload())
     assert restored.run_key == specs[0].run_key
 

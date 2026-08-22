@@ -12,6 +12,7 @@ import pytest
 from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
+from api.realtime import RealtimeHub
 from core.run_models import RunRequest, RunStatus, VariantSpec
 from core.timebase import SimulationWindow, seconds_for_steps
 from core.types import Scene
@@ -23,7 +24,8 @@ from engine.runner import SimulationRunner
 from engine.mock_bridge import MockBridge
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.evidence import EvidenceReader, EvidenceWriter
-from scripts.run_pdf_matrix import is_complete
+from scripts.run_pdf_matrix import build_profile_matrix, is_complete, parse_matrix_args
+from visualization.frame_publisher import FramePublisher
 
 
 class RecordingRunner:
@@ -186,6 +188,16 @@ def _evidence_runner_factory(**kwargs):
     )
 
 
+def _smoke_evidence_runner_factory(**kwargs):
+    return SimulationRunner(
+        bridge=_ServiceOutputBridge(
+            kwargs["artifacts"],
+            step_length=float(kwargs["step_length"]),
+        ),
+        **kwargs,
+    )
+
+
 class SpoofingEvidenceRunner(SimulationRunner):
     def run(self, window, stop_event=None, frame_sink=None):
         result = super().run(window, stop_event=stop_event, frame_sink=frame_sink)
@@ -335,6 +347,35 @@ def test_explicit_steps_survive_service_window_without_float_roundtrip(
     assert window.explicit_steps == 100
 
 
+def test_explicit_steps_preserve_a_valid_warmup_window():
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        steps=100,
+        duration_seconds=200,
+        warmup_seconds=25,
+    )
+
+    window = RunService._window(request, 1.0)
+
+    assert window.duration_seconds == 100
+    assert window.warmup_seconds == 25
+    assert window.explicit_steps == 100
+
+
+def test_explicit_steps_reject_warmup_that_exceeds_actual_window():
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        steps=100,
+        duration_seconds=200,
+        warmup_seconds=100,
+    )
+
+    with pytest.raises(ValueError, match="warmup_seconds"):
+        RunService._window(request, 1.0)
+
+
 def test_run_service_derives_steps_from_tenth_second_scene_window(tmp_path):
     RecordingRunner.run_steps = []
     service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
@@ -343,6 +384,36 @@ def test_run_service_derives_steps_from_tenth_second_scene_window(tmp_path):
 
     assert result.status is RunStatus.COMPLETED
     assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
+
+
+def test_default_smoke_flows_through_service_to_sealed_evidence(tmp_path):
+    args = parse_matrix_args([
+        "--profile", "smoke", "--output-root", str(tmp_path / "matrix")
+    ])
+    spec = build_profile_matrix(args)[0]
+    request = spec.to_request(tmp_path / "runs")
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_smoke_evidence_runner_factory,
+    )
+
+    result = service.run_sync(request)
+
+    manifest = json.loads(
+        (result.run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    metadata = json.loads(
+        (result.run_dir / "run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert request.steps == 100
+    assert request.duration_seconds == 100
+    assert result.status is RunStatus.COMPLETED
+    assert manifest["derived_steps"] == 100
+    assert manifest["requested_seconds"] == 100
+    assert metadata["requested_steps"] == 100
+    assert metadata["requested_seconds"] == 100
+    assert EvidenceReader.validate(result.run_dir) == []
+    assert is_complete(result.run_dir, request) is True
 
 
 def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
@@ -949,6 +1020,57 @@ def test_service_seal_failure_records_invalid_evidence_without_terminal_rewrite(
     assert is_complete(result.run_dir) is False
 
 
+def test_run_service_publishes_failed_status_when_runner_raises(tmp_path):
+    hub = RealtimeHub()
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=FailingRunner,
+        realtime_hub=hub,
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    run_id = result.run_id
+    assert result.status is RunStatus.FAILED
+    assert hub.latest(run_id)["status"] == "failed"
+    assert hub.latest(run_id)["reason"] == "runner body failed"
+
+
+def test_run_service_publishes_interrupted_status_before_reraising(tmp_path):
+    InterruptingRunner.error = KeyboardInterrupt("operator interrupt")
+    hub = RealtimeHub()
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=InterruptingRunner,
+        realtime_hub=hub,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="operator interrupt"):
+        service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    run_id = next(iter(service._done))
+    assert hub.latest(run_id)["status"] == "interrupted"
+    assert hub.latest(run_id)["reason"] == "operator interrupt"
+
+
+def test_run_service_continues_when_runner_signature_cannot_be_inspected(tmp_path):
+    service = RunService(output_root=tmp_path / "runs", runner_factory=RecordingRunner)
+
+    with patch(
+        "engine.run_service.inspect.signature",
+        side_effect=ValueError("signature unavailable"),
+    ):
+        result = service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert result.status is RunStatus.COMPLETED
+
+
 def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):
     RecordingRunner.calls = []
     service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
@@ -1153,3 +1275,33 @@ def test_stop_sets_the_matching_run_event(tmp_path):
 
     assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
     assert service.stop("missing") is False
+
+
+def test_run_service_publishes_lifecycle_status_and_owns_runtime_sinks(tmp_path):
+    BlockingRunner.release.clear()
+    BlockingRunner.started.clear()
+    publisher = FramePublisher()
+    hub = RealtimeHub()
+    service = RunService(
+        output_root=tmp_path,
+        runner_factory=BlockingRunner,
+        frame_publisher=publisher,
+        realtime_hub=hub,
+    )
+
+    queued = service.submit(RunRequest("1", "fixed_time", steps=1))
+
+    assert isinstance(service.frame_publisher, FramePublisher)
+    assert isinstance(service.realtime_hub, RealtimeHub)
+    assert hub.latest(queued.run_id) == {
+        "run_id": queued.run_id,
+        "type": "status",
+        "status": "queued",
+        "reason": "",
+        "simulation_time": 0.0,
+    }
+    assert BlockingRunner.started.wait(timeout=2)
+
+    assert service.stop(queued.run_id) is True
+    assert hub.latest(queued.run_id)["status"] == "interrupted"
+    service.shutdown()

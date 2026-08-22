@@ -61,7 +61,10 @@ def build_profile_matrix(args: argparse.Namespace) -> tuple[RunSpec, ...]:
         return FormalMatrix.all()
 
     defaults = {
-        "smoke": (10.0, 0.0),
+        # The default smoke is an exact 100-tick scene-1 run.  Scene 1 uses
+        # the validated one-second timebase, so keep its declared seconds
+        # aligned with the explicit tick count in every persisted contract.
+        "smoke": (100.0, 0.0),
         "quick": (600.0, 60.0),
     }
     default_duration, default_warmup = defaults[args.profile]

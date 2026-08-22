@@ -233,7 +233,7 @@ def _write_completed_matrix_run(
                 else requested_seconds
             ),
             "warmup_seconds": (
-                request.warmup_seconds if request is not None else 600.0
+                request.warmup_seconds if request is not None else 0.0
             ),
             "step_length_override": (
                 request.step_length_override if request is not None else None

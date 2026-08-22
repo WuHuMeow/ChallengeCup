@@ -150,7 +150,10 @@ class RunRequest:
     flow_multiplier: float = 1.0
     seed: int = 42
     duration_seconds: float = 3600.0
-    warmup_seconds: float = 600.0
+    # ``None`` selects the compatibility default: seconds-first requests use
+    # the formal 600-second warmup, while explicit-step requests use no
+    # warmup unless the caller provides one explicitly.
+    warmup_seconds: float | None = None
     step_length_override: float | None = None
     output_root: Path | None = None
     edge_delay_steps: int = 0
@@ -184,7 +187,14 @@ class RunRequest:
             or self.steps <= 0
         ):
             raise ValueError("steps must be > 0 when explicitly supplied")
-        window = SimulationWindow(self.duration_seconds, self.warmup_seconds)
+        warmup_seconds = (
+            0.0
+            if self.warmup_seconds is None and self.steps is not None
+            else 600.0
+            if self.warmup_seconds is None
+            else self.warmup_seconds
+        )
+        window = SimulationWindow(self.duration_seconds, warmup_seconds)
         step_length = self.step_length_override
         if step_length is not None:
             try:

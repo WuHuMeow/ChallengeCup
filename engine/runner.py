@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import json
+import math
 import re
+import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +60,8 @@ class SimulationRunner:
         state_channel: Optional[EdgeChannel] = None,
         step_length: float | None = None,
         seal_evidence: bool = True,
+        event_sink: Callable[[dict[str, object]], None] | None = None,
+        frame_interval_seconds: float = 0.1,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -74,6 +78,11 @@ class SimulationRunner:
         )
         self.seal_evidence = bool(seal_evidence)
         self.evidence_managed = True
+        interval = float(frame_interval_seconds)
+        if not math.isfinite(interval) or interval < 0:
+            raise ValueError("frame_interval_seconds must be finite and >= 0")
+        self.frame_interval_seconds = interval
+        self.event_sink = event_sink
 
         if artifacts is not None:
             output_csv = artifacts.metrics
@@ -149,6 +158,21 @@ class SimulationRunner:
     def _record_bridge_event(self, event_type: str, detail: str) -> None:
         if self.event_logger:
             self.event_logger.log(len(self.metrics_history), event_type, detail)
+        self._publish_event({
+            "type": "bridge",
+            "event_type": event_type,
+            "detail": detail,
+            "simulation_time": self._last_simulation_time,
+        })
+
+    def _publish_event(self, payload: dict[str, object]) -> None:
+        if self.event_sink is None:
+            return
+        message = {"run_id": self._channel_run_id, **payload}
+        try:
+            self.event_sink(message)
+        except Exception:
+            logger.warning("runtime event sink failed", exc_info=True)
 
     def _record_action_results(
         self,
@@ -157,27 +181,37 @@ class SimulationRunner:
         *,
         step: int = 0,
     ) -> None:
-        if not self.event_logger:
-            return
         for result in action_results:
             event_type = (
                 "action_applied" if result.accepted else "action_rejected"
             )
-            self.event_logger.log(
-                step,
-                event_type,
-                (
-                    f"type={result.action.action_type} "
-                    f"value={result.action.value!r} "
-                    f"reason={result.action.reason!r} "
-                    f"detail={result.detail}"
-                ),
-                reason=result.reason_code,
-                action=result.action,
-                accepted=result.accepted,
-                simulation_seconds=float(state.timestamp),
-                entity_ids=(result.action.tls_id,),
+            detail = (
+                f"type={result.action.action_type} "
+                f"value={result.action.value!r} "
+                f"reason={result.action.reason!r} "
+                f"detail={result.detail}"
             )
+            if self.event_logger:
+                self.event_logger.log(
+                    step,
+                    event_type,
+                    detail,
+                    reason=result.reason_code,
+                    action=result.action,
+                    accepted=result.accepted,
+                    simulation_seconds=float(state.timestamp),
+                    entity_ids=(result.action.tls_id,),
+                )
+            self._publish_event({
+                "type": "action",
+                "action_type": event_type,
+                "accepted": result.accepted,
+                "detail": detail,
+                "reason_code": result.reason_code,
+                "simulation_time": float(state.timestamp),
+                "step": step,
+                "tls_id": result.action.tls_id,
+            })
 
     def _apply_pending_startup_actions(
         self,
@@ -254,6 +288,7 @@ class SimulationRunner:
         reason = ""
         body_exception = False
         last_step = 0
+        last_frame_at = float("-inf")
 
         if self.artifacts is not None:
             self.artifacts.write_manifest({
@@ -289,6 +324,11 @@ class SimulationRunner:
                         f"intersection={self.scene.meta.intersection_id}"
                         f" algorithm={self.algorithm.name}",
                     )
+                self._publish_event({
+                    "type": "status",
+                    "status": "running",
+                    "simulation_time": self._last_simulation_time,
+                })
                 self._apply_pending_startup_actions()
                 for step in range(target_steps):
                     last_step = step
@@ -297,6 +337,32 @@ class SimulationRunner:
                         reason = "stop requested"
                         break
                     tick_outcome = self._tick(step)
+                    now = time.monotonic()
+                    if (
+                        frame_sink is not None
+                        and now - last_frame_at >= self.frame_interval_seconds
+                    ):
+                        capture = getattr(self.bridge, "capture_gui_frame", None)
+                        if capture is not None:
+                            try:
+                                record = capture()
+                                if record is not None:
+                                    frame_sink(record)
+                                    self._publish_event({
+                                        "type": "frame",
+                                        "sequence": int(record.sequence),
+                                        "simulation_time": float(
+                                            record.simulation_time
+                                        ),
+                                        "captured_at": float(record.captured_at),
+                                    })
+                                last_frame_at = now
+                            except Exception:
+                                last_frame_at = now
+                                logger.warning(
+                                    "runtime frame publication failed",
+                                    exc_info=True,
+                                )
                     if tick_outcome == "disconnected":
                         status = RunStatus.DISCONNECTED
                         reason = self._terminal_reason
@@ -543,6 +609,13 @@ class SimulationRunner:
                             logger.exception("Could not record evidence seal error")
                         if not cleanup_errors and not body_exception:
                             reason = f"evidence seal failed: {exc}"
+
+            self._publish_event({
+                "type": "terminal",
+                "status": status.value,
+                "reason": reason,
+                "simulation_time": self._last_simulation_time,
+            })
             if cleanup_errors and not body_exception:
                 raise cleanup_errors[0]
 
@@ -661,6 +734,17 @@ class SimulationRunner:
         if step % self.snapshot_interval == 0:
             metrics = compute_metrics(step, raw_state)
             self.collector.record(step, raw_state, metrics)
+            self._publish_event({
+                "type": "metrics",
+                "step": step,
+                "simulation_time": float(sim_time),
+                "metrics": {
+                    "avg_queue_length": metrics.avg_queue_length,
+                    "max_queue_length": metrics.max_queue_length,
+                    "avg_delay": metrics.avg_delay,
+                    "total_throughput": metrics.total_throughput,
+                },
+            })
             self.metrics_history.append(
                 {
                     "step": step,
@@ -693,9 +777,19 @@ class SimulationRunner:
         self,
         safety_events: tuple[SafetyEvent, ...],
     ) -> None:
-        if self.event_logger:
-            for safety_event in safety_events:
+        for safety_event in safety_events:
+            if self.event_logger:
                 self.event_logger.log_safety(safety_event)
+            self._publish_event({
+                "type": "safety",
+                "event_type": safety_event.event_type,
+                "simulation_time": safety_event.simulation_seconds,
+                "step": safety_event.step,
+                "entity_ids": list(safety_event.entity_ids),
+                "source": safety_event.source,
+                "confidence": safety_event.confidence,
+                "detail": safety_event.detail,
+            })
 
     def _sumo_version(self) -> str:
         version = getattr(self.bridge, "sumo_version", None)

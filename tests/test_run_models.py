@@ -57,8 +57,8 @@ def test_replacing_compatibility_request_preserves_declared_warmup():
 @pytest.mark.parametrize(
     ("replacement_steps", "expected_window"),
     [
-        (100, SimulationWindow(10, 0)),
-        (36000, SimulationWindow(3600, 0)),
+        (100, None),
+        (36000, SimulationWindow(3600, 600)),
     ],
     ids=("different-value", "same-value-plain-int"),
 )
@@ -76,7 +76,11 @@ def test_replacing_compatibility_steps_with_plain_int_makes_them_explicit(
     replaced = replace(request, steps=replacement_steps)
 
     assert request.steps == 36000
-    assert RunService._window(replaced, 0.1) == expected_window
+    if expected_window is None:
+        with pytest.raises(ValueError, match="warmup_seconds"):
+            RunService._window(replaced, 0.1)
+    else:
+        assert RunService._window(replaced, 0.1) == expected_window
 
 
 def test_replacing_compatibility_duration_rederives_replayable_steps():
@@ -146,7 +150,7 @@ def test_steps_origin_distinguishes_requests_with_different_windows():
     ("steps", "expected_origin", "expected_window"),
     [
         (None, "compatibility", SimulationWindow(3600, 600)),
-        (36000, "explicit", SimulationWindow(3600, 0)),
+        (36000, "explicit", SimulationWindow(3600, 600)),
     ],
 )
 def test_request_json_roundtrip_preserves_steps_origin_and_window(

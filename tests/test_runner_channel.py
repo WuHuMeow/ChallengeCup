@@ -1217,3 +1217,30 @@ def test_metadata_uses_traci_server_version(tmp_path):
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert payload["sumo_version"] == "1.27.1"
     get_version.assert_called_once()
+
+
+class _TerminalLogFailure:
+    def log(self, _step, event_type, *_args, **_kwargs):
+        if event_type == "terminal":
+            raise RuntimeError("terminal event log failed")
+
+    def save(self):
+        return None
+
+
+def test_terminal_event_uses_final_status_after_cleanup_failure():
+    events = []
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        event_sink=events.append,
+    )
+    runner.event_logger = _TerminalLogFailure()
+
+    with pytest.raises(RuntimeError, match="terminal event log failed"):
+        runner.run(2)
+
+    terminal = [event for event in events if event["type"] == "terminal"]
+    assert terminal[-1]["status"] == "failed"
+    assert terminal[-1]["reason"] == "terminal event log failed"
