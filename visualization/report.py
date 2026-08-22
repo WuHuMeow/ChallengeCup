@@ -33,12 +33,12 @@ def collect_summaries(root: Path) -> pd.DataFrame:
     rows = []
     for summary_path in sorted(Path(root).rglob("summary.json")):
         run_dir = summary_path.parent
-        if EvidenceReader.validate(run_dir):
+        summary = EvidenceReader.load_summary(run_dir)
+        if summary is None:
             continue
         metadata_path = run_dir / "run_metadata.json"
         if not metadata_path.exists():
             continue
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         row = {
             "run_id": metadata.get("run_id", summary.get("run_id", "")),
@@ -134,11 +134,11 @@ def _write_manifest(
 def generate_run_figures(run_dir: Path) -> list[Path]:
     """Generate summary, time-series, and FCD figures for one run."""
     run_dir = Path(run_dir)
-    if EvidenceReader.validate(run_dir):
+    summary = EvidenceReader.load_summary(run_dir)
+    if summary is None:
         raise ValueError("run figures require strict evidence")
     output_dir = run_dir / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
-    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     metrics = summary.get("metrics", {})
     numeric = {
         key: value
@@ -167,6 +167,9 @@ def generate_run_figures(run_dir: Path) -> list[Path]:
     if metrics_path.exists():
         output = output_dir / "queue_timeseries.png"
         _queue_timeseries(metrics_path, output)
+        if EvidenceReader.validate(run_dir):
+            output.unlink(missing_ok=True)
+            raise ValueError("evidence changed while reading metrics.csv")
         generated.append(output)
         entries.append({
             "file": output.name,
@@ -178,6 +181,9 @@ def generate_run_figures(run_dir: Path) -> list[Path]:
     if trajectory_path.exists() and trajectory_path.stat().st_size > 0:
         output = output_dir / "trajectory.png"
         _trajectory_plot(trajectory_path, output)
+        if EvidenceReader.validate(run_dir):
+            output.unlink(missing_ok=True)
+            raise ValueError("evidence changed while reading traj.xml")
         generated.append(output)
         entries.append({
             "file": output.name,

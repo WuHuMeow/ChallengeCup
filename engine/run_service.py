@@ -19,6 +19,7 @@ from engine.edge_channel import EdgeChannel
 from engine.run_state import RunStateMachine, TERMINAL_STATUSES
 from engine.runner import SimulationRunner
 from experiments.evidence import (
+    EvidenceReader,
     EvidenceWriter,
     RunManifest,
     canonical_mapping_sha256,
@@ -357,7 +358,16 @@ class RunService:
                         result.status,
                         f"evidence seal failed: {seal_exc}",
                         result.run_dir,
-                        result.summary,
+                        None,
+                        result.algorithm,
+                    )
+                else:
+                    result = RunResult(
+                        result.run_id,
+                        result.status,
+                        result.reason,
+                        result.run_dir,
+                        EvidenceReader.load_summary(artifacts.run_dir),
                         result.algorithm,
                     )
             current = self._states.get(run_id)
@@ -594,13 +604,7 @@ class RunService:
 
     @staticmethod
     def _read_summary(artifacts: RunArtifacts) -> dict[str, object] | None:
-        if not artifacts.summary.exists():
-            return None
-        try:
-            payload = json.loads(artifacts.summary.read_text(encoding="utf-8"))
-        except BaseException:
-            return None
-        return payload if isinstance(payload, dict) else None
+        return EvidenceReader.load_summary(artifacts.run_dir)
 
     @staticmethod
     def _metadata_reason(artifacts: RunArtifacts, fallback: str) -> str:
@@ -680,6 +684,10 @@ class RunService:
                 "requested_steps": (
                     int(request.steps) if request.steps is not None else None
                 ),
+                "duration_seconds": request.duration_seconds,
+                "warmup_seconds": request.warmup_seconds,
+                "step_length_override": request.step_length_override,
+                "algorithm_params": dict(request.algorithm_params),
             },
         )
 

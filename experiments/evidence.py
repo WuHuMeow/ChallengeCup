@@ -468,7 +468,43 @@ class EvidenceWriter:
 
 class EvidenceReader:
     @staticmethod
-    def validate(run_dir: Path) -> list[EvidenceIssue]:
+    def load_summary(run_dir: Path) -> dict[str, object] | None:
+        """Load only summary bytes that remain bound to valid sealed evidence."""
+        run_dir = Path(run_dir)
+        summary_path = run_dir / "summary.json"
+        try:
+            raw = summary_path.read_bytes()
+            hashes = _load_json(run_dir / "hashes.json")
+            files = hashes.get("files")
+            if not isinstance(files, Mapping):
+                return None
+            expected = files.get("summary.json")
+            digest = hashlib.sha256(raw).hexdigest()
+            if not isinstance(expected, str) or digest != expected:
+                return None
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                return None
+            # Bind validation to the exact summary byte snapshot we return.
+            # A concurrent switch to another internally-valid summary cannot
+            # make validation bless different bytes than the consumer sees.
+            if EvidenceReader.validate(
+                run_dir,
+                expected_summary_sha256=digest,
+            ):
+                return None
+            if _stable_sha256_file(summary_path) != digest:
+                return None
+            return payload
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    @staticmethod
+    def validate(
+        run_dir: Path,
+        *,
+        expected_summary_sha256: str | None = None,
+    ) -> list[EvidenceIssue]:
         run_dir = Path(run_dir)
         issues: list[EvidenceIssue] = []
 
@@ -946,7 +982,20 @@ class EvidenceReader:
                 summary_present = False
             if summary_present:
                 try:
-                    summary = _load_json(summary_path)
+                    summary_raw = summary_path.read_bytes()
+                    if (
+                        expected_summary_sha256 is not None
+                        and hashlib.sha256(summary_raw).hexdigest()
+                        != expected_summary_sha256
+                    ):
+                        issue(
+                            "summary_snapshot_mismatch",
+                            "summary bytes changed before strict validation",
+                            "summary.json",
+                        )
+                    summary = json.loads(summary_raw)
+                    if not isinstance(summary, dict):
+                        raise ValueError("summary.json must contain a JSON object")
                     non_finite = _json_non_finite_paths(summary)
                     if non_finite:
                         issue(

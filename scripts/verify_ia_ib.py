@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.run_models import RunRequest, RunStatus  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
+from experiments.evidence import EvidenceReader  # noqa: E402
 from scripts.run_pdf_matrix import (  # noqa: E402
     build_pdf_matrix,
     is_complete,
@@ -274,7 +275,7 @@ def verify_ca_mp_smoke(verification_root: Path) -> CheckResult:
         result = service.run_sync(
             RunRequest(
                 "1",
-                "ca_maxpressure",
+                "capacity_aware_maxpressure",
                 steps=100,
                 flow_multiplier=1.5,
                 seed=42,
@@ -284,6 +285,19 @@ def verify_ca_mp_smoke(verification_root: Path) -> CheckResult:
         service.shutdown()
     if result.status is not RunStatus.COMPLETED:
         errors.append(f"{result.status.value}: {result.reason}")
+    issues = EvidenceReader.validate(result.run_dir)
+    if issues:
+        errors.append(
+            "strict evidence invalid: "
+            + "; ".join(f"{issue.code}: {issue.detail}" for issue in issues)
+        )
+        return _result(
+            "ca_mp_smoke",
+            started,
+            "RunService(RunRequest('1','capacity_aware_maxpressure',steps=100,flow=1.5))",
+            [],
+            errors,
+        )
     if not (result.run_dir / "summary.json").exists():
         errors.append("summary.json missing")
     if (result.run_dir / "events.csv").exists():
@@ -295,12 +309,21 @@ def verify_ca_mp_smoke(verification_root: Path) -> CheckResult:
                 row for row in csv.DictReader(source)
                 if row["type"] == "action_rejected"
             ]
+        post_read_issues = EvidenceReader.validate(result.run_dir)
+        if post_read_issues:
+            errors.append(
+                "strict evidence changed while reading events: "
+                + "; ".join(
+                    f"{issue.code}: {issue.detail}"
+                    for issue in post_read_issues
+                )
+            )
         if rejected:
             errors.append(f"{len(rejected)} rejected control actions")
     return _result(
         "ca_mp_smoke",
         started,
-        "RunService(RunRequest('1','ca_maxpressure',steps=100,flow=1.5))",
+        "RunService(RunRequest('1','capacity_aware_maxpressure',steps=100,flow=1.5))",
         [],
         errors,
     )
@@ -316,7 +339,25 @@ def verify_exact_metrics(verification_root: Path) -> CheckResult:
         )
     finally:
         service.shutdown()
-    metrics = (result.summary or {}).get("metrics", {})
+    issues = EvidenceReader.validate(result.run_dir)
+    if issues:
+        errors.append(
+            "strict evidence invalid: "
+            + "; ".join(f"{issue.code}: {issue.detail}" for issue in issues)
+        )
+        return _result(
+            "exact_metrics",
+            started,
+            "fixed_time 100-step run; parse tripinfo.xml -> summary.json",
+            [],
+            errors,
+        )
+    summary = EvidenceReader.load_summary(result.run_dir)
+    if summary is None:
+        errors.append("strict evidence summary unavailable")
+        metrics = {}
+    else:
+        metrics = summary.get("metrics", {})
     for field in (
         "avg_travel_time",
         "avg_delay",

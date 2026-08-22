@@ -205,6 +205,23 @@ def _rewrite_json_and_rehash(
     _rehash(artifacts, name)
 
 
+def test_reader_validation_can_bind_the_exact_summary_snapshot(tmp_path):
+    artifacts, _ = _completed_evidence(tmp_path)
+    digest = hashlib.sha256(artifacts.summary.read_bytes()).hexdigest()
+
+    assert EvidenceReader.validate(
+        artifacts.run_dir,
+        expected_summary_sha256=digest,
+    ) == []
+    issues = EvidenceReader.validate(
+        artifacts.run_dir,
+        expected_summary_sha256="0" * 64,
+    )
+
+    assert any(issue.code == "summary_snapshot_mismatch" for issue in issues)
+    assert EvidenceReader.load_summary(artifacts.run_dir) is not None
+
+
 def test_metric_summary_separates_unfinished_and_filters_all_sources_by_warmup(tmp_path):
     run_dir = tmp_path / "run-1"
     run_dir.mkdir()

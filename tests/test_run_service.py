@@ -186,6 +186,37 @@ def _evidence_runner_factory(**kwargs):
     )
 
 
+class SpoofingEvidenceRunner(SimulationRunner):
+    def run(self, window, stop_event=None, frame_sink=None):
+        result = super().run(window, stop_event=stop_event, frame_sink=frame_sink)
+        return replace(
+            result,
+            summary={"metrics": {"throughput": 999999}},
+        )
+
+
+def _spoofing_evidence_runner_factory(**kwargs):
+    return SpoofingEvidenceRunner(
+        bridge=_ServiceOutputBridge(kwargs["artifacts"]),
+        **kwargs,
+    )
+
+
+class TerminalThenInterruptEvidenceRunner(SimulationRunner):
+    error = KeyboardInterrupt("interrupt after terminal evidence")
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        super().run(window, stop_event=stop_event, frame_sink=frame_sink)
+        raise type(self).error
+
+
+def _terminal_then_interrupt_evidence_runner_factory(**kwargs):
+    return TerminalThenInterruptEvidenceRunner(
+        bridge=_ServiceOutputBridge(kwargs["artifacts"]),
+        **kwargs,
+    )
+
+
 class InterruptingRunner:
     error = KeyboardInterrupt("operator interrupt")
 
@@ -579,6 +610,39 @@ def test_run_service_completed_path_produces_reader_valid_evidence(tmp_path):
     assert EvidenceReader.validate(result.run_dir) == []
 
 
+def test_real_evidence_runner_result_matches_its_current_matrix_request(tmp_path):
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_evidence_runner_factory,
+    )
+    request = RunRequest("1", "fixed_time", steps=1)
+
+    result = service.run_sync(request)
+
+    manifest = json.loads(
+        (result.run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["parameters"]
+    assert manifest["request_dimensions"]["algorithm_params"] == {}
+    assert is_complete(result.run_dir, request) is True
+
+
+def test_run_service_replaces_evidence_runner_memory_summary_with_sealed_disk(
+    tmp_path,
+):
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_spoofing_evidence_runner_factory,
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    assert result.summary["metrics"]["throughput"] == 1
+    assert service.get(result.run_id).summary["metrics"]["throughput"] == 1
+
+
 def test_run_service_keyboard_interrupt_preserves_primary_and_terminalizes_evidence(
     tmp_path,
 ):
@@ -797,6 +861,27 @@ def test_keyboard_interrupt_after_terminal_commit_never_overwrites_or_masks_prim
     assert service.get(run_id).status is RunStatus.COMPLETED
 
 
+def test_terminal_interrupt_with_seal_failure_never_exposes_raw_summary(tmp_path):
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_terminal_then_interrupt_evidence_runner_factory,
+    )
+
+    with patch(
+        "engine.run_service.EvidenceWriter.seal",
+        side_effect=RuntimeError("hash storage unavailable"),
+    ):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            service.run_sync(
+                RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+            )
+
+    assert caught.value is TerminalThenInterruptEvidenceRunner.error
+    run_id = next(iter(service._done))
+    assert service.get(run_id).status is RunStatus.COMPLETED
+    assert service.get(run_id).summary is None
+
+
 def test_run_service_preserves_runner_factory_signature_compatibility(tmp_path):
     StrictSignatureRunner.constructed = False
     service = RunService(
@@ -841,6 +926,8 @@ def test_service_seal_failure_records_invalid_evidence_without_terminal_rewrite(
     )
     assert result.status is RunStatus.COMPLETED
     assert service.get(result.run_id).status is RunStatus.COMPLETED
+    assert result.summary is None
+    assert service.get(result.run_id).summary is None
     assert status["status"] == "completed"
     assert "hash storage unavailable" in result.reason
     assert manifest["evidence_error"] == "hash storage unavailable"

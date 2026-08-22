@@ -1,5 +1,6 @@
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -255,12 +256,17 @@ def test_metrics_endpoint_hides_unvalidated_in_memory_summary(client, service):
 
 
 def test_metrics_endpoint_returns_validated_summary(client, service):
-    service.records["run-1"] = _strict_completed_result(service.root)
+    canonical = _strict_completed_result(service.root)
+    service.records["run-1"] = replace(
+        canonical,
+        summary={"metrics": {"throughput": 999999}},
+    )
 
     response = client.get("/api/runs/run-1/metrics")
 
     assert response.status_code == 200
     assert response.json()["avg_travel_time"] == 1.0
+    assert response.json()["throughput"] == 1
 
 
 def _state_payload():

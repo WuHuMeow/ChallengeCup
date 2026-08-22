@@ -5,8 +5,10 @@ from __future__ import annotations
 import csv
 import itertools
 import json
+import math
 from pathlib import Path
 from statistics import mean
+from uuid import uuid4
 
 from core.run_models import RunRequest, RunResult, RunStatus
 from engine.run_service import RunService
@@ -40,13 +42,12 @@ def parameter_candidates() -> list[dict[str, float]]:
 
 
 def _metrics(result: RunResult) -> dict | None:
-    if (
-        result.status is not RunStatus.COMPLETED
-        or not result.summary
-        or EvidenceReader.validate(result.run_dir)
-    ):
+    if result.status is not RunStatus.COMPLETED:
         return None
-    metrics = result.summary.get("metrics")
+    summary = EvidenceReader.load_summary(result.run_dir)
+    if summary is None:
+        return None
+    metrics = summary.get("metrics")
     return metrics if isinstance(metrics, dict) else None
 
 
@@ -68,6 +69,14 @@ def relative_composite(candidate: RunResult, baseline: RunResult) -> float:
     baseline_metrics = _metrics(baseline)
     if candidate_metrics is None or baseline_metrics is None:
         return float("inf")
+    return _relative_composite_metrics(candidate_metrics, baseline_metrics)
+
+
+def _relative_composite_metrics(
+    candidate_metrics: dict,
+    baseline_metrics: dict,
+) -> float:
+    """Score already-validated canonical metric dictionaries."""
     ratios = {
         "travel": _ratio(
             candidate_metrics.get("avg_travel_time"),
@@ -131,6 +140,52 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
             writer.writerows(rows)
 
 
+def _clear_tuning_success(output_root: Path) -> None:
+    """Remove flat success markers before a new tuning attempt begins."""
+    for name in ("selected_params.json", "holdout_summary.json"):
+        (output_root / name).unlink(missing_ok=True)
+
+
+def _publish_tuning_success(
+    output_root: Path,
+    selected_payload: dict,
+    holdout_payload: dict,
+) -> None:
+    """Publish holdout first and selection last as the success marker."""
+    selected_path = output_root / "selected_params.json"
+    holdout_path = output_root / "holdout_summary.json"
+    selected_temporary = output_root / f".selected_params.{uuid4().hex}.tmp"
+    holdout_temporary = output_root / f".holdout_summary.{uuid4().hex}.tmp"
+
+    def write_temporary(path: Path, payload: dict) -> None:
+        path.write_text(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    try:
+        write_temporary(selected_temporary, selected_payload)
+        write_temporary(holdout_temporary, holdout_payload)
+        holdout_temporary.replace(holdout_path)
+        selected_temporary.replace(selected_path)
+    except BaseException:
+        # A selection file is the public success marker. If either commit
+        # fails, no flat success deliverable may survive this attempt.
+        selected_path.unlink(missing_ok=True)
+        holdout_path.unlink(missing_ok=True)
+        raise
+    finally:
+        selected_temporary.unlink(missing_ok=True)
+        holdout_temporary.unlink(missing_ok=True)
+
+
 def tune_ca_mp(
     output_root: Path,
     steps: int | None = None,
@@ -141,6 +196,7 @@ def tune_ca_mp(
     """Calibrate on seed 42, freeze a winner, then evaluate seeds 43/44."""
     output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
+    _clear_tuning_success(output_root)
     service = run_service or RunService(output_root=output_root / "runs")
     owns_service = run_service is None
     try:
@@ -158,6 +214,14 @@ def tune_ca_mp(
             )
             for intersection in CALIBRATION_INTERSECTIONS
         }
+        baseline_metrics = {}
+        for intersection, baseline in baselines.items():
+            metrics = _metrics(baseline)
+            if metrics is None:
+                raise ValueError(
+                    f"invalid calibration evidence for baseline {intersection}"
+                )
+            baseline_metrics[intersection] = metrics
         rows = []
         candidate_runs: dict[tuple[float, float, float], list[RunResult]] = {}
         for parameters in parameter_candidates():
@@ -182,10 +246,26 @@ def tune_ca_mp(
                 for intersection in CALIBRATION_INTERSECTIONS
             ]
             candidate_runs[key] = runs
+            candidate_metrics = []
+            for intersection, run in zip(CALIBRATION_INTERSECTIONS, runs):
+                metrics = _metrics(run)
+                if metrics is None:
+                    raise ValueError(
+                        "invalid calibration evidence for candidate "
+                        f"{key} at {intersection}"
+                    )
+                candidate_metrics.append(metrics)
             scores = [
-                relative_composite(run, baselines[intersection])
-                for intersection, run in zip(CALIBRATION_INTERSECTIONS, runs)
+                _relative_composite_metrics(metrics, baseline_metrics[intersection])
+                for intersection, metrics in zip(
+                    CALIBRATION_INTERSECTIONS,
+                    candidate_metrics,
+                )
             ]
+            if any(not math.isfinite(score) for score in scores):
+                raise ValueError(
+                    f"finite calibration score required for candidate {key}"
+                )
             score = mean(scores)
             rows.append({
                 **parameters,
@@ -225,17 +305,6 @@ def tune_ca_mp(
                 run.run_id for run in candidate_runs[selected_key]
             ],
         }
-        (output_root / "selected_params.json").write_text(
-            json.dumps(
-                selected_payload,
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
         holdout_rows = []
         for intersection, seed in itertools.product(
             CALIBRATION_INTERSECTIONS,
@@ -264,12 +333,28 @@ def tune_ca_mp(
                     warmup_seconds=warmup_seconds,
                 )
             )
+            baseline_metrics = _metrics(baseline)
+            candidate_metrics = _metrics(candidate)
+            if baseline_metrics is None or candidate_metrics is None:
+                raise ValueError(
+                    "invalid holdout evidence for "
+                    f"intersection {intersection}, seed {seed}"
+                )
+            score = _relative_composite_metrics(
+                candidate_metrics,
+                baseline_metrics,
+            )
+            if not math.isfinite(score):
+                raise ValueError(
+                    "finite holdout score required for "
+                    f"intersection {intersection}, seed {seed}"
+                )
             holdout_rows.append({
                 "intersection_id": intersection,
                 "seed": seed,
                 "baseline_run_id": baseline.run_id,
                 "candidate_run_id": candidate.run_id,
-                "score": relative_composite(candidate, baseline),
+                "score": score,
             })
         holdout_payload = {
             "parameters": selected,
@@ -277,16 +362,7 @@ def tune_ca_mp(
             "cases": holdout_rows,
             "mean_score": mean(row["score"] for row in holdout_rows),
         }
-        (output_root / "holdout_summary.json").write_text(
-            json.dumps(
-                holdout_payload,
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        _publish_tuning_success(output_root, selected_payload, holdout_payload)
         return selected
     finally:
         if owns_service:

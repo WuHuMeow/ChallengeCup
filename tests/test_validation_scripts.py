@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from scripts.validation_common import ValidationResult, run_sumo_validation
 
 
@@ -389,6 +391,59 @@ def test_verify_matrix_rejects_new_completed_result_below_horizon(
     check = verify_ia_ib.verify_matrix(tmp_path, quick=True)
 
     assert any("short: incomplete or below requested horizon" in error for error in check.errors)
+
+
+@pytest.mark.parametrize("check_name", ["ca_mp_smoke", "exact_metrics"])
+def test_live_verification_checks_reject_unsealed_summary_before_consuming_it(
+    tmp_path,
+    monkeypatch,
+    check_name,
+):
+    from core.run_models import RunResult, RunStatus
+    from scripts import verify_ia_ib
+
+    run_dir = tmp_path / "unsealed"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps({
+            "metrics": {
+                "avg_travel_time": 1,
+                "avg_delay": 1,
+                "throughput": 1,
+                "total_stops": 1,
+                "fuel_consumption": 1,
+            }
+        }),
+        encoding="utf-8",
+    )
+    (run_dir / "events.csv").write_text(
+        "type\naction_applied\n",
+        encoding="utf-8",
+    )
+    result = RunResult(
+        "unsealed",
+        RunStatus.COMPLETED,
+        "",
+        run_dir,
+        json.loads((run_dir / "summary.json").read_text(encoding="utf-8")),
+    )
+
+    class FakeService:
+        def __init__(self, **kwargs):
+            pass
+
+        def run_sync(self, request):
+            return result
+
+        def shutdown(self):
+            pass
+
+    monkeypatch.setattr(verify_ia_ib, "RunService", FakeService)
+
+    check = getattr(verify_ia_ib, f"verify_{check_name}")(tmp_path)
+
+    assert check.status == "fail"
+    assert any("strict evidence" in error for error in check.errors)
 
 
 def test_final_report_uses_flat_document_path():

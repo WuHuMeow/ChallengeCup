@@ -2,15 +2,23 @@ import csv
 import json
 import subprocess
 import sys
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
 
-from core.run_models import RunRequest, RunResult, RunStatus
+from core.run_models import (
+    DisturbanceSpec,
+    RunRequest,
+    RunResult,
+    RunStatus,
+    VariantSpec,
+)
 from core.types import MetricSummary
 from engine.artifacts import RunArtifacts
 from engine.events import EVENT_FIELDS
 from experiments.evidence import (
+    EvidenceReader,
     EvidenceWriter,
     RunManifest,
     canonical_mapping_sha256,
@@ -181,6 +189,42 @@ def _write_completed_matrix_run(
         scene_source_sha256=source_hashes,
         step_length=step_length,
         requested_seconds=requested_seconds,
+        request_dimensions={
+            "algorithm_params": (
+                dict(request.algorithm_params) if request is not None else {}
+            ),
+            "requested_steps": requested_steps,
+            "steps_origin": (
+                request.steps_origin if request is not None else "explicit"
+            ),
+            "duration_seconds": (
+                request.duration_seconds
+                if request is not None
+                else requested_seconds
+            ),
+            "warmup_seconds": (
+                request.warmup_seconds if request is not None else 600.0
+            ),
+            "step_length_override": (
+                request.step_length_override if request is not None else None
+            ),
+            "variant": (
+                asdict(request.variant)
+                if request is not None
+                else asdict(VariantSpec())
+            ),
+            "disturbance": (
+                asdict(request.disturbance)
+                if request is not None and request.disturbance is not None
+                else None
+            ),
+            "edge_delay_steps": (
+                request.edge_delay_steps if request is not None else 0
+            ),
+            "edge_directions": (
+                list(request.edge_directions) if request is not None else []
+            ),
+        },
     ))
     artifacts.metrics.write_text(
         "step,timestamp,avg_queue_length,max_queue_length\n0,0,1,2\n",
@@ -265,6 +309,7 @@ def test_is_complete_caps_requested_steps_at_configured_end(tmp_path):
         final_time=3599.0,
         step_length=1.0,
         configured_end_time=3600.0,
+        request=request,
     )
 
     assert is_complete(run_dir, request) is True
@@ -311,6 +356,99 @@ def test_is_complete_rejects_metadata_for_a_different_request(tmp_path):
     assert is_complete(run_dir, request) is False
 
 
+def test_is_complete_rejects_evidence_for_different_algorithm_parameters(tmp_path):
+    recorded_request = RunRequest(
+        "1",
+        "capacity_aware_maxpressure",
+        steps=100,
+        algorithm_params={
+            "overflow_occupancy_threshold": 0.95,
+            "prediction_weight": 0.15,
+            "base_green": 45.0,
+        },
+    )
+    current_request = RunRequest(
+        "1",
+        "capacity_aware_maxpressure",
+        steps=100,
+        algorithm_params={
+            "overflow_occupancy_threshold": 0.85,
+            "prediction_weight": 0.0,
+            "base_green": 25.0,
+        },
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=10.0,
+        request=recorded_request,
+    )
+
+    assert EvidenceReader.validate(run_dir) == []
+    assert is_complete(run_dir, current_request) is False
+
+
+def test_is_complete_rejects_evidence_for_different_step_override(tmp_path):
+    recorded_request = RunRequest(
+        "1",
+        "fixed_time",
+        steps=100,
+        step_length_override=0.2,
+    )
+    current_request = RunRequest(
+        "1",
+        "fixed_time",
+        steps=100,
+        step_length_override=0.1,
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=20.0,
+        step_length=0.2,
+        request=recorded_request,
+    )
+
+    assert EvidenceReader.validate(run_dir) == []
+    assert is_complete(run_dir, current_request) is False
+
+
+@pytest.mark.parametrize(
+    "request_overrides",
+    [
+        {"variant": VariantSpec(signal_duration_scale=1.1)},
+        {
+            "disturbance": DisturbanceSpec(
+                "construction",
+                begin_seconds=100.0,
+                end_seconds=200.0,
+                target="lane-1",
+                intensity=0.5,
+            )
+        },
+        {"edge_delay_steps": 2},
+        {"edge_directions": ("north",)},
+    ],
+)
+def test_is_complete_rejects_different_execution_dimensions(
+    tmp_path,
+    request_overrides,
+):
+    recorded_request = RunRequest("1", "fixed_time", steps=100)
+    current_request = RunRequest(
+        "1",
+        "fixed_time",
+        steps=100,
+        **request_overrides,
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=10.0,
+        request=recorded_request,
+    )
+
+    assert EvidenceReader.validate(run_dir) == []
+    assert is_complete(run_dir, current_request) is False
+
+
 class _FakeService:
     def __init__(self, root):
         self.root = root
@@ -350,6 +488,26 @@ class _InvalidLiveResultService:
             reason="",
             run_dir=run_dir,
             summary={"metrics": {"throughput": 999}},
+        )
+
+
+class _InvalidAtCallService(_FakeService):
+    def __init__(self, root, invalid_call):
+        super().__init__(root)
+        self.invalid_call = invalid_call
+
+    def run_sync(self, request):
+        result = super().run_sync(request)
+        if len(self.requests) == self.invalid_call:
+            (result.run_dir / "hashes.json").unlink()
+        return result
+
+
+class _SpoofedSummaryService(_FakeService):
+    def run_sync(self, request):
+        return replace(
+            super().run_sync(request),
+            summary={"metrics": {"throughput": 999999}},
         )
 
 
@@ -419,6 +577,123 @@ def test_tuning_metrics_rejects_completed_result_without_strict_evidence(tmp_pat
     assert _metrics(result) is None
 
 
+def test_tuning_metrics_loads_canonical_disk_summary_not_in_memory_payload(tmp_path):
+    request = RunRequest("1", "fixed_time", steps=10)
+    service = _FakeService(tmp_path / "runs")
+    canonical = service.run_sync(request)
+    spoofed = replace(
+        canonical,
+        summary={"metrics": {"throughput": 999999}},
+    )
+
+    assert _metrics(spoofed)["throughput"] == 1
+
+
+@pytest.mark.parametrize("invalid_call", [1, 4])
+def test_tuning_fails_closed_on_any_invalid_calibration_evidence(
+    tmp_path,
+    invalid_call,
+):
+    service = _InvalidAtCallService(tmp_path / "runs", invalid_call)
+    (tmp_path / "selected_params.json").write_text("stale", encoding="utf-8")
+    (tmp_path / "holdout_summary.json").write_text("stale", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="calibration evidence"):
+        tune_ca_mp(tmp_path, steps=10, run_service=service)
+
+    assert not (tmp_path / "selected_params.json").exists()
+    assert not (tmp_path / "holdout_summary.json").exists()
+
+
+def test_tuning_fails_closed_on_non_finite_calibration_score(tmp_path, monkeypatch):
+    from experiments import tuning
+
+    service = _FakeService(tmp_path / "runs")
+    monkeypatch.setattr(
+        tuning,
+        "_relative_composite_metrics",
+        lambda *args: float("inf"),
+    )
+
+    with pytest.raises(ValueError, match="finite calibration score"):
+        tune_ca_mp(tmp_path, steps=10, run_service=service)
+
+    assert not (tmp_path / "selected_params.json").exists()
+    assert not (tmp_path / "holdout_summary.json").exists()
+
+
+def test_tuning_fails_closed_on_invalid_holdout_evidence(tmp_path):
+    # 3 calibration baselines + 18 candidates * 3 intersections = 57.
+    service = _InvalidAtCallService(tmp_path / "runs", invalid_call=58)
+
+    with pytest.raises(ValueError, match="holdout evidence"):
+        tune_ca_mp(tmp_path, steps=10, run_service=service)
+
+    assert not (tmp_path / "selected_params.json").exists()
+    assert not (tmp_path / "holdout_summary.json").exists()
+
+
+def test_tuning_fails_closed_on_non_finite_holdout_score(tmp_path, monkeypatch):
+    from experiments import tuning
+
+    service = _FakeService(tmp_path / "runs")
+    calls = 0
+
+    def calibration_then_invalid_holdout(*args):
+        nonlocal calls
+        calls += 1
+        return 0.8 if calls <= 54 else float("inf")
+
+    monkeypatch.setattr(
+        tuning,
+        "_relative_composite_metrics",
+        calibration_then_invalid_holdout,
+    )
+
+    with pytest.raises(ValueError, match="finite holdout score"):
+        tune_ca_mp(tmp_path, steps=10, run_service=service)
+
+    assert not (tmp_path / "selected_params.json").exists()
+    assert not (tmp_path / "holdout_summary.json").exists()
+
+
+def test_tuning_does_not_publish_selection_when_final_commit_fails(
+    tmp_path,
+    monkeypatch,
+):
+    service = _FakeService(tmp_path / "runs")
+    original_replace = Path.replace
+
+    def fail_selection_commit(path, target):
+        if Path(target).name == "selected_params.json":
+            raise OSError("selection commit unavailable")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_selection_commit)
+
+    with pytest.raises(OSError, match="selection commit unavailable"):
+        tune_ca_mp(tmp_path, steps=10, run_service=service)
+
+    assert not (tmp_path / "selected_params.json").exists()
+    assert not (tmp_path / "holdout_summary.json").exists()
+
+
+def test_matrix_uses_canonical_disk_summary_for_live_results(tmp_path):
+    service = _SpoofedSummaryService(tmp_path / "runs")
+
+    results = run_pdf_matrix(
+        tmp_path,
+        steps=10,
+        resume=False,
+        intersections=("1",),
+        run_service=service,
+    )
+
+    assert results[0].summary["metrics"]["throughput"] == 1
+    rows = list(csv.DictReader((tmp_path / "matrix.csv").open(encoding="utf-8")))
+    assert rows[0]["throughput"] == "1"
+
+
 def test_tuning_writes_all_candidates_selected_params_and_holdout(tmp_path):
     service = _FakeService(tmp_path / "runs")
 
@@ -464,12 +739,13 @@ def test_resumed_matrix_result_keeps_the_canonical_algorithm(tmp_path):
     )[-1]
     run_id = "resume-run"
     run_dir = _run_dir(request, run_id)
-    run_dir.mkdir(parents=True)
-    (run_dir / "run_metadata.json").write_text(
-        json.dumps({"status": "completed"}),
-        encoding="utf-8",
+    run_dir.parent.mkdir(parents=True)
+    _write_completed_matrix_run(
+        run_dir.parent,
+        final_time=10.0,
+        request=request,
+        run_id=run_id,
     )
-    (run_dir / "summary.json").write_text("{}", encoding="utf-8")
 
     result = _load_result(request, run_id)
 

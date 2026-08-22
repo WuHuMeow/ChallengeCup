@@ -24,8 +24,11 @@ from experiments.evidence import EvidenceReader
 
 def _validated_result(result):
     """Preserve lifecycle state while withholding unverified summaries."""
-    if result.summary is not None and EvidenceReader.validate(result.run_dir):
-        return replace(result, summary=None)
+    if result.summary is not None:
+        return replace(
+            result,
+            summary=EvidenceReader.load_summary(result.run_dir),
+        )
     return result
 
 

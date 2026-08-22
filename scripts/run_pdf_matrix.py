@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from dataclasses import asdict
 import hashlib
 import json
 import math
@@ -128,6 +129,9 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
         metadata = json.loads(
             (result_dir / "run_metadata.json").read_text(encoding="utf-8")
         )
+        manifest = json.loads(
+            (result_dir / "manifest.json").read_text(encoding="utf-8")
+        )
         artifacts_complete = metadata.get("status") == "completed" and all(
             (result_dir / name).stat().st_size > 0
             for name in REQUIRED_ARTIFACTS
@@ -148,6 +152,82 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             int(request.seed),
         )
         if metadata_identity != request_identity:
+            return False
+        request_dimensions = manifest.get("request_dimensions")
+        if not isinstance(request_dimensions, dict):
+            return False
+        recorded_parameters = request_dimensions.get("algorithm_params")
+        if not isinstance(recorded_parameters, dict):
+            return False
+        normalized_recorded_parameters = {
+            str(name): float(value)
+            for name, value in recorded_parameters.items()
+        }
+        normalized_request_parameters = {
+            str(name): float(value)
+            for name, value in request.algorithm_params.items()
+        }
+        if normalized_recorded_parameters != normalized_request_parameters:
+            return False
+        recorded_request_identity = {
+            "requested_steps": (
+                int(request_dimensions["requested_steps"])
+                if request_dimensions.get("requested_steps") is not None
+                else None
+            ),
+            "steps_origin": str(request_dimensions["steps_origin"]),
+            "duration_seconds": float(request_dimensions["duration_seconds"]),
+            "warmup_seconds": float(request_dimensions["warmup_seconds"]),
+            "step_length_override": (
+                float(request_dimensions["step_length_override"])
+                if request_dimensions.get("step_length_override") is not None
+                else None
+            ),
+        }
+        current_request_identity = {
+            "requested_steps": (
+                int(request.steps) if request.steps is not None else None
+            ),
+            "steps_origin": request.steps_origin,
+            "duration_seconds": float(request.duration_seconds),
+            "warmup_seconds": float(request.warmup_seconds),
+            "step_length_override": (
+                float(request.step_length_override)
+                if request.step_length_override is not None
+                else None
+            ),
+        }
+        if recorded_request_identity != current_request_identity:
+            return False
+        recorded_execution_dimensions = {
+            "variant": request_dimensions["variant"],
+            "disturbance": request_dimensions.get("disturbance"),
+            "edge_delay_steps": int(request_dimensions["edge_delay_steps"]),
+            "edge_directions": list(request_dimensions["edge_directions"]),
+        }
+        current_execution_dimensions = {
+            "variant": asdict(request.variant),
+            "disturbance": (
+                asdict(request.disturbance)
+                if request.disturbance is not None
+                else None
+            ),
+            "edge_delay_steps": int(request.edge_delay_steps),
+            "edge_directions": list(request.edge_directions),
+        }
+        if json.dumps(
+            recorded_execution_dimensions,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ) != json.dumps(
+            current_execution_dimensions,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ):
             return False
         recorded_run_id = metadata.get("run_id")
         if recorded_run_id is not None and str(recorded_run_id) != result_dir.name:
@@ -212,14 +292,19 @@ def _run_dir(request: RunRequest, run_id: str) -> Path:
 
 
 def _load_result(request: RunRequest, run_id: str) -> RunResult:
-    run_dir = _run_dir(request, run_id)
+    return _load_result_dir(request, _run_dir(request, run_id))
+
+
+def _load_result_dir(request: RunRequest, run_dir: Path) -> RunResult:
+    run_dir = Path(run_dir)
     metadata = json.loads(
         (run_dir / "run_metadata.json").read_text(encoding="utf-8")
     )
-    summary_path = run_dir / "summary.json"
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary = EvidenceReader.load_summary(run_dir)
+    if summary is None:
+        raise ValueError("run result has no canonical strict-evidence summary")
     return RunResult(
-        run_id=run_id,
+        run_id=run_dir.name,
         status=RunStatus(metadata["status"]),
         reason=metadata.get("reason", ""),
         run_dir=run_dir,
@@ -301,6 +386,7 @@ def run_pdf_matrix(
                     raise ValueError(
                         "live matrix result is not strict evidence for its request"
                     )
+                result = _load_result_dir(request, result.run_dir)
                 state[key] = result.run_id
                 _atomic_json(state_path, state)
             results.append(result)

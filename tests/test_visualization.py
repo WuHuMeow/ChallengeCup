@@ -177,6 +177,38 @@ def test_generate_run_figures_rejects_unvalidated_evidence(tmp_path):
     assert not (run_dir / "figures").exists()
 
 
+@pytest.mark.parametrize(
+    ("reader_name", "artifact_name", "output_name"),
+    [
+        ("_queue_timeseries", "metrics.csv", "queue_timeseries.png"),
+        ("_trajectory_plot", "traj.xml", "trajectory.png"),
+    ],
+)
+def test_generate_run_figures_rejects_evidence_changed_during_source_read(
+    tmp_path,
+    monkeypatch,
+    reader_name,
+    artifact_name,
+    output_name,
+):
+    from visualization import report
+
+    matrix = _sample_matrix(tmp_path / "matrix")
+    run_dir = next(matrix.rglob("summary.json")).parent
+    original_reader = getattr(report, reader_name)
+
+    def mutate_after_read(source, output):
+        original_reader(source, output)
+        source.write_text("tampered after read", encoding="utf-8")
+
+    monkeypatch.setattr(report, reader_name, mutate_after_read)
+
+    with pytest.raises(ValueError, match="evidence changed"):
+        generate_run_figures(run_dir)
+
+    assert not (run_dir / "figures" / output_name).exists()
+
+
 def test_every_figure_has_provenance_manifest(tmp_path):
     matrix = _sample_matrix(tmp_path / "matrix")
     output_dir = tmp_path / "figures"
