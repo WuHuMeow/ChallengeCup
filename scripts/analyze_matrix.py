@@ -20,6 +20,7 @@ from experiments.matrix import (  # noqa: E402
     FORMAL_FLOWS,
     FORMAL_SEEDS,
     FormalMatrix,
+    load_sealed_matrix_rows,
 )
 from experiments.statistics import select_default  # noqa: E402
 
@@ -70,6 +71,17 @@ def _validate_frozen_frame(frame: pd.DataFrame) -> None:
         "seed",
         "matrix_kind",
         "disturbance_kind",
+        "disturbance_begin_seconds",
+        "disturbance_end_seconds",
+        "disturbance_target",
+        "disturbance_intensity",
+        "duration_seconds",
+        "warmup_seconds",
+        "steps",
+        "steps_origin",
+        "algorithm_params",
+        "run_id",
+        "run_dir",
         "status",
         *METRICS,
         *SAFETY_COLUMNS,
@@ -145,16 +157,23 @@ def analyze_matrix(matrix_csv: Path, output_dir: Path) -> dict[str, Path]:
     """Validate, pair, select, and publish analysis artifacts."""
     matrix_csv = Path(matrix_csv)
     output_dir = Path(output_dir)
-    frame = pd.read_csv(matrix_csv)
-    _validate_frozen_frame(frame)
+    submitted_frame = pd.read_csv(matrix_csv, keep_default_na=False)
+    _validate_frozen_frame(submitted_frame)
+    frame = pd.DataFrame(
+        load_sealed_matrix_rows(matrix_csv, FormalMatrix.all())
+    )
 
     desc_rows: list[dict[str, Any]] = []
     for algorithm in FORMAL_ALGORITHMS:
-        subset = frame[frame["algorithm"] == algorithm]
+        subset = frame[
+            (frame["algorithm"] == algorithm)
+            & (frame["matrix_kind"] == "normal")
+        ]
         for metric in METRICS:
             values = subset[metric]
             desc_rows.append({
                 "algorithm": algorithm,
+                "matrix_kind": "normal",
                 "metric": metric,
                 "n": int(values.count()),
                 "mean": float(values.mean()),
@@ -166,6 +185,30 @@ def analyze_matrix(matrix_csv: Path, output_dir: Path) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     desc_path = output_dir / "descriptive_stats.csv"
     pd.DataFrame(desc_rows).to_csv(desc_path, index=False)
+
+    resilience_rows: list[dict[str, Any]] = []
+    for algorithm in FORMAL_ALGORITHMS:
+        for kind in ("construction", "event_demand", "vehicle_failure"):
+            subset = frame[
+                (frame["algorithm"] == algorithm)
+                & (frame["matrix_kind"] == "disturbance")
+                & (frame["disturbance_kind"] == kind)
+            ]
+            for metric in METRICS:
+                values = subset[metric]
+                resilience_rows.append({
+                    "algorithm": algorithm,
+                    "matrix_kind": "disturbance",
+                    "disturbance_kind": kind,
+                    "metric": metric,
+                    "n": int(values.count()),
+                    "mean": float(values.mean()),
+                    "std": float(values.std(ddof=1)),
+                    "min": float(values.min()),
+                    "max": float(values.max()),
+                })
+    resilience_path = output_dir / "disturbance_resilience.csv"
+    pd.DataFrame(resilience_rows).to_csv(resilience_path, index=False)
 
     selection = select_default(
         frame,
@@ -231,6 +274,10 @@ def analyze_matrix(matrix_csv: Path, output_dir: Path) -> dict[str, Path]:
                 "path": str(paired_path.resolve()),
                 "sha256": _sha256(paired_path),
             },
+            "disturbance_resilience": {
+                "path": str(resilience_path.resolve()),
+                "sha256": _sha256(resilience_path),
+            },
             "selection": {
                 "path": str(selection_path.resolve()),
                 "sha256": _sha256(selection_path),
@@ -240,6 +287,7 @@ def analyze_matrix(matrix_csv: Path, output_dir: Path) -> dict[str, Path]:
     _write_json(manifest_path, manifest)
     return {
         "descriptive_stats": desc_path,
+        "disturbance_resilience": resilience_path,
         "paired_tests": paired_path,
         "selection": selection_path,
         "analysis_manifest": manifest_path,

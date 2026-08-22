@@ -25,6 +25,7 @@ from experiments.evidence import EvidenceReader  # noqa: E402
 from experiments.matrix import (  # noqa: E402
     FormalMatrix,
     RunSpec,
+    load_sealed_matrix_rows,
     run_matrix as execute_formal_matrix,
 )
 from scripts.run_pdf_matrix import (  # noqa: E402
@@ -442,6 +443,26 @@ def audit_matrix_csv(
     """Audit an existing combined matrix without launching new SUMO runs."""
     started = time.perf_counter()
     errors = []
+    if expected_specs is not None:
+        if len(expected_specs) != expected:
+            errors.append(
+                f"expected spec count={len(expected_specs)} does not match expected={expected}"
+            )
+        else:
+            try:
+                load_sealed_matrix_rows(matrix_csv, expected_specs)
+            except (OSError, TypeError, ValueError) as exc:
+                errors.append(str(exc))
+        return _result(
+            "matrix",
+            started,
+            f"in-process audit of {matrix_csv}",
+            [],
+            errors,
+            exit_code=None,
+            mode="audited",
+            evidence_paths=[str(matrix_csv)],
+        )
     try:
         rows = list(csv.DictReader(Path(matrix_csv).open(encoding="utf-8")))
     except OSError as exc:

@@ -11,7 +11,7 @@ import math
 import os
 from pathlib import Path
 import threading
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import xml.etree.ElementTree as ET
 from uuid import uuid4
 
@@ -32,6 +32,22 @@ FORMAL_FLOWS = (1.0, 1.25)
 FORMAL_SEEDS = (42, 43, 44)
 FORMAL_DURATION_SECONDS = 3600.0
 FORMAL_WARMUP_SECONDS = 600.0
+MATRIX_METRIC_COLUMNS = (
+    "avg_travel_time",
+    "avg_delay",
+    "avg_queue_length",
+    "throughput",
+    "total_stops",
+    "fuel_consumption",
+)
+MATRIX_SAFETY_COLUMNS = (
+    "collision_count",
+    "red_light_count",
+    "illegal_transition_count",
+    "harsh_braking_count",
+    "teleport_count",
+    "potential_conflict_count",
+)
 
 
 def _canonical_json(payload: object) -> str:
@@ -225,6 +241,10 @@ class MatrixIntegrityError(RuntimeError):
     """Persisted matrix state is malformed or does not match the request."""
 
 
+class MatrixEvidenceError(ValueError):
+    """A matrix result row is not bound to its frozen sealed evidence."""
+
+
 @dataclass(frozen=True)
 class MatrixEntry:
     run_key: str
@@ -393,6 +413,7 @@ def _load_manifest(path: Path, specs: tuple[RunSpec, ...]) -> dict[str, object]:
         raise MatrixIntegrityError("matrix manifest attempt chains are malformed")
     if any(not isinstance(chain, list) for chain in attempts.values()):
         raise MatrixIntegrityError("matrix manifest attempt chain must be a list")
+    _validate_manifest_attempts(payload, specs, path.parent / "runs")
     return payload
 
 
@@ -415,6 +436,112 @@ def _status_for_attempt(spec: RunSpec, attempt: dict[str, object]) -> dict[str, 
         return artifacts.read_status()
     except CorruptStatusArtifactError as exc:
         raise MatrixIntegrityError(str(exc)) from exc
+
+
+def _validate_manifest_attempts(
+    manifest: dict[str, object],
+    specs: tuple[RunSpec, ...],
+    runs_root: Path,
+) -> None:
+    retryable = {
+        RunStatus.FAILED.value,
+        RunStatus.INTERRUPTED.value,
+        RunStatus.STOPPED.value,
+        RunStatus.ENDED_EARLY.value,
+        RunStatus.DISCONNECTED.value,
+    }
+    valid_statuses = {status.value for status in RunStatus}
+    seen_run_ids: set[str] = set()
+    seen_run_dirs: set[str] = set()
+    attempts = manifest["attempt_chains"]
+    for spec in specs:
+        chain = attempts[spec.run_key]
+        previous: dict[str, object] | None = None
+        for index, attempt in enumerate(chain):
+            if not isinstance(attempt, dict):
+                raise MatrixIntegrityError("matrix manifest attempt must be an object")
+            run_id = str(attempt.get("run_id", "")).strip()
+            status = str(attempt.get("status", ""))
+            if not run_id:
+                raise MatrixIntegrityError("matrix manifest attempt has empty run id")
+            if status not in valid_statuses:
+                raise MatrixIntegrityError(
+                    f"matrix manifest attempt has invalid status: {status}"
+                )
+            try:
+                run_dir = _validate_run_directory(
+                    spec,
+                    Path(str(attempt.get("run_dir", ""))),
+                    run_id,
+                    runs_root,
+                )
+            except MatrixIntegrityError as exc:
+                if status == RunStatus.COMPLETED.value:
+                    raise CorruptCompletedRunError(
+                        "completed run has invalid manifest directory"
+                    ) from exc
+                raise
+            normalized_dir = os.path.normcase(str(run_dir))
+            if run_id in seen_run_ids:
+                raise MatrixIntegrityError(
+                    f"matrix manifest has duplicate run id: {run_id}"
+                )
+            if normalized_dir in seen_run_dirs:
+                raise MatrixIntegrityError(
+                    f"matrix manifest has duplicate attempt directory: {run_dir}"
+                )
+            seen_run_ids.add(run_id)
+            seen_run_dirs.add(normalized_dir)
+
+            expected_parent = None
+            if previous is not None:
+                expected_parent = {
+                    "run_id": str(previous["run_id"]),
+                    "status": str(previous["status"]),
+                }
+            if attempt.get("parent_failure") != expected_parent:
+                raise MatrixIntegrityError(
+                    "matrix manifest attempt parent does not match previous failure"
+                )
+            if previous is not None and str(previous["status"]) not in retryable:
+                raise MatrixIntegrityError(
+                    "matrix manifest attempt follows a non-retryable parent"
+                )
+            try:
+                disk_status = _status_for_attempt(spec, attempt)
+            except MatrixIntegrityError as exc:
+                if status == RunStatus.COMPLETED.value:
+                    raise CorruptCompletedRunError(
+                        "completed run has corrupt status artifact"
+                    ) from exc
+                raise
+            if disk_status is None:
+                if status == RunStatus.COMPLETED.value:
+                    raise CorruptCompletedRunError(
+                        "completed run is missing its status artifact"
+                    )
+                raise MatrixIntegrityError(
+                    "matrix manifest attempt is missing its status artifact"
+                )
+            if str(disk_status.get("status", "")) != status:
+                if status == RunStatus.COMPLETED.value:
+                    raise CorruptCompletedRunError(
+                        "completed run disk status is not completed"
+                    )
+                raise MatrixIntegrityError(
+                    "matrix manifest attempt status differs from disk status"
+                )
+            if status == RunStatus.COMPLETED.value:
+                request = spec.to_request(Path(runs_root))
+                if not _strict_is_complete(run_dir, request):
+                    raise CorruptCompletedRunError(
+                        "completed run is not strict evidence for exact request"
+                    )
+            elif index < len(chain) - 1 and status not in retryable:
+                raise MatrixIntegrityError(
+                    "matrix manifest attempt chain contains non-retryable history"
+                )
+            previous = attempt
 
 
 def _validate_run_directory(
@@ -445,6 +572,195 @@ def _strict_is_complete(run_dir: Path, request: RunRequest) -> bool:
     from scripts.run_pdf_matrix import is_complete
 
     return is_complete(run_dir, request)
+
+
+def _identity_float(row: Mapping[str, str], name: str, expected: float) -> None:
+    try:
+        actual = float(row[name])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MatrixEvidenceError(f"matrix row identity has invalid {name}") from exc
+    if not math.isfinite(actual) or actual != float(expected):
+        raise MatrixEvidenceError(f"matrix row identity differs for {name}")
+
+
+def _identity_int(row: Mapping[str, str], name: str, expected: int) -> None:
+    try:
+        actual = float(row[name])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MatrixEvidenceError(f"matrix row identity has invalid {name}") from exc
+    if not math.isfinite(actual) or not actual.is_integer() or int(actual) != expected:
+        raise MatrixEvidenceError(f"matrix row identity differs for {name}")
+
+
+def _validate_result_identity(spec: RunSpec, row: Mapping[str, str]) -> None:
+    expected_text = {
+        "run_key": spec.run_key,
+        "scene_id": spec.scene_id,
+        "intersection_id": spec.intersection_id,
+        "algorithm": spec.algorithm,
+        "matrix_kind": spec.matrix_kind,
+        "steps": "",
+        "steps_origin": "none",
+    }
+    for name, expected in expected_text.items():
+        if str(row.get(name, "")) != expected:
+            raise MatrixEvidenceError(f"matrix row identity differs for {name}")
+    _identity_float(row, "flow_multiplier", spec.flow_multiplier)
+    _identity_int(row, "seed", spec.seed)
+    _identity_float(row, "duration_seconds", spec.duration_seconds)
+    _identity_float(row, "warmup_seconds", spec.warmup_seconds)
+    try:
+        parameters = json.loads(row.get("algorithm_params", ""))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise MatrixEvidenceError(
+            "matrix row identity has invalid algorithm_params"
+        ) from exc
+    if parameters != dict(sorted(spec.algorithm_params.items())):
+        raise MatrixEvidenceError(
+            "matrix row identity differs for algorithm_params"
+        )
+
+    disturbance = spec.disturbance
+    if disturbance is None:
+        for name in (
+            "disturbance_kind",
+            "disturbance_begin_seconds",
+            "disturbance_end_seconds",
+            "disturbance_target",
+            "disturbance_intensity",
+        ):
+            if str(row.get(name, "")) != "":
+                raise MatrixEvidenceError(f"matrix row identity differs for {name}")
+        return
+    if str(row.get("disturbance_kind", "")) != disturbance.kind:
+        raise MatrixEvidenceError(
+            "matrix row identity differs for disturbance_kind"
+        )
+    if str(row.get("disturbance_target", "")) != disturbance.target:
+        raise MatrixEvidenceError(
+            "matrix row identity differs for disturbance_target"
+        )
+    _identity_float(
+        row, "disturbance_begin_seconds", disturbance.begin_seconds
+    )
+    _identity_float(row, "disturbance_end_seconds", disturbance.end_seconds)
+    _identity_float(row, "disturbance_intensity", disturbance.intensity)
+
+
+def load_sealed_matrix_rows(
+    matrix_csv: Path,
+    specs: Sequence[RunSpec],
+) -> list[dict[str, object]]:
+    """Return canonical rows only after binding CSV, manifest, and sealed evidence."""
+    matrix_csv = Path(matrix_csv)
+    matrix_root = matrix_csv.parent.resolve()
+    frozen_specs = tuple(specs)
+    expected = {spec.run_key: spec for spec in frozen_specs}
+    if len(expected) != len(frozen_specs):
+        raise MatrixEvidenceError("frozen matrix contains duplicate run key")
+    try:
+        with matrix_csv.open(newline="", encoding="utf-8") as source:
+            rows = list(csv.DictReader(source))
+    except OSError as exc:
+        raise MatrixEvidenceError(f"cannot read matrix CSV: {exc}") from exc
+    actual_keys = [row.get("run_key", "") for row in rows]
+    if len(set(actual_keys)) != len(actual_keys):
+        raise MatrixEvidenceError("matrix contains duplicate run key")
+    if len(rows) != len(frozen_specs) or set(actual_keys) != set(expected):
+        raise MatrixEvidenceError(
+            "matrix rows do not match the expected frozen run keys"
+        )
+
+    manifest_path = matrix_root / "matrix_manifest.json"
+    try:
+        manifest = _load_manifest(manifest_path, frozen_specs)
+    except (MatrixIntegrityError, CorruptCompletedRunError) as exc:
+        raise MatrixEvidenceError(str(exc)) from exc
+    runs_root = (matrix_root / "runs").resolve()
+    canonical_rows: list[dict[str, object]] = []
+    for row in rows:
+        spec = expected[str(row["run_key"])]
+        _validate_result_identity(spec, row)
+        chain = manifest["attempt_chains"][spec.run_key]
+        if not chain or not isinstance(chain[-1], dict):
+            raise MatrixEvidenceError("matrix manifest has no latest attempt")
+        latest = chain[-1]
+        if str(latest.get("status", "")) != RunStatus.COMPLETED.value:
+            raise MatrixEvidenceError("matrix manifest latest attempt is not completed")
+        if str(row.get("status", "")) != RunStatus.COMPLETED.value:
+            raise MatrixEvidenceError("matrix CSV status is not completed")
+        run_id = str(row.get("run_id", ""))
+        if not run_id or run_id != str(latest.get("run_id", "")):
+            raise MatrixEvidenceError("matrix row differs from manifest latest attempt")
+
+        raw_run_dir = str(row.get("run_dir", ""))
+        if not raw_run_dir:
+            raise MatrixEvidenceError("matrix row has no run directory")
+        candidate = Path(raw_run_dir)
+        if not candidate.is_absolute():
+            if ".." in candidate.parts:
+                raise MatrixEvidenceError(
+                    "matrix run directory is outside control via parent traversal"
+                )
+            candidate = matrix_root / candidate
+        run_dir = candidate.resolve()
+        try:
+            run_dir.relative_to(runs_root)
+        except ValueError as exc:
+            raise MatrixEvidenceError(
+                "matrix run directory is outside the controlled matrix root"
+            ) from exc
+        manifest_run_dir = Path(str(latest.get("run_dir", ""))).resolve()
+        if run_dir != manifest_run_dir:
+            raise MatrixEvidenceError("matrix row differs from manifest latest attempt")
+        try:
+            _validate_run_directory(spec, run_dir, run_id, runs_root)
+        except MatrixIntegrityError as exc:
+            raise MatrixEvidenceError(str(exc)) from exc
+        if not run_dir.is_dir():
+            raise MatrixEvidenceError("matrix run directory is missing")
+
+        request = spec.to_request(runs_root)
+        if not _strict_is_complete(run_dir, request):
+            raise MatrixEvidenceError(
+                "matrix run is not strict sealed evidence for exact request"
+            )
+        try:
+            summary = EvidenceReader.load_summary(run_dir)
+        except Exception as exc:
+            raise MatrixEvidenceError(f"cannot load sealed summary: {exc}") from exc
+        metrics = summary.get("metrics") if isinstance(summary, dict) else None
+        if not isinstance(metrics, Mapping):
+            raise MatrixEvidenceError("sealed summary has no canonical metrics")
+
+        canonical = dict(row)
+        canonical["run_dir"] = str(run_dir)
+        for name in MATRIX_METRIC_COLUMNS:
+            try:
+                sealed_value = float(metrics[name])
+                csv_value = float(row[name])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise MatrixEvidenceError(
+                    f"sealed summary has invalid metric {name}"
+                ) from exc
+            if not math.isfinite(sealed_value) or csv_value != sealed_value:
+                raise MatrixEvidenceError(
+                    f"matrix CSV {name} differs from sealed summary"
+                )
+            canonical[name] = sealed_value
+        for name in MATRIX_SAFETY_COLUMNS:
+            sealed_value = metrics.get(name)
+            if (
+                isinstance(sealed_value, bool)
+                or not isinstance(sealed_value, int)
+                or str(row.get(name, "")) != str(sealed_value)
+            ):
+                raise MatrixEvidenceError(
+                    f"matrix CSV {name} differs from sealed summary"
+                )
+            canonical[name] = sealed_value
+        canonical_rows.append(canonical)
+    return canonical_rows
 
 
 def _entry_from_attempt(run_key: str, attempt: dict[str, object]) -> MatrixEntry:
@@ -493,6 +809,9 @@ def _result_rows(
                 "disturbance_intensity": disturbance.intensity if disturbance else "",
                 "duration_seconds": spec.duration_seconds,
                 "warmup_seconds": spec.warmup_seconds,
+                "steps": "",
+                "steps_origin": "none",
+                "algorithm_params": _canonical_json(spec.algorithm_params),
                 "run_id": entry.run_id,
                 "status": entry.status,
                 "reason": entry.reason,
@@ -567,49 +886,90 @@ def run_matrix(
                 latest = chain[-1] if chain else None
                 parent_failure = None
                 if latest is not None:
-                    _validate_run_directory(
-                        spec,
-                        Path(str(latest.get("run_dir", ""))),
-                        str(latest.get("run_id", "")),
-                        output_root / "runs",
-                    )
-                    disk_status = _status_for_attempt(spec, latest)
-                    if disk_status is not None:
-                        status = str(disk_status["status"])
-                        latest["status"] = status
-                        latest["reason"] = str(disk_status.get("reason", ""))
-                        if status == RunStatus.COMPLETED.value:
-                            request = spec.to_request(output_root / "runs")
-                            run_dir = Path(str(latest["run_dir"]))
-                            if not _strict_is_complete(run_dir, request):
-                                raise CorruptCompletedRunError(
-                                    "completed run is not strict evidence for exact request"
-                                )
-                            entry = _entry_from_attempt(spec.run_key, latest)
-                            entries[spec.run_key] = entry
-                            skipped += 1
-                            continue
-                        if status in {
-                            RunStatus.QUEUED.value,
-                            RunStatus.STARTING.value,
-                            RunStatus.RUNNING.value,
-                            RunStatus.STOPPING.value,
-                        }:
-                            raise MatrixIntegrityError(
-                                f"cannot resume non-terminal attempt {latest['run_id']}: {status}"
+                    manifest_status = str(latest.get("status", ""))
+                    try:
+                        _validate_run_directory(
+                            spec,
+                            Path(str(latest.get("run_dir", ""))),
+                            str(latest.get("run_id", "")),
+                            output_root / "runs",
+                        )
+                        disk_status = _status_for_attempt(spec, latest)
+                    except MatrixIntegrityError as exc:
+                        if manifest_status == RunStatus.COMPLETED.value:
+                            raise CorruptCompletedRunError(
+                                "completed run has corrupt disk state"
+                            ) from exc
+                        raise
+                    if manifest_status == RunStatus.COMPLETED.value:
+                        if (
+                            disk_status is None
+                            or str(disk_status.get("status", ""))
+                            != RunStatus.COMPLETED.value
+                        ):
+                            raise CorruptCompletedRunError(
+                                "completed run is missing completed disk status"
                             )
-                        parent_failure = {
-                            "run_id": str(latest["run_id"]),
-                            "status": status,
-                        }
-                    if parent_failure is not None:
-                        retried += 1
+                        request = spec.to_request(output_root / "runs")
+                        run_dir = Path(str(latest["run_dir"]))
+                        if not _strict_is_complete(run_dir, request):
+                            raise CorruptCompletedRunError(
+                                "completed run is not strict evidence for exact request"
+                            )
+                        entry = _entry_from_attempt(spec.run_key, latest)
+                        entries[spec.run_key] = entry
+                        skipped += 1
+                        continue
+                    if disk_status is None:
+                        raise MatrixIntegrityError(
+                            "existing matrix attempt is missing canonical status"
+                        )
+                    status = str(disk_status.get("status", ""))
+                    if status != manifest_status:
+                        raise MatrixIntegrityError(
+                            "matrix attempt manifest status differs from disk status"
+                        )
+                    retryable_statuses = {
+                        RunStatus.FAILED.value,
+                        RunStatus.INTERRUPTED.value,
+                        RunStatus.STOPPED.value,
+                        RunStatus.ENDED_EARLY.value,
+                        RunStatus.DISCONNECTED.value,
+                    }
+                    if status not in retryable_statuses:
+                        raise MatrixIntegrityError(
+                            f"cannot resume non-terminal attempt {latest['run_id']}: {status}"
+                        )
+                    parent_failure = {
+                        "run_id": str(latest["run_id"]),
+                        "status": status,
+                    }
+                    retried += 1
 
                 if service is None:
                     service = RunService(output_root=output_root / "runs")
                     owns_service = True
                 request = spec.to_request(output_root / "runs")
                 result = service.run_sync(request)
+                prior_attempts = [
+                    attempt
+                    for attempt_chain in manifest["attempt_chains"].values()
+                    for attempt in attempt_chain
+                ]
+                prior_run_ids = {
+                    str(attempt.get("run_id", "")) for attempt in prior_attempts
+                }
+                prior_run_dirs = {
+                    str(Path(str(attempt.get("run_dir", ""))).resolve())
+                    for attempt in prior_attempts
+                }
+                if (
+                    result.run_id in prior_run_ids
+                    or str(Path(result.run_dir).resolve()) in prior_run_dirs
+                ):
+                    raise MatrixIntegrityError(
+                        "retry must return a unique run id and run directory"
+                    )
                 _validate_run_directory(
                     spec,
                     result.run_dir,
@@ -631,6 +991,18 @@ def run_matrix(
                 disk_status = str(status_payload["status"])
                 if disk_status != result.status.value:
                     raise MatrixIntegrityError("run result status differs from disk status")
+                terminal_statuses = {
+                    RunStatus.COMPLETED.value,
+                    RunStatus.FAILED.value,
+                    RunStatus.INTERRUPTED.value,
+                    RunStatus.STOPPED.value,
+                    RunStatus.ENDED_EARLY.value,
+                    RunStatus.DISCONNECTED.value,
+                }
+                if disk_status not in terminal_statuses:
+                    raise MatrixIntegrityError(
+                        "run result must have a terminal status"
+                    )
                 attempt = {
                     "run_id": result.run_id,
                     "run_dir": str(Path(result.run_dir).resolve()),

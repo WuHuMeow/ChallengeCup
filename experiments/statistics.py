@@ -112,21 +112,66 @@ def _safety_eligible(frame: pd.DataFrame, candidate: str) -> bool:
     if len(rows) != 180:
         return False
     disturbance = rows[rows["matrix_kind"] == "disturbance"]
-    if "disturbance_kind" not in disturbance.columns:
+    identity_columns = {
+        "run_key",
+        "scene_id",
+        "algorithm",
+        "flow_multiplier",
+        "seed",
+        "matrix_kind",
+        "disturbance_kind",
+        "disturbance_begin_seconds",
+        "disturbance_end_seconds",
+        "disturbance_target",
+        "disturbance_intensity",
+        "duration_seconds",
+        "warmup_seconds",
+    }
+    if not identity_columns.issubset(disturbance.columns):
         return False
-    disturbance_keys = {
-        (str(row.scene_id), str(row.disturbance_kind))
-        for row in disturbance.itertuples()
+    from experiments.matrix import FormalMatrix
+
+    expected = {
+        spec.run_key: spec
+        for spec in FormalMatrix.disturbance()
+        if spec.algorithm == candidate
     }
-    expected_disturbance_keys = {
-        (str(scene), kind)
-        for scene in range(1, 21)
-        for kind in ("construction", "event_demand", "vehicle_failure")
-    }
-    if (
-        len(disturbance) != 60
-        or disturbance_keys != expected_disturbance_keys
-    ):
+    if len(disturbance) != 60 or len(expected) != 60:
+        return False
+    seen: set[str] = set()
+    for row in disturbance.itertuples():
+        run_key = str(row.run_key)
+        spec = expected.get(run_key)
+        if spec is None or run_key in seen:
+            return False
+        seen.add(run_key)
+        disturbance_spec = spec.disturbance
+        if disturbance_spec is None:
+            return False
+        try:
+            row_seed = float(row.seed)
+            matches = (
+                str(row.scene_id) == spec.scene_id
+                and str(row.algorithm) == spec.algorithm
+                and float(row.flow_multiplier) == spec.flow_multiplier
+                and math.isfinite(row_seed)
+                and row_seed.is_integer()
+                and int(row_seed) == spec.seed
+                and str(row.matrix_kind) == spec.matrix_kind
+                and str(row.disturbance_kind) == disturbance_spec.kind
+                and float(row.disturbance_begin_seconds)
+                == disturbance_spec.begin_seconds
+                and float(row.disturbance_end_seconds) == disturbance_spec.end_seconds
+                and str(row.disturbance_target) == disturbance_spec.target
+                and float(row.disturbance_intensity) == disturbance_spec.intensity
+                and float(row.duration_seconds) == spec.duration_seconds
+                and float(row.warmup_seconds) == spec.warmup_seconds
+            )
+        except (TypeError, ValueError):
+            return False
+        if not matches:
+            return False
+    if seen != set(expected):
         return False
     return all(
         _strict_zero(value)

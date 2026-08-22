@@ -122,3 +122,101 @@ All commands used `D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.ve
   tests/test_experiments.py -q --basetemp=.task14-prereview-focused`
   -> `65 passed, 1 warning in 17.47s`. The warning remains the pre-existing
   denied `.pytest_cache` write; the isolated basetemp run passed.
+
+## Fix round 1: sealed formal analysis and immutable retry lineage
+
+### RED evidence
+
+1. Completed manifest state and retry uniqueness
+   - `python -m pytest tests/test_formal_matrix.py -q -k
+     "manifest_completed_attempt_never_degrades_into_retry or
+     retry_rejects_reused_run_id" --basetemp=.task14-fix1-red-resume`
+     -> `4 failed`: missing run directory, missing status, non-completed disk
+     status, and a reused retry ID all degraded into retry/append behavior.
+2. Exact disturbance safety identity
+   - `python -m pytest tests/test_formal_matrix.py -q -k
+     "candidate_safety" --basetemp=.task14-fix1-red-safety`
+     -> `7 failed, 5 passed`: flow, seed, begin/end, target, intensity, and
+     run-key mutations incorrectly passed the safety gate.
+   - Fractional seed follow-up in `.task14-fix1-red-fractional-seed2`
+     -> `1 failed`: seed `42.5` was truncated to `42`.
+3. Sealed analysis and strata
+   - `python -m pytest tests/test_analyze_matrix.py -q -k
+     "accepts_only or swapped_identity or relative_run"
+     --basetemp=.task14-fix1-red-sealed-analysis`
+     -> `6 failed`: descriptive output mixed normal/disturbance samples, and
+     swapped key/run ID, forged metric/safety, and escaped run directory were
+     accepted.
+   - Explicit normalized parent traversal in `.task14-fix1-red-parent-path2`
+     -> `1 failed` because `runs/../runs/...` was accepted.
+4. IA/IB canonical evidence binding
+   - `python -m pytest tests/test_validation_scripts.py -q -k
+     "seconds_first_formal_run_spec or swapped_key_or_forged"
+     --basetemp=.task14-fix1-red-iaib`
+     -> `4 failed`: the old auditor did not consume the shared sealed formal
+     contract and trusted submitted metric/safety values.
+5. Whole-manifest lineage integrity
+   - `python -m pytest tests/test_formal_matrix.py -q -k
+     "entire_attempt_lineage or cross_spec_duplicate"
+     --basetemp=.task14-fix1-red-global-lineage`
+     -> `4 failed`: duplicate history, forged parent, historical disk-status
+     mismatch, and cross-spec duplicate run IDs were not rejected globally
+     before service invocation.
+   - Live cross-spec duplicate ID in `.task14-fix1-red-live-global` -> `1 failed`.
+   - Live non-terminal result in `.task14-fix1-red-live-terminal` -> `1 failed`.
+
+### GREEN implementation and evidence
+
+- `experiments/matrix.py`
+  - validates every persisted attempt object, contained canonical directory,
+    disk status, global run-ID/directory uniqueness, and exact parent lineage
+    before constructing/calling a service;
+  - preserves completed manifest state and raises
+    `CorruptCompletedRunError` for missing/mismatched/unsealed completed disk
+    evidence without appending attempts or rewriting the manifest;
+  - accepts retries only after canonical retryable terminal states and requires
+    each live result to have a globally new ID/directory and terminal disk status;
+  - publishes steps provenance and canonical algorithm parameters in result rows;
+  - adds one shared `load_sealed_matrix_rows` boundary that verifies the sibling
+    matrix manifest, full `run_key -> RunSpec` row identity, latest attempt,
+    controlled path, exact `RunRequest`, strict completion, and the canonical
+    `EvidenceReader.load_summary()` metrics/safety values.
+- `scripts/analyze_matrix.py` consumes only canonical sealed rows. Normal
+  descriptive statistics are exactly 120 rows per algorithm; disturbance
+  resilience is emitted independently for each of three kinds with 20 rows per
+  algorithm/kind. Paired selection continues to use normal rows only.
+- `scripts/verify_ia_ib.py` uses the same shared sealed-row boundary whenever
+  `expected_specs` is supplied; the legacy explicit-request audit remains only
+  for its non-formal compatibility caller.
+- `experiments/statistics.py` requires the exact 20-scene x 3-kind candidate
+  disturbance identities, including run key, flow 1.0, integer seed 42,
+  duration/warmup, target, window, and intensity.
+- Focused GREEN checkpoints:
+  - retry/corruption group -> `7 passed`;
+  - global lineage group -> `10 passed`, then missing-status coverage remained green;
+  - exact safety group -> `15 passed`, fractional-seed follow-up -> `1 passed`;
+  - analyzer full group -> `12 passed` before the two final path/run-dir cases;
+  - IA/IB focused group -> `4 passed`;
+  - live-result focused groups -> `2 passed` each.
+
+### Final verification and self-review
+
+- Fresh covering command after every follow-up fix:
+  `python -m pytest tests/test_formal_matrix.py tests/test_analyze_matrix.py
+  tests/test_experiments.py tests/test_validation_scripts.py -q
+  --basetemp=.task14-fix1-final-covering`
+  -> `118 passed, 1 warning in 80.45s`. The warning is the existing denied
+  repository `.pytest_cache`; the isolated basetemp and all tests passed.
+- Strict changed-file flake8 with `--max-line-length=100` -> exit 0, no output.
+- `python -m compileall -q experiments scripts tests` -> exit 0.
+- `git diff --check` -> exit 0 (only Git line-ending notices).
+- Tests exercise sealed-reader boundaries with controlled summaries so the
+  540-row analyzer suite stays bounded; production calls the Task 13 strict
+  `is_complete(exact_request)` and `EvidenceReader.load_summary()` paths without
+  a CSV fallback.
+- Existing failed-attempt bytes are snapshotted in the retry test and remain
+  identical after the next attempt. Corrupt completed tests also assert service
+  zero calls and byte-identical manifest contents.
+- No real 540-run SUMO execution was performed. `progress.md`, `赛题资料.7z`,
+  `data/intersection_data`, and all scratch/basetemp directories remain outside
+  the explicit staging set.

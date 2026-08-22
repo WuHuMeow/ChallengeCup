@@ -124,6 +124,8 @@ def test_target_selection_fails_closed_without_valid_reachable_lane(
 
 
 def _paired_frame(candidate_delta: float = -10.0) -> pd.DataFrame:
+    from experiments.matrix import FormalMatrix
+
     rows = []
     for scene in range(1, 21):
         for load in (1.0, 1.25):
@@ -149,16 +151,30 @@ def _paired_frame(candidate_delta: float = -10.0) -> pd.DataFrame:
                             "potential_conflict_count": 1,
                         }
                     )
+    disturbance_specs = {
+        (spec.scene_id, spec.disturbance.kind): spec
+        for spec in FormalMatrix.disturbance()
+        if spec.algorithm == "capacity_aware_maxpressure"
+    }
     for scene in range(1, 21):
         for kind in ("construction", "event_demand", "vehicle_failure"):
+            spec = disturbance_specs[(str(scene), kind)]
+            disturbance = spec.disturbance
             rows.append(
                 {
+                    "run_key": spec.run_key,
                     "scene_id": str(scene),
                     "algorithm": "capacity_aware_maxpressure",
                     "flow_multiplier": 1.0,
                     "seed": 42,
                     "matrix_kind": "disturbance",
                     "disturbance_kind": kind,
+                    "disturbance_begin_seconds": disturbance.begin_seconds,
+                    "disturbance_end_seconds": disturbance.end_seconds,
+                    "disturbance_target": disturbance.target,
+                    "disturbance_intensity": disturbance.intensity,
+                    "duration_seconds": spec.duration_seconds,
+                    "warmup_seconds": spec.warmup_seconds,
                     "avg_travel_time": 110.0,
                     "collision_count": 0,
                     "red_light_count": 0,
@@ -264,6 +280,41 @@ def test_candidate_safety_rejects_duplicate_disturbance_coverage():
     assert result.eligible is False
 
 
+@pytest.mark.parametrize(
+    "column,bad_value",
+    (
+        ("flow_multiplier", 1.25),
+        ("seed", 43),
+        ("seed", 42.5),
+        ("disturbance_begin_seconds", 601.0),
+        ("disturbance_end_seconds", 1199.0),
+        ("disturbance_target", "wrong-target"),
+        ("disturbance_intensity", 0.5),
+        ("duration_seconds", 3599),
+        ("warmup_seconds", 599),
+        ("run_key", "spoofed-key"),
+    ),
+)
+def test_candidate_safety_requires_exact_frozen_disturbance_identity(
+    column, bad_value
+):
+    """Catch malformed disturbance coverage passing by scene/kind alone."""
+    from experiments.statistics import paired_statistics
+
+    frame = _paired_frame()
+    index = frame.index[frame["matrix_kind"] == "disturbance"][0]
+    if column == "seed" and isinstance(bad_value, float):
+        frame[column] = frame[column].astype(float)
+    frame.loc[index, column] = bad_value
+
+    result = paired_statistics(
+        frame, "capacity_aware_maxpressure", "fixed_time"
+    )
+
+    assert result.safety_eligible is False
+    assert result.eligible is False
+
+
 def test_default_selection_falls_back_without_improvement_claim():
     """Catch publication of a candidate whose confidence interval is not below zero."""
     from experiments.statistics import select_default
@@ -342,6 +393,17 @@ def test_failed_run_is_retried_with_parent_attempt_chain(tmp_path):
     first = run_matrix(
         (spec,), tmp_path, resume=False, run_service=first_service
     )
+    first_manifest = json.loads(
+        (tmp_path / "matrix_manifest.json").read_text(encoding="utf-8")
+    )
+    first_run_dir = Path(
+        first_manifest["attempt_chains"][spec.run_key][0]["run_dir"]
+    )
+    first_run_bytes = {
+        path.relative_to(first_run_dir): path.read_bytes()
+        for path in first_run_dir.rglob("*")
+        if path.is_file()
+    }
     second_service = _FailedMatrixService(tmp_path / "runs")
     second = run_matrix(
         (spec,), tmp_path, resume=True, run_service=second_service
@@ -359,6 +421,11 @@ def test_failed_run_is_retried_with_parent_attempt_chain(tmp_path):
     }
     assert first.failed == 1
     assert second.retried == 1
+    assert {
+        path.relative_to(first_run_dir): path.read_bytes()
+        for path in first_run_dir.rglob("*")
+        if path.is_file()
+    } == first_run_bytes
     assert not list(tmp_path.glob(".*.tmp"))
 
 
@@ -386,6 +453,250 @@ def test_corrupt_completed_attempt_stops_without_retry(tmp_path):
     assert retry_service.requests == []
     unchanged = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert len(unchanged["attempt_chains"][spec.run_key]) == 1
+
+
+@pytest.mark.parametrize(
+    "disk_corruption",
+    ("missing_run_directory", "missing_status", "failed_status"),
+)
+def test_manifest_completed_attempt_never_degrades_into_retry(
+    tmp_path, disk_corruption
+):
+    """Catch disk damage overwriting a completed manifest state before retry logic."""
+    from experiments.matrix import CorruptCompletedRunError, FormalMatrix, run_matrix
+
+    spec = FormalMatrix.normal()[0]
+    service = _FailedMatrixService(tmp_path / "runs")
+    run_matrix((spec,), tmp_path, resume=False, run_service=service)
+    manifest_path = tmp_path / "matrix_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    attempt = manifest["attempt_chains"][spec.run_key][0]
+    attempt["status"] = "completed"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    run_dir = Path(attempt["run_dir"])
+    if disk_corruption == "missing_run_directory":
+        run_dir.rename(tmp_path / "held-completed-run")
+    elif disk_corruption == "missing_status":
+        (run_dir / "status.json").unlink()
+    manifest_before = manifest_path.read_bytes()
+    retry_service = _FailedMatrixService(tmp_path / "runs")
+
+    with pytest.raises(CorruptCompletedRunError, match="completed"):
+        run_matrix((spec,), tmp_path, resume=True, run_service=retry_service)
+
+    assert retry_service.requests == []
+    assert manifest_path.read_bytes() == manifest_before
+
+
+class _DuplicateRunService:
+    def __init__(self, previous_attempt):
+        self.previous_attempt = previous_attempt
+        self.requests = []
+
+    def run_sync(self, request):
+        self.requests.append(request)
+        return RunResult(
+            run_id=self.previous_attempt["run_id"],
+            status=RunStatus.FAILED,
+            reason="synthetic duplicate",
+            run_dir=Path(self.previous_attempt["run_dir"]),
+            algorithm=request.algorithm,
+        )
+
+
+class _CrossSpecDuplicateRunService:
+    def __init__(self, root: Path):
+        self.root = root
+        self.requests = []
+
+    def run_sync(self, request):
+        self.requests.append(request)
+        run_id = "shared-run-id"
+        run_dir = (
+            self.root
+            / f"i{request.intersection_id}"
+            / request.algorithm
+            / f"x{request.flow_multiplier:g}"
+            / f"s{request.seed}"
+            / run_id
+        )
+        run_dir.mkdir(parents=True)
+        (run_dir / "status.json").write_text(
+            json.dumps({"run_id": run_id, "status": "failed", "reason": ""}),
+            encoding="utf-8",
+        )
+        return RunResult(
+            run_id=run_id,
+            status=RunStatus.FAILED,
+            reason="synthetic duplicate",
+            run_dir=run_dir,
+            algorithm=request.algorithm,
+        )
+
+
+class _NonTerminalRunService(_CrossSpecDuplicateRunService):
+    def run_sync(self, request):
+        result = super().run_sync(request)
+        status_path = result.run_dir / "status.json"
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["status"] = "running"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+        return RunResult(
+            run_id=result.run_id,
+            status=RunStatus.RUNNING,
+            reason="still running",
+            run_dir=result.run_dir,
+            algorithm=request.algorithm,
+        )
+
+
+def test_retry_rejects_reused_run_id_and_directory(tmp_path):
+    """Catch a retry aliasing an earlier immutable attempt directory."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    spec = FormalMatrix.normal()[0]
+    run_matrix(
+        (spec,),
+        tmp_path,
+        resume=False,
+        run_service=_FailedMatrixService(tmp_path / "runs"),
+    )
+    manifest_path = tmp_path / "matrix_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    previous_attempt = manifest["attempt_chains"][spec.run_key][0]
+    manifest_before = manifest_path.read_bytes()
+    service = _DuplicateRunService(previous_attempt)
+
+    with pytest.raises(MatrixIntegrityError, match="unique run id"):
+        run_matrix((spec,), tmp_path, resume=True, run_service=service)
+
+    assert len(service.requests) == 1
+    assert manifest_path.read_bytes() == manifest_before
+
+
+def test_live_result_run_id_must_be_unique_across_all_specs(tmp_path):
+    """Catch a service returning one run identity for two frozen matrix units."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    specs = FormalMatrix.normal()[:2]
+    service = _CrossSpecDuplicateRunService(tmp_path / "runs")
+
+    with pytest.raises(MatrixIntegrityError, match="unique run id"):
+        run_matrix(specs, tmp_path, resume=False, run_service=service)
+
+    assert len(service.requests) == 2
+    manifest = json.loads(
+        (tmp_path / "matrix_manifest.json").read_text(encoding="utf-8")
+    )
+    assert len(manifest["attempt_chains"][specs[0].run_key]) == 1
+    assert manifest["attempt_chains"][specs[1].run_key] == []
+
+
+def test_live_non_terminal_result_is_not_recorded_as_an_attempt(tmp_path):
+    """Catch a still-running service result becoming retryable manifest history."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    spec = FormalMatrix.normal()[0]
+
+    with pytest.raises(MatrixIntegrityError, match="terminal"):
+        run_matrix(
+            (spec,),
+            tmp_path,
+            resume=False,
+            run_service=_NonTerminalRunService(tmp_path / "runs"),
+        )
+
+    manifest = json.loads(
+        (tmp_path / "matrix_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["attempt_chains"][spec.run_key] == []
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "duplicate_attempt",
+        "bad_parent",
+        "historical_status_mismatch",
+        "historical_status_missing",
+    ),
+)
+def test_resume_validates_entire_attempt_lineage_before_service(
+    tmp_path, corruption
+):
+    """Catch a valid-looking latest attempt hiding corrupt immutable history."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    spec = FormalMatrix.normal()[0]
+    run_matrix(
+        (spec,),
+        tmp_path,
+        resume=False,
+        run_service=_FailedMatrixService(tmp_path / "runs"),
+    )
+    run_matrix(
+        (spec,),
+        tmp_path,
+        resume=True,
+        run_service=_FailedMatrixService(tmp_path / "runs"),
+    )
+    manifest_path = tmp_path / "matrix_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    attempts = manifest["attempt_chains"][spec.run_key]
+    if corruption == "duplicate_attempt":
+        attempts[1]["run_id"] = attempts[0]["run_id"]
+        attempts[1]["run_dir"] = attempts[0]["run_dir"]
+    elif corruption == "bad_parent":
+        attempts[1]["parent_failure"]["run_id"] = "wrong-parent"
+    elif corruption == "historical_status_mismatch":
+        status_path = Path(attempts[0]["run_dir"]) / "status.json"
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        status["status"] = "interrupted"
+        status_path.write_text(json.dumps(status), encoding="utf-8")
+    else:
+        (Path(attempts[0]["run_dir"]) / "status.json").unlink()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_before = manifest_path.read_bytes()
+    service = _FailedMatrixService(tmp_path / "runs")
+
+    with pytest.raises(MatrixIntegrityError, match="attempt|parent|status|duplicate"):
+        run_matrix((spec,), tmp_path, resume=True, run_service=service)
+
+    assert service.requests == []
+    assert manifest_path.read_bytes() == manifest_before
+
+
+def test_resume_rejects_cross_spec_duplicate_run_id_before_service(tmp_path):
+    """Catch globally aliased attempt identities across otherwise valid spec paths."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    specs = FormalMatrix.normal()[:2]
+    run_matrix(
+        specs,
+        tmp_path,
+        resume=False,
+        run_service=_FailedMatrixService(tmp_path / "runs"),
+    )
+    manifest_path = tmp_path / "matrix_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    first = manifest["attempt_chains"][specs[0].run_key][0]
+    second = manifest["attempt_chains"][specs[1].run_key][0]
+    old_dir = Path(second["run_dir"])
+    new_dir = old_dir.with_name(first["run_id"])
+    old_dir.rename(new_dir)
+    status_path = new_dir / "status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["run_id"] = first["run_id"]
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    second["run_id"] = first["run_id"]
+    second["run_dir"] = str(new_dir)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    service = _FailedMatrixService(tmp_path / "runs")
+
+    with pytest.raises(MatrixIntegrityError, match="duplicate run id"):
+        run_matrix(specs, tmp_path, resume=True, run_service=service)
+
+    assert service.requests == []
 
 
 def test_resume_rejects_attempt_run_directory_outside_matrix_root(tmp_path):
