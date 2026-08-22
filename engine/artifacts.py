@@ -22,6 +22,14 @@ STABLE_OUTPUT_NAMES = (
     *RAW_SUMO_OUTPUT_NAMES,
     "summary.json",
 )
+EVIDENCE_REQUIRED_OUTPUT_NAMES = (
+    "manifest.json",
+    "provenance.json",
+    "status.json",
+    "run_metadata.json",
+    *STABLE_OUTPUT_NAMES,
+    "hashes.json",
+)
 
 _TERMINAL_STATUS_VALUES = frozenset({
     "completed",
@@ -108,6 +116,11 @@ class RunArtifacts:
         """Return raw SUMO XML retained as stable provenance inputs."""
         return RAW_SUMO_OUTPUT_NAMES
 
+    @staticmethod
+    def evidence_required_output_names() -> tuple[str, ...]:
+        """Return the additive, fail-closed contract for publishable evidence."""
+        return EVIDENCE_REQUIRED_OUTPUT_NAMES
+
     @classmethod
     def create(
         cls,
@@ -188,6 +201,14 @@ class RunArtifacts:
     @property
     def status(self) -> Path:
         return self.run_dir / "status.json"
+
+    @property
+    def provenance(self) -> Path:
+        return self.run_dir / "provenance.json"
+
+    @property
+    def hashes(self) -> Path:
+        return self.run_dir / "hashes.json"
 
     @property
     def summary(self) -> Path:

@@ -5,6 +5,14 @@ import sys
 from pathlib import Path
 
 from core.run_models import RunRequest, RunResult, RunStatus
+from core.types import MetricSummary
+from engine.artifacts import RunArtifacts
+from engine.events import EVENT_FIELDS
+from experiments.evidence import (
+    EvidenceWriter,
+    RunManifest,
+    canonical_mapping_sha256,
+)
 from experiments.tuning import (
     PARAMETER_GRID,
     calibration_seeds,
@@ -93,7 +101,9 @@ def test_tuning_request_uses_seconds_and_high_formal_traffic_level():
     assert request.flow_multiplier == 1.25
 
 
-def test_is_complete_requires_every_nonempty_artifact(tmp_path):
+def test_is_complete_rejects_legacy_nonempty_artifacts_without_evidence_contract(
+    tmp_path,
+):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     (run_dir / "run_metadata.json").write_text(
@@ -113,7 +123,7 @@ def test_is_complete_requires_every_nonempty_artifact(tmp_path):
     for name in required:
         (run_dir / name).write_text("x", encoding="utf-8")
 
-    assert is_complete(run_dir) is True
+    assert is_complete(run_dir) is False
     (run_dir / "summary.json").write_text("", encoding="utf-8")
     assert is_complete(run_dir) is False
 
@@ -127,34 +137,78 @@ def _write_completed_matrix_run(
 ):
     run_dir = tmp_path / f"run-{final_time}"
     run_dir.mkdir()
-    (run_dir / "run_metadata.json").write_text(
-        json.dumps({
-            "intersection_id": "1",
-            "algorithm": "fixed_time",
-            "flow_multiplier": 1.0,
-            "seed": 42,
-            "status": "completed",
-            "requested_steps": 36000,
-            "final_simulation_time": final_time,
-            "step_length": step_length,
-            "configured_end_time": configured_end_time,
-        }),
+    artifacts = RunArtifacts(
+        run_dir=run_dir,
+        intersection_id="1",
+        algorithm="fixed_time",
+        flow_multiplier=1.0,
+        seed=42,
+        run_id=run_dir.name,
+    )
+    source_hashes = {"net": "b" * 64, "sumocfg": "c" * 64}
+    requested_seconds = 36000 * step_length
+    writer = EvidenceWriter(run_dir)
+    writer.begin(RunManifest(
+        run_id=artifacts.run_id,
+        code_commit="a" * 40,
+        scene_manifest_sha256=canonical_mapping_sha256(source_hashes),
+        algorithm="fixed_time",
+        parameters={},
+        flow_multiplier=1.0,
+        seed=42,
+        duration_seconds=requested_seconds,
+        warmup_seconds=0.0,
+        derived_steps=36000,
+        sumo_version="1.27.1",
+        python_version="3.12.13",
+        prediction_enabled=False,
+        scene_id="1",
+        scene_source_sha256=source_hashes,
+        step_length=step_length,
+        requested_seconds=requested_seconds,
+    ))
+    artifacts.metrics.write_text(
+        "step,timestamp,avg_queue_length,max_queue_length\n0,0,1,2\n",
         encoding="utf-8",
     )
-    for name in (
-        "metrics.csv",
-        "events.csv",
-        "simulation_log.csv",
-        "tripinfo.xml",
-        "traj.xml",
-        "collisions.xml",
-        "summary.json",
-    ):
-        (run_dir / name).write_text("x", encoding="utf-8")
-    (run_dir / "stats.xml").write_text(
+    artifacts.step_log.write_text(
+        "step,timestamp,current_phase\n0,0,0\n",
+        encoding="utf-8",
+    )
+    with artifacts.events.open("w", newline="", encoding="utf-8") as output:
+        csv.DictWriter(output, fieldnames=list(EVENT_FIELDS)).writeheader()
+    artifacts.tripinfo.write_text(
+        '<tripinfos><tripinfo id="v0" depart="0" arrival="1" duration="1" '
+        'timeLoss="0" waitingCount="0"><emissions fuel_abs="1" '
+        'CO2_abs="1000"/></tripinfo></tripinfos>',
+        encoding="utf-8",
+    )
+    artifacts.stats.write_text(
         f'<summary><step time="{final_time:.2f}"/></summary>',
         encoding="utf-8",
     )
+    artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
+    artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
+    summary = MetricSummary.from_raw_outputs(run_dir, warmup_seconds=0.0)
+    writer.finalize(RunStatus.COMPLETED, summary)
+    artifacts.write_status("queued", "")
+    artifacts.write_status("starting", "")
+    artifacts.write_status("running", "")
+    artifacts.write_metadata(
+        "completed",
+        "",
+        list(run_dir.iterdir()),
+        started_at="2026-08-22T00:00:00+00:00",
+        ended_at="2026-08-22T01:00:00+00:00",
+        sumo_version="1.27.1",
+        requested_steps=36000,
+        requested_seconds=requested_seconds,
+        warmup_seconds=0.0,
+        final_simulation_time=final_time,
+        step_length=step_length,
+        configured_end_time=configured_end_time,
+    )
+    writer.seal()
     return run_dir
 
 
@@ -172,7 +226,7 @@ def test_is_complete_accepts_full_native_sumo_run(tmp_path):
     assert is_complete(run_dir, request) is True
 
 
-def test_is_complete_accepts_legacy_matrix_metadata(tmp_path):
+def test_is_complete_rejects_legacy_matrix_metadata(tmp_path):
     request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
     run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
     metadata_path = run_dir / "run_metadata.json"
@@ -186,7 +240,7 @@ def test_is_complete_accepts_legacy_matrix_metadata(tmp_path):
         metadata.pop(field)
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
-    assert is_complete(run_dir, request) is True
+    assert is_complete(run_dir, request) is False
 
 
 def test_is_complete_caps_requested_steps_at_configured_end(tmp_path):
@@ -206,10 +260,10 @@ def test_is_complete_rejects_non_finite_step_length(tmp_path):
     run_dir = _write_completed_matrix_run(
         tmp_path,
         final_time=3599.9,
-        step_length=float("nan"),
     )
     metadata_path = run_dir / "run_metadata.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["step_length"] = float("nan")
     metadata["final_simulation_time"] = None
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
@@ -218,11 +272,15 @@ def test_is_complete_rejects_non_finite_step_length(tmp_path):
 
 def test_is_complete_rejects_non_finite_native_time(tmp_path):
     request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
-    run_dir = _write_completed_matrix_run(tmp_path, final_time=float("nan"))
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
     metadata_path = run_dir / "run_metadata.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["final_simulation_time"] = None
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    (run_dir / "stats.xml").write_text(
+        '<summary><step time="nan"/></summary>',
+        encoding="utf-8",
+    )
 
     assert is_complete(run_dir, request) is False
 

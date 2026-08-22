@@ -18,6 +18,7 @@ from algorithms.registry import get_algorithm_registry  # noqa: E402
 from core.run_models import RunRequest, RunResult, RunStatus  # noqa: E402
 from engine.artifacts import RunArtifacts  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
+from experiments.evidence import EvidenceReader  # noqa: E402
 from experiments.tuning import tune_ca_mp  # noqa: E402
 
 
@@ -122,6 +123,8 @@ def read_final_sumo_time(stats_path: Path) -> float | None:
 
 def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
     try:
+        if EvidenceReader.validate(result_dir):
+            return False
         metadata = json.loads(
             (result_dir / "run_metadata.json").read_text(encoding="utf-8")
         )

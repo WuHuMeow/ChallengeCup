@@ -3,6 +3,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -320,6 +321,68 @@ def test_stopping_queued_run_never_signals_or_starts_active_run(tmp_path):
 
     assert service.stop(active.run_id) is True
     service.shutdown()
+
+
+@pytest.mark.parametrize("secondary", ["finalize", "metadata", "seal"])
+def test_cancelled_queued_run_never_sticks_stopping_on_evidence_failure(
+    tmp_path,
+    secondary,
+):
+    _LifecycleRunner.started.clear()
+    _LifecycleRunner.calls.clear()
+    service = RunService(output_root=tmp_path, runner_factory=_LifecycleRunner)
+    active = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    assert _LifecycleRunner.started.wait(timeout=2)
+    queued = service.submit(
+        RunRequest("2", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    target = {
+        "finalize": "engine.run_service.EvidenceWriter.finalize",
+        "metadata": "engine.run_service.RunService._write_terminal_metadata",
+        "seal": "engine.run_service.EvidenceWriter.seal",
+    }[secondary]
+
+    try:
+        with patch(target, side_effect=OSError(f"{secondary} unavailable")):
+            assert service.stop(queued.run_id) is True
+
+        assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
+        assert service._done[queued.run_id].is_set()
+        assert service.stop(queued.run_id) is False
+    finally:
+        service.stop(active.run_id)
+        service.shutdown()
+
+
+def test_cancelled_queued_run_terminalizes_in_memory_when_status_storage_fails(
+    tmp_path,
+):
+    _LifecycleRunner.started.clear()
+    service = RunService(output_root=tmp_path, runner_factory=_LifecycleRunner)
+    active = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    assert _LifecycleRunner.started.wait(timeout=2)
+    queued = service.submit(
+        RunRequest("2", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    original_write_status = RunArtifacts.write_status
+
+    def fail_terminal_status(artifacts, status, reason, **kwargs):
+        if status in {"interrupted", "failed"}:
+            raise OSError("status storage unavailable")
+        return original_write_status(artifacts, status, reason, **kwargs)
+
+    try:
+        with patch.object(RunArtifacts, "write_status", new=fail_terminal_status):
+            assert service.stop(queued.run_id) is True
+        assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
+        assert service._done[queued.run_id].is_set()
+    finally:
+        service.stop(active.run_id)
+        service.shutdown()
 
 
 def test_stop_between_queued_observation_and_start_preserves_interrupted(

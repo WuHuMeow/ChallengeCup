@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import csv
 import math
 from pathlib import Path
 from collections.abc import Iterable, Mapping
@@ -414,6 +415,26 @@ class MetricSummary:
     co2_g: float | None
     fuel_ml_per_completed: float | None
     co2_g_per_completed: float | None
+    avg_queue_length_vehicles: float | None = None
+    max_queue_length_vehicles: float | None = None
+    collision_count: int = 0
+    red_light_count: int = 0
+    illegal_transition_count: int = 0
+    harsh_braking_count: int = 0
+    teleport_count: int = 0
+    potential_conflict_count: int = 0
+
+    @property
+    def safety_counts(self) -> dict[str, int]:
+        """Return the six frozen safety counters without unit ambiguity."""
+        return {
+            "collision": self.collision_count,
+            "red_light": self.red_light_count,
+            "illegal_transition": self.illegal_transition_count,
+            "harsh_braking": self.harsh_braking_count,
+            "teleport": self.teleport_count,
+            "potential_conflict": self.potential_conflict_count,
+        }
 
     @classmethod
     def from_tripinfo(
@@ -480,6 +501,139 @@ class MetricSummary:
             co2_g=co2_g,
             fuel_ml_per_completed=(fuel_ml / count if fuel_ml is not None else None),
             co2_g_per_completed=(co2_g / count if co2_g is not None else None),
+        )
+
+    @classmethod
+    def from_raw_outputs(
+        cls,
+        run_dir: Path,
+        warmup_seconds: float,
+    ) -> "MetricSummary":
+        """Derive the frozen metric contract from one run's raw outputs.
+
+        SUMO marks tripinfo rows still present at shutdown with ``arrival < 0``.
+        Both completed and unfinished counts use the same depart-time exposure
+        boundary. Time-series and event samples use their simulation timestamp.
+        """
+        _require_number("warmup_seconds", warmup_seconds, minimum=0)
+        warmup = float(warmup_seconds)
+        run_dir = Path(run_dir)
+
+        from defusedxml import ElementTree as ET
+
+        root = ET.parse(run_dir / "tripinfo.xml").getroot()
+        completed: list[dict[str, object]] = []
+        unfinished: list[dict[str, object]] = []
+        for element in root.iter("tripinfo"):
+            depart_raw = element.get("depart")
+            if depart_raw is None:
+                raise ValueError("tripinfo depart is required")
+            try:
+                depart = float(depart_raw)
+            except ValueError as exc:
+                raise ValueError("tripinfo depart must be numeric") from exc
+            if not math.isfinite(depart) or depart < 0:
+                raise ValueError("tripinfo depart must be finite and non-negative")
+            if depart < warmup:
+                continue
+            row: dict[str, object] = dict(element.attrib)
+            emissions = element.find("emissions")
+            if emissions is not None:
+                row["emissions"] = dict(emissions.attrib)
+            arrival_raw = element.get("arrival")
+            if arrival_raw is None:
+                raise ValueError("tripinfo arrival is required")
+            try:
+                arrival = float(arrival_raw)
+            except ValueError as exc:
+                raise ValueError("tripinfo arrival must be numeric") from exc
+            if not math.isfinite(arrival):
+                raise ValueError("tripinfo arrival must be finite")
+            is_unfinished = arrival < 0
+            (unfinished if is_unfinished else completed).append(row)
+
+        base = cls.from_tripinfo(completed, unfinished)
+
+        averages: list[float] = []
+        maximums: list[float] = []
+        metrics_path = run_dir / "metrics.csv"
+        if metrics_path.exists() and metrics_path.stat().st_size > 0:
+            with metrics_path.open(newline="", encoding="utf-8") as source:
+                for row in csv.DictReader(source):
+                    timestamp_raw = row.get("timestamp")
+                    if timestamp_raw in (None, ""):
+                        raise ValueError("metrics timestamp is required")
+                    try:
+                        timestamp = float(timestamp_raw)
+                    except ValueError as exc:
+                        raise ValueError("metrics timestamp must be numeric") from exc
+                    if not math.isfinite(timestamp) or timestamp < 0:
+                        raise ValueError("metrics timestamp must be finite and non-negative")
+                    if timestamp < warmup:
+                        continue
+                    try:
+                        average_raw = row.get("avg_queue_length")
+                        maximum_raw = row.get("max_queue_length")
+                        if average_raw not in (None, ""):
+                            average = float(average_raw)
+                            if math.isfinite(average) and average >= 0:
+                                averages.append(average)
+                        if maximum_raw not in (None, ""):
+                            maximum = float(maximum_raw)
+                            if math.isfinite(maximum) and maximum >= 0:
+                                maximums.append(maximum)
+                    except ValueError:
+                        continue
+
+        safety = {name: 0 for name in (
+            "collision",
+            "red_light",
+            "illegal_transition",
+            "harsh_braking",
+            "teleport",
+            "potential_conflict",
+        )}
+        events_path = run_dir / "events.csv"
+        if events_path.exists() and events_path.stat().st_size > 0:
+            with events_path.open(newline="", encoding="utf-8") as source:
+                for row in csv.DictReader(source):
+                    event_type = row.get("type", "")
+                    if event_type not in safety:
+                        continue
+                    try:
+                        timestamp = float(row.get("simulation_seconds", ""))
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(
+                            "safety simulation_seconds must be numeric"
+                        ) from exc
+                    if not math.isfinite(timestamp) or timestamp < 0:
+                        raise ValueError(
+                            "safety simulation_seconds must be finite and non-negative"
+                        )
+                    if timestamp >= warmup:
+                        safety[event_type] += 1
+
+        return cls(
+            completed_vehicle_count=base.completed_vehicle_count,
+            unfinished_vehicle_count=base.unfinished_vehicle_count,
+            throughput=base.throughput,
+            avg_travel_time_seconds=base.avg_travel_time_seconds,
+            avg_delay_seconds=base.avg_delay_seconds,
+            total_stops=base.total_stops,
+            fuel_ml=base.fuel_ml,
+            co2_g=base.co2_g,
+            fuel_ml_per_completed=base.fuel_ml_per_completed,
+            co2_g_per_completed=base.co2_g_per_completed,
+            avg_queue_length_vehicles=(
+                sum(averages) / len(averages) if averages else None
+            ),
+            max_queue_length_vehicles=max(maximums) if maximums else None,
+            collision_count=safety["collision"],
+            red_light_count=safety["red_light"],
+            illegal_transition_count=safety["illegal_transition"],
+            harsh_braking_count=safety["harsh_braking"],
+            teleport_count=safety["teleport"],
+            potential_conflict_count=safety["potential_conflict"],
         )
 
 

@@ -18,6 +18,13 @@ from engine.artifacts import CorruptStatusArtifactError, RunArtifacts
 from engine.edge_channel import EdgeChannel
 from engine.run_state import RunStateMachine, TERMINAL_STATUSES
 from engine.runner import SimulationRunner
+from experiments.evidence import (
+    EvidenceWriter,
+    RunManifest,
+    canonical_mapping_sha256,
+    resolve_code_commit,
+    runtime_python_version,
+)
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
@@ -99,18 +106,21 @@ class RunService:
             raise
 
         if future is not None and future.cancel():
-            self._write_terminal_metadata(
-                artifacts,
-                RunStatus.INTERRUPTED,
-                "stop requested before start",
-            )
-            self._states.transition(
-                run_id,
-                RunStatus.INTERRUPTED,
-                "stop requested before start",
-            )
-            done_event.set()
-            return True
+            try:
+                status, reason = self._terminalize_partial_evidence(
+                    artifacts,
+                    RunStatus.INTERRUPTED,
+                    "stop requested before start",
+                )
+                self._states.transition(
+                    run_id,
+                    status,
+                    reason,
+                    persist_artifact=False,
+                )
+                return True
+            finally:
+                done_event.set()
 
         if future is not None:
             future.result()
@@ -129,7 +139,7 @@ class RunService:
         try:
             payload = artifacts.read_status()
             return RunStatus(payload["status"])
-        except CorruptStatusArtifactError:
+        except BaseException:
             return None
 
     def switch_scene(
@@ -195,6 +205,18 @@ class RunService:
             "variant": asdict(request.variant),
             "algorithm_params": dict(request.algorithm_params),
         })
+        EvidenceWriter(artifacts.run_dir).begin(
+            self._run_manifest(
+                request,
+                artifacts,
+                scene_source_sha256={},
+                scene_manifest_sha256="unknown",
+                derived_steps=(
+                    int(request.steps) if request.steps is not None else None
+                ),
+                step_length=request.step_length_override,
+            )
+        )
         self._states.register(queued, artifacts)
         with self._lock:
             self._stops[artifacts.run_id] = stop_event
@@ -249,6 +271,24 @@ class RunService:
                 "step_length": step_length,
                 "scene_sumo_cfg": str(scene.meta.sumo_cfg),
             })
+            scene_source_sha256 = {
+                str(name): str(digest).lower()
+                for name, digest in dict(manifest.sha256).items()
+            }
+            EvidenceWriter(artifacts.run_dir).begin(
+                self._run_manifest(
+                    request,
+                    artifacts,
+                    scene_source_sha256=scene_source_sha256,
+                    scene_manifest_sha256=canonical_mapping_sha256(
+                        scene_source_sha256
+                    ),
+                    derived_steps=derived_steps,
+                    step_length=step_length,
+                    requested_seconds=window.duration_seconds,
+                    warmup_seconds=window.warmup_seconds,
+                )
+            )
             bundle = VariantGenerator().generate_bundle(
                 scene.meta,
                 request.flow_multiplier,
@@ -278,6 +318,8 @@ class RunService:
                 state_channel=state_channel,
                 step_length=step_length,
             )
+            if isinstance(runner, SimulationRunner):
+                runner.seal_evidence = False
             with self._lock:
                 self._runners[run_id] = runner
 
@@ -298,6 +340,26 @@ class RunService:
                 else self._result_from_artifacts(artifacts)
             )
             result = self._canonical_result(result)
+            # RunStatus describes lifecycle completion. Only an explicitly
+            # evidence-managed runner may publish hashes; strict consumers use
+            # EvidenceReader/is_complete, so legacy injected runners remain
+            # lifecycle-compatible without becoming publishable evidence.
+            if getattr(runner, "evidence_managed", False):
+                try:
+                    EvidenceWriter(artifacts.run_dir).seal()
+                except Exception as seal_exc:
+                    try:
+                        EvidenceWriter(artifacts.run_dir).record_error(str(seal_exc))
+                    except Exception:
+                        pass
+                    result = RunResult(
+                        result.run_id,
+                        result.status,
+                        f"evidence seal failed: {seal_exc}",
+                        result.run_dir,
+                        result.summary,
+                        result.algorithm,
+                    )
             current = self._states.get(run_id)
             if current is not None and current.status not in TERMINAL_STATUSES:
                 result = self._states.transition(
@@ -312,10 +374,59 @@ class RunService:
             current = self._states.get(run_id)
             if current is not None and current.status in TERMINAL_STATUSES:
                 return current
-            try:
-                self._write_terminal_metadata(
+            artifact_status = self._artifact_status(artifacts)
+            if artifact_status in TERMINAL_STATUSES:
+                seal_reason = self._seal_existing_terminal(artifacts)
+                terminal_reason = self._metadata_reason(artifacts, reason)
+                if seal_reason:
+                    terminal_reason = f"{terminal_reason}; {seal_reason}"
+                return self._states.transition(
+                    run_id,
+                    artifact_status,
+                    terminal_reason,
+                    summary=self._read_summary(artifacts),
+                )
+            status, terminal_reason = self._terminalize_partial_evidence(
+                artifacts,
+                RunStatus.FAILED,
+                reason,
+                requested_steps=(
+                    derived_steps if "derived_steps" in locals() else None
+                ),
+                window=window if "window" in locals() else None,
+                step_length=step_length if "step_length" in locals() else None,
+            )
+            return self._states.transition(
+                run_id,
+                status,
+                terminal_reason,
+                persist_artifact=False,
+            )
+        except KeyboardInterrupt as exc:
+            reason = str(exc) or type(exc).__name__
+            artifact_status = self._artifact_status(artifacts)
+            if artifact_status in TERMINAL_STATUSES:
+                seal_reason = self._seal_existing_terminal(artifacts)
+                terminal_reason = self._metadata_reason(artifacts, "")
+                if seal_reason:
+                    terminal_reason = (
+                        f"{terminal_reason}; {seal_reason}"
+                        if terminal_reason
+                        else seal_reason
+                    )
+                current = self._states.get(run_id)
+                if current is not None and current.status not in TERMINAL_STATUSES:
+                    self._states.transition(
+                        run_id,
+                        artifact_status,
+                        terminal_reason,
+                        summary=self._read_summary(artifacts),
+                    )
+                raise
+            else:
+                status, terminal_reason = self._terminalize_partial_evidence(
                     artifacts,
-                    RunStatus.FAILED,
+                    RunStatus.INTERRUPTED,
                     reason,
                     requested_steps=(
                         derived_steps if "derived_steps" in locals() else None
@@ -323,33 +434,118 @@ class RunService:
                     window=window if "window" in locals() else None,
                     step_length=step_length if "step_length" in locals() else None,
                 )
-            except CorruptStatusArtifactError as artifact_exc:
-                reason = f"status artifact corruption during failure: {artifact_exc}; {reason}"
-                artifacts.recover_corrupt_status(reason)
-                self._write_terminal_metadata(
-                    artifacts,
-                    RunStatus.FAILED,
-                    reason,
-                    requested_steps=(
-                        derived_steps if "derived_steps" in locals() else None
-                    ),
-                    window=window if "window" in locals() else None,
-                    step_length=step_length if "step_length" in locals() else None,
+            current = self._states.get(run_id)
+            if current is not None and current.status not in TERMINAL_STATUSES:
+                self._states.transition(
+                    run_id,
+                    status,
+                    terminal_reason,
+                    persist_artifact=False,
                 )
-            return self._states.transition(run_id, RunStatus.FAILED, reason)
+            raise
         finally:
             with self._lock:
                 self._runners.pop(run_id, None)
             done_event.set()
 
     def _finish_interrupted_before_start(self, artifacts: RunArtifacts) -> RunResult:
-        reason = "stop requested before SUMO start"
-        self._write_terminal_metadata(artifacts, RunStatus.INTERRUPTED, reason)
+        status, reason = self._terminalize_partial_evidence(
+            artifacts,
+            RunStatus.INTERRUPTED,
+            "stop requested before SUMO start",
+        )
         return self._states.transition(
             artifacts.run_id,
-            RunStatus.INTERRUPTED,
+            status,
             reason,
+            persist_artifact=False,
         )
+
+    def _terminalize_partial_evidence(
+        self,
+        artifacts: RunArtifacts,
+        status: RunStatus,
+        reason: str,
+        *,
+        requested_steps: int | None = None,
+        window: SimulationWindow | None = None,
+        step_length: float | None = None,
+    ) -> tuple[RunStatus, str]:
+        """Best-effort terminal commit that never replaces the primary failure."""
+        secondary: list[str] = []
+        resolved_status = status
+        writer = EvidenceWriter(artifacts.run_dir)
+
+        try:
+            writer.finalize(resolved_status, None)
+        except BaseException as exc:
+            secondary.append(f"evidence finalize failed: {exc}")
+
+        try:
+            self._write_terminal_metadata(
+                artifacts,
+                resolved_status,
+                reason,
+                requested_steps=requested_steps,
+                window=window,
+                step_length=step_length,
+            )
+        except CorruptStatusArtifactError as exc:
+            secondary.append(f"status artifact corruption: {exc}")
+            resolved_status = RunStatus.FAILED
+            corruption_reason = f"status artifact corruption: {exc}; {reason}"
+            try:
+                artifacts.recover_corrupt_status(corruption_reason)
+                artifacts.metadata.unlink(missing_ok=True)
+                self._write_terminal_metadata(
+                    artifacts,
+                    resolved_status,
+                    corruption_reason,
+                    requested_steps=requested_steps,
+                    window=window,
+                    step_length=step_length,
+                )
+            except BaseException as recovery_exc:
+                secondary.append(
+                    f"status corruption recovery failed: {recovery_exc}"
+                )
+        except BaseException as exc:
+            secondary.append(f"terminal metadata failed: {exc}")
+
+        disk_status = self._artifact_status(artifacts)
+        if disk_status not in TERMINAL_STATUSES:
+            try:
+                artifacts.write_status(resolved_status.value, reason)
+            except CorruptStatusArtifactError as exc:
+                resolved_status = RunStatus.FAILED
+                recovery_reason = f"status artifact corruption: {exc}; {reason}"
+                try:
+                    artifacts.recover_corrupt_status(recovery_reason)
+                except BaseException as recovery_exc:
+                    secondary.append(
+                        f"status recovery failed: {recovery_exc}"
+                    )
+            except BaseException as exc:
+                secondary.append(f"terminal status failed: {exc}")
+            disk_status = self._artifact_status(artifacts)
+
+        if disk_status in TERMINAL_STATUSES:
+            resolved_status = disk_status
+
+        if secondary:
+            try:
+                writer.record_error("; ".join(secondary))
+            except BaseException as exc:
+                secondary.append(f"evidence error recording failed: {exc}")
+        elif disk_status in TERMINAL_STATUSES:
+            seal_reason = self._seal_existing_terminal(artifacts)
+            if seal_reason:
+                secondary.append(seal_reason)
+
+        combined_reason = reason
+        if secondary:
+            combined_reason = f"{reason}; {'; '.join(secondary)}"
+        return resolved_status, combined_reason
 
     @staticmethod
     def _write_terminal_metadata(
@@ -373,6 +569,97 @@ class RunService:
             requested_seconds=window.duration_seconds if window else None,
             warmup_seconds=window.warmup_seconds if window else None,
             step_length=step_length,
+        )
+
+    @staticmethod
+    def _read_summary(artifacts: RunArtifacts) -> dict[str, object] | None:
+        if not artifacts.summary.exists():
+            return None
+        try:
+            payload = json.loads(artifacts.summary.read_text(encoding="utf-8"))
+        except BaseException:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @staticmethod
+    def _metadata_reason(artifacts: RunArtifacts, fallback: str) -> str:
+        try:
+            payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+        except BaseException:
+            return fallback
+        return str(payload.get("reason") or fallback)
+
+    @staticmethod
+    def _seal_existing_terminal(artifacts: RunArtifacts) -> str:
+        try:
+            EvidenceWriter(artifacts.run_dir).seal()
+        except BaseException as exc:
+            try:
+                EvidenceWriter(artifacts.run_dir).record_error(str(exc))
+            except BaseException:
+                pass
+            return f"evidence seal failed: {exc}"
+        return ""
+
+    @staticmethod
+    def _run_manifest(
+        request: RunRequest,
+        artifacts: RunArtifacts,
+        *,
+        scene_source_sha256: dict[str, str],
+        scene_manifest_sha256: str,
+        derived_steps: int | None,
+        step_length: float | None,
+        requested_seconds: float | None = None,
+        warmup_seconds: float | None = None,
+    ) -> RunManifest:
+        variant = asdict(request.variant)
+        return RunManifest(
+            run_id=artifacts.run_id,
+            code_commit=resolve_code_commit(),
+            scene_manifest_sha256=scene_manifest_sha256,
+            algorithm=request.algorithm,
+            parameters=dict(request.algorithm_params),
+            flow_multiplier=request.flow_multiplier,
+            seed=request.seed,
+            duration_seconds=(
+                float(requested_seconds)
+                if requested_seconds is not None
+                else request.duration_seconds
+            ),
+            warmup_seconds=(
+                float(warmup_seconds)
+                if warmup_seconds is not None
+                else request.warmup_seconds
+            ),
+            derived_steps=derived_steps,
+            sumo_version="unknown",
+            python_version=runtime_python_version(),
+            prediction_enabled=bool(
+                request.algorithm_params.get("prediction_weight", 0.0)
+            ),
+            scene_id=request.intersection_id,
+            scene_source_sha256=scene_source_sha256,
+            step_length=step_length,
+            requested_seconds=(
+                float(requested_seconds)
+                if requested_seconds is not None
+                else request.duration_seconds
+            ),
+            request_dimensions={
+                "variant": variant,
+                "disturbance": (
+                    asdict(request.disturbance)
+                    if request.disturbance is not None
+                    else None
+                ),
+                "edge_delay_steps": request.edge_delay_steps,
+                "edge_directions": list(request.edge_directions),
+                "steps_origin": request.steps_origin,
+                "requested_steps": (
+                    int(request.steps) if request.steps is not None else None
+                ),
+            },
         )
 
     @staticmethod

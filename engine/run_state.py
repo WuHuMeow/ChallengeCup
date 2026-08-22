@@ -81,6 +81,7 @@ class RunStateMachine:
         reason: str,
         *,
         summary: dict[str, object] | None = None,
+        persist_artifact: bool = True,
     ) -> RunResult:
         with self._lock:
             current = self._records.get(run_id)
@@ -105,7 +106,7 @@ class RunStateMachine:
                 algorithm=current.algorithm,
             )
             artifacts = self._artifacts.get(run_id)
-            if artifacts is not None:
+            if artifacts is not None and persist_artifact:
                 artifacts.write_status(new_status.value, reason)
             self._records[run_id] = result
             return result

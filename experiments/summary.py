@@ -6,10 +6,12 @@ import csv
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from defusedxml import ElementTree as ET
 
 from engine.artifacts import RunArtifacts
+from core.types import MetricSummary
 
 
 @dataclass(frozen=True)
@@ -95,21 +97,71 @@ def parse_queue_metrics(path: Path) -> dict[str, float | None]:
     }
 
 
-def write_run_summary(artifacts: RunArtifacts) -> dict:
-    """Write one provenance-bearing summary from exact and snapshot sources."""
-    exact = parse_tripinfo(artifacts.tripinfo)
-    metrics = asdict(exact)
-    metrics.update(parse_queue_metrics(artifacts.metrics))
-    payload = {
-        "run_id": artifacts.run_id,
+def metric_summary_payload(
+    run_id: str,
+    summary: MetricSummary,
+    warmup_seconds: float,
+) -> dict:
+    """Return canonical metrics plus additive legacy consumer aliases."""
+    metrics = asdict(summary)
+    metrics.update({
+        "avg_travel_time": summary.avg_travel_time_seconds,
+        "avg_delay": summary.avg_delay_seconds,
+        "avg_queue_length": summary.avg_queue_length_vehicles,
+        "max_queue_length": summary.max_queue_length_vehicles,
+        "fuel_consumption": summary.fuel_ml,
+    })
+    return {
+        "schema": "challenge-cup.metric-summary",
+        "schema_version": 1,
+        "run_id": run_id,
+        "warmup_seconds": float(warmup_seconds),
         "metrics": metrics,
+        "units": {
+            "completed_vehicle_count": "count",
+            "unfinished_vehicle_count": "count",
+            "throughput": "vehicles",
+            "avg_travel_time_seconds": "s",
+            "avg_delay_seconds": "s",
+            "total_stops": "count",
+            "fuel_ml": "ml",
+            "co2_g": "g",
+            "fuel_ml_per_completed": "ml/vehicle",
+            "co2_g_per_completed": "g/vehicle",
+            "avg_queue_length_vehicles": "vehicles",
+            "max_queue_length_vehicles": "vehicles",
+            **{f"{name}_count": "count" for name in summary.safety_counts},
+        },
         "sources": {
-            "travel": artifacts.tripinfo.name,
-            "queue": artifacts.metrics.name,
+            "travel": "tripinfo.xml",
+            "queue": "metrics.csv",
+            "safety": "events.csv",
         },
     }
-    artifacts.summary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+
+
+def _atomic_json(path: Path, payload: dict) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def write_run_summary(
+    artifacts: RunArtifacts,
+    warmup_seconds: float = 0.0,
+    summary: MetricSummary | None = None,
+) -> dict:
+    """Write one provenance-bearing summary from exact and snapshot sources."""
+    resolved = summary or MetricSummary.from_raw_outputs(
+        artifacts.run_dir,
+        warmup_seconds,
     )
+    payload = metric_summary_payload(artifacts.run_id, resolved, warmup_seconds)
+    _atomic_json(artifacts.summary, payload)
     return payload

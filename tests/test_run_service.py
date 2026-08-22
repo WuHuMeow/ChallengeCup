@@ -17,10 +17,13 @@ from core.timebase import SimulationWindow
 from core.types import Scene
 from scenes.models import SceneManifest
 from scenes.registry import SceneRegistry
+from engine.artifacts import RunArtifacts
 from engine.run_service import RunService
 from engine.runner import SimulationRunner
 from engine.mock_bridge import MockBridge
 from engine.traci_bridge import TraCIBridge, traci
+from experiments.evidence import EvidenceReader, EvidenceWriter
+from scripts.run_pdf_matrix import is_complete
 
 
 class RecordingRunner:
@@ -134,7 +137,12 @@ class EffectiveStepRunner(SimulationRunner):
         step_length = float(
             ET.parse(self.runtime_cfg).getroot().find("./time/step-length").get("value")
         )
-        super().__init__(bridge=MockBridge(step_length=step_length), **kwargs)
+        super().__init__(
+            bridge=_ServiceOutputBridge(
+                kwargs["artifacts"], step_length=step_length
+            ),
+            **kwargs,
+        )
         type(self).instances.append(self)
 
 
@@ -148,6 +156,113 @@ class MalformedStatusRecordRunner(RecordingRunner):
     def run(self, window, stop_event=None, frame_sink=None):
         self.artifacts.status.write_text("[]", encoding="utf-8")
         raise RuntimeError("runner failure after malformed status record")
+
+
+class _ServiceOutputBridge(MockBridge):
+    def __init__(self, artifacts, *, step_length=0.1):
+        super().__init__(step_length=step_length)
+        self.artifacts = artifacts
+        self.sumo_version = "1.27.1"
+
+    def close(self):
+        self.artifacts.tripinfo.write_text(
+            '<tripinfos><tripinfo id="v0" depart="0" arrival="1" '
+            'duration="1" timeLoss="0" waitingCount="0">'
+            '<emissions fuel_abs="0.1" CO2_abs="100"/></tripinfo></tripinfos>',
+            encoding="utf-8",
+        )
+        self.artifacts.stats.write_text(
+            '<summary><step time="1"/></summary>', encoding="utf-8"
+        )
+        self.artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
+        self.artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
+        super().close()
+
+
+def _evidence_runner_factory(**kwargs):
+    return SimulationRunner(
+        bridge=_ServiceOutputBridge(kwargs["artifacts"]),
+        **kwargs,
+    )
+
+
+class InterruptingRunner:
+    error = KeyboardInterrupt("operator interrupt")
+
+    def __init__(self, **kwargs):
+        self.artifacts = kwargs["artifacts"]
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        raise type(self).error
+
+
+class FailingRunner:
+    error = RuntimeError("runner body failed")
+
+    def __init__(self, **kwargs):
+        self.artifacts = kwargs["artifacts"]
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        raise type(self).error
+
+
+class TerminalThenInterruptRunner:
+    error = KeyboardInterrupt("interrupt after terminal commit")
+
+    def __init__(self, **kwargs):
+        self.artifacts = kwargs["artifacts"]
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            "completed",
+            "",
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+            requested_steps=1,
+            requested_seconds=1.0,
+            warmup_seconds=0.0,
+            final_simulation_time=1.0,
+            step_length=1.0,
+        )
+        raise type(self).error
+
+
+class StrictSignatureRunner:
+    constructed = False
+
+    def __init__(
+        self,
+        scene,
+        algorithm,
+        additional_files,
+        sumo_cfg,
+        seed,
+        artifacts,
+        state_channel,
+        step_length,
+    ):
+        type(self).constructed = True
+        self.artifacts = artifacts
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            "completed",
+            "",
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+            requested_steps=1,
+            requested_seconds=1.0,
+            warmup_seconds=0.0,
+            final_simulation_time=1.0,
+            step_length=1.0,
+        )
+        return []
 
 
 def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
@@ -246,7 +361,12 @@ def test_runner_keeps_validated_step_length_authoritative_over_bridge(tmp_path):
 
         def __init__(self, **kwargs):
             self.runtime_cfg = kwargs["sumo_cfg"]
-            super().__init__(bridge=MockBridge(step_length=1.0), **kwargs)
+            super().__init__(
+                bridge=_ServiceOutputBridge(
+                    kwargs["artifacts"], step_length=1.0
+                ),
+                **kwargs,
+            )
             type(self).instances.append(self)
 
     service = RunService(
@@ -258,7 +378,9 @@ def test_runner_keeps_validated_step_length_authoritative_over_bridge(tmp_path):
         RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
     )
 
-    manifest = json.loads((result.run_dir / "manifest.json").read_text())
+    manifest = json.loads(
+        (result.run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
     metadata = json.loads(
         (result.run_dir / "run_metadata.json").read_text(encoding="utf-8")
     )
@@ -429,6 +551,271 @@ def test_run_service_rejects_scene_without_passing_validated_manifest(
     assert result.status is RunStatus.FAILED
     assert "validated scene" in result.reason.lower()
     assert RecordingRunner.calls == []
+    assert not (result.run_dir / "summary.json").exists()
+    assert EvidenceReader.validate(result.run_dir) == []
+
+
+def test_run_service_completed_path_produces_reader_valid_evidence(tmp_path):
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_evidence_runner_factory,
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert EvidenceReader.validate(result.run_dir) == []
+
+
+def test_run_service_keyboard_interrupt_preserves_primary_and_terminalizes_evidence(
+    tmp_path,
+):
+    InterruptingRunner.error = KeyboardInterrupt("operator interrupt")
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=InterruptingRunner,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert caught.value is InterruptingRunner.error
+    status_path = next((tmp_path / "runs").rglob("status.json"))
+    run_dir = status_path.parent
+    assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == (
+        "interrupted"
+    )
+    assert service.get(run_dir.name).status is RunStatus.INTERRUPTED
+    assert EvidenceReader.validate(run_dir) == []
+
+
+@pytest.mark.parametrize("secondary", ["finalize", "seal"])
+def test_run_service_body_failure_remains_primary_when_evidence_commit_fails(
+    tmp_path,
+    secondary,
+):
+    FailingRunner.error = RuntimeError("runner body failed")
+    service = RunService(output_root=tmp_path / "runs", runner_factory=FailingRunner)
+
+    with patch.object(
+        EvidenceWriter,
+        secondary,
+        side_effect=OSError(f"{secondary} unavailable"),
+    ):
+        result = service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert result.status is RunStatus.FAILED
+    assert "runner body failed" in result.reason
+    assert service.get(result.run_id).status is RunStatus.FAILED
+    assert service._done[result.run_id].is_set()
+    status = json.loads(
+        (result.run_dir / "status.json").read_text(encoding="utf-8")
+    )
+    assert status["status"] == "failed"
+
+
+def test_secondary_error_can_never_be_sealed_clean_when_error_recording_fails(
+    tmp_path,
+):
+    FailingRunner.error = RuntimeError("runner body failed")
+    service = RunService(output_root=tmp_path / "runs", runner_factory=FailingRunner)
+
+    with (
+        patch.object(
+            EvidenceWriter,
+            "finalize",
+            side_effect=OSError("finalize unavailable"),
+        ),
+        patch.object(
+            EvidenceWriter,
+            "record_error",
+            side_effect=OSError("error record unavailable"),
+        ),
+    ):
+        result = service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert result.status is RunStatus.FAILED
+    assert "runner body failed" in result.reason
+    assert "finalize unavailable" in result.reason
+    assert not (result.run_dir / "hashes.json").exists()
+    assert EvidenceReader.validate(result.run_dir)
+
+
+@pytest.mark.parametrize("secondary", ["finalize", "metadata"])
+def test_keyboard_interrupt_identity_survives_terminalization_failure(
+    tmp_path,
+    secondary,
+):
+    InterruptingRunner.error = KeyboardInterrupt("operator interrupt")
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=InterruptingRunner,
+    )
+    target = (
+        patch.object(
+            EvidenceWriter,
+            "finalize",
+            side_effect=OSError("finalize unavailable"),
+        )
+        if secondary == "finalize"
+        else patch.object(
+            service,
+            "_write_terminal_metadata",
+            side_effect=OSError("metadata unavailable"),
+        )
+    )
+
+    with target:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            service.run_sync(
+                RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+            )
+
+    assert caught.value is InterruptingRunner.error
+    run_id = next(iter(service._done))
+    assert service.get(run_id).status is RunStatus.INTERRUPTED
+    assert service._done[run_id].is_set()
+
+
+def test_primary_keyboard_interrupt_survives_cleanup_base_exception(tmp_path):
+    InterruptingRunner.error = KeyboardInterrupt("primary operator interrupt")
+    cleanup_interrupt = KeyboardInterrupt("cleanup interrupt")
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=InterruptingRunner,
+    )
+
+    with patch.object(
+        EvidenceWriter,
+        "finalize",
+        side_effect=cleanup_interrupt,
+    ):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            service.run_sync(
+                RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+            )
+
+    assert caught.value is InterruptingRunner.error
+    run_id = next(iter(service._done))
+    assert service.get(run_id).status is RunStatus.INTERRUPTED
+    assert service._done[run_id].is_set()
+
+
+def test_primary_keyboard_interrupt_survives_persistent_status_storage_failure(
+    tmp_path,
+):
+    InterruptingRunner.error = KeyboardInterrupt("primary operator interrupt")
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=InterruptingRunner,
+    )
+    original_write_status = RunArtifacts.write_status
+
+    def fail_terminal_status(artifacts, status, reason, **kwargs):
+        if status in {
+            RunStatus.COMPLETED.value,
+            RunStatus.ENDED_EARLY.value,
+            RunStatus.DISCONNECTED.value,
+            RunStatus.INTERRUPTED.value,
+            RunStatus.FAILED.value,
+        }:
+            raise OSError("status storage unavailable")
+        return original_write_status(artifacts, status, reason, **kwargs)
+
+    with patch.object(RunArtifacts, "write_status", new=fail_terminal_status):
+        with pytest.raises(KeyboardInterrupt) as caught:
+            service.run_sync(
+                RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+            )
+
+    assert caught.value is InterruptingRunner.error
+    run_id = next(iter(service._done))
+    assert service.get(run_id).status is RunStatus.INTERRUPTED
+    assert service._done[run_id].is_set()
+
+
+def test_keyboard_interrupt_after_terminal_commit_never_overwrites_or_masks_primary(
+    tmp_path,
+):
+    TerminalThenInterruptRunner.error = KeyboardInterrupt(
+        "interrupt after terminal commit"
+    )
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=TerminalThenInterruptRunner,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert caught.value is TerminalThenInterruptRunner.error
+    status_path = next((tmp_path / "runs").rglob("status.json"))
+    run_id = status_path.parent.name
+    assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == (
+        "completed"
+    )
+    assert service.get(run_id).status is RunStatus.COMPLETED
+
+
+def test_run_service_preserves_runner_factory_signature_compatibility(tmp_path):
+    StrictSignatureRunner.constructed = False
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=StrictSignatureRunner,
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    assert StrictSignatureRunner.constructed is True
+    assert result.status is RunStatus.COMPLETED
+    # Lifecycle completion is not evidence publication. Injected legacy runners
+    # without evidence_managed remain compatible but can never pass the strict
+    # matrix/release gate.
+    assert is_complete(result.run_dir) is False
+    assert EvidenceReader.validate(result.run_dir)
+
+
+def test_service_seal_failure_records_invalid_evidence_without_terminal_rewrite(
+    tmp_path,
+):
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_evidence_runner_factory,
+    )
+
+    with patch(
+        "engine.run_service.EvidenceWriter.seal",
+        side_effect=RuntimeError("hash storage unavailable"),
+    ):
+        result = service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    manifest = json.loads(
+        (result.run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    status = json.loads(
+        (result.run_dir / "status.json").read_text(encoding="utf-8")
+    )
+    assert result.status is RunStatus.COMPLETED
+    assert service.get(result.run_id).status is RunStatus.COMPLETED
+    assert status["status"] == "completed"
+    assert "hash storage unavailable" in result.reason
+    assert manifest["evidence_error"] == "hash storage unavailable"
+    assert not (result.run_dir / "hashes.json").exists()
+    assert is_complete(result.run_dir) is False
 
 
 def test_run_service_passes_complete_variant_bundle_to_runner(tmp_path):

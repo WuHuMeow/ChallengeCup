@@ -3,6 +3,7 @@ import csv
 
 import pytest
 from pathlib import Path
+from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
 from core.types import (
@@ -144,6 +145,24 @@ def test_event_logger_rejects_safety_event_from_another_run(tmp_path):
 
     with pytest.raises(ValueError, match="run_id"):
         logger.log_safety(event)
+
+
+def test_event_save_failure_preserves_previous_atomic_snapshot(tmp_path):
+    events = tmp_path / "events.csv"
+    events.write_text("previous-snapshot\n", encoding="utf-8")
+    logger = EventLogger(events, run_id="run-1")
+    logger.log(0, "run_start", "started")
+
+    with patch(
+        "engine.events.csv.DictWriter.writerows",
+        side_effect=RuntimeError("event write failed"),
+    ):
+        with pytest.raises(RuntimeError, match="event write failed"):
+            logger.save()
+
+    assert events.read_text(encoding="utf-8") == "previous-snapshot\n"
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))
 
 
 class _SafetyBridge(MockBridge):

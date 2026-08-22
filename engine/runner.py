@@ -20,6 +20,7 @@ from core.types import (
     ActionResult,
     ControlAction,
     JointState,
+    MetricSummary,
     SafetyEvent,
     Scene,
 )
@@ -32,6 +33,7 @@ from engine.safety_executor import SafetyExecutor
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.metrics import compute_metrics
 from experiments.summary import write_run_summary
+from experiments.evidence import EvidenceWriter
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,7 @@ class SimulationRunner:
         artifacts: Optional[RunArtifacts] = None,
         state_channel: Optional[EdgeChannel] = None,
         step_length: float | None = None,
+        seal_evidence: bool = True,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -69,6 +72,8 @@ class SimulationRunner:
         self.step_length = (
             float(step_length) if step_length is not None else None
         )
+        self.seal_evidence = bool(seal_evidence)
+        self.evidence_managed = True
 
         if artifacts is not None:
             output_csv = artifacts.metrics
@@ -324,6 +329,13 @@ class SimulationRunner:
             raise
         finally:
             cleanup_errors: list[Exception] = []
+            metric_summary: MetricSummary | None = None
+            evidence_writer = None
+            if (
+                self.artifacts is not None
+                and self.artifacts.provenance.exists()
+            ):
+                evidence_writer = EvidenceWriter(self.artifacts.run_dir)
             for save in (
                 self.collector.save if self.collector else None,
                 self.step_logger.save if self.step_logger else None,
@@ -332,32 +344,12 @@ class SimulationRunner:
                     continue
                 try:
                     save()
-                except Exception as exc:
+                except BaseException as exc:
                     cleanup_errors.append(exc)
             try:
                 self.bridge.close()
-            except Exception as exc:
+            except BaseException as exc:
                 cleanup_errors.append(exc)
-
-            if (
-                not cleanup_errors
-                and self.artifacts is not None
-                and status in (RunStatus.COMPLETED, RunStatus.ENDED_EARLY)
-            ):
-                core_outputs = (
-                    self.artifacts.tripinfo,
-                    self.artifacts.stats,
-                    self.artifacts.trajectory,
-                    self.artifacts.collisions,
-                )
-                if all(
-                    path.exists() and path.stat().st_size > 0
-                    for path in core_outputs
-                ):
-                    try:
-                        write_run_summary(self.artifacts)
-                    except Exception as exc:
-                        cleanup_errors.append(exc)
 
             if cleanup_errors and not body_exception:
                 status = RunStatus.FAILED
@@ -365,13 +357,93 @@ class SimulationRunner:
 
             if self.event_logger:
                 try:
-                    self.event_logger.log(last_step, "terminal", status.value)
                     self.event_logger.save()
-                except Exception as exc:
+                except BaseException as exc:
                     cleanup_errors.append(exc)
                     if not body_exception:
                         status = RunStatus.FAILED
                         reason = str(exc) or type(exc).__name__
+
+            if self.artifacts is not None:
+                publishable = status in (RunStatus.COMPLETED, RunStatus.ENDED_EARLY)
+                try:
+                    if evidence_writer is not None:
+                        algorithm_manifest = dict(self.algorithm.manifest)
+                        evidence_writer.update_runtime(
+                            parameters=algorithm_manifest,
+                            prediction_enabled=bool(
+                                algorithm_manifest.get("prediction_enabled", False)
+                            ),
+                        )
+                        if publishable and not cleanup_errors:
+                            required_pre_summary = (
+                                self.artifacts.metrics,
+                                self.artifacts.step_log,
+                                self.artifacts.events,
+                                self.artifacts.tripinfo,
+                                self.artifacts.stats,
+                                self.artifacts.trajectory,
+                                self.artifacts.collisions,
+                            )
+                            missing = [
+                                path.name
+                                for path in required_pre_summary
+                                if not path.exists() or path.stat().st_size <= 0
+                            ]
+                            if missing:
+                                raise ValueError(
+                                    f"completed evidence missing outputs: {missing}"
+                                )
+                            metric_summary = MetricSummary.from_raw_outputs(
+                                self.artifacts.run_dir,
+                                resolved_window.warmup_seconds,
+                            )
+                            evidence_writer.finalize(status, metric_summary)
+                        else:
+                            evidence_writer.finalize(status, None)
+                    elif publishable and not cleanup_errors:
+                        core_outputs = (
+                            self.artifacts.tripinfo,
+                            self.artifacts.stats,
+                            self.artifacts.trajectory,
+                            self.artifacts.collisions,
+                        )
+                        if all(
+                            path.exists() and path.stat().st_size > 0
+                            for path in core_outputs
+                        ):
+                            write_run_summary(
+                                self.artifacts,
+                                warmup_seconds=resolved_window.warmup_seconds,
+                            )
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+                    if not body_exception:
+                        status = RunStatus.FAILED
+                        reason = str(exc) or type(exc).__name__
+                    if evidence_writer is not None:
+                        try:
+                            evidence_writer.finalize(status, None)
+                        except BaseException as finalize_exc:
+                            cleanup_errors.append(finalize_exc)
+
+            if self.event_logger:
+                try:
+                    self.event_logger.log(last_step, "terminal", status.value)
+                    self.event_logger.save()
+                except BaseException as exc:
+                    cleanup_errors.append(exc)
+                    if not body_exception:
+                        status = RunStatus.FAILED
+                        reason = str(exc) or type(exc).__name__
+                    if evidence_writer is not None:
+                        try:
+                            if self.artifacts is not None:
+                                self.artifacts.summary.unlink(missing_ok=True)
+                            evidence_writer.finalize(status, None)
+                            metric_summary = None
+                        except BaseException as finalize_exc:
+                            cleanup_errors.append(finalize_exc)
 
             if self.artifacts is not None:
                 generated_files = [
@@ -411,11 +483,58 @@ class SimulationRunner:
                         algorithm_manifest=self.algorithm.manifest,
                         sumo_pid=getattr(self.bridge, "process_id", None),
                     )
-                except Exception as exc:
+                except BaseException as exc:
                     cleanup_errors.append(exc)
                     if not body_exception:
                         status = RunStatus.FAILED
                         reason = str(exc) or type(exc).__name__
+                    committed_status = None
+                    try:
+                        committed_status = RunStatus(
+                            self.artifacts.read_status()["status"]
+                        )
+                    except BaseException:
+                        committed_status = None
+                    if committed_status not in (
+                        RunStatus.COMPLETED,
+                        RunStatus.ENDED_EARLY,
+                    ):
+                        self.artifacts.summary.unlink(missing_ok=True)
+                        try:
+                            if self.artifacts.metadata.exists():
+                                metadata = json.loads(
+                                    self.artifacts.metadata.read_text(
+                                        encoding="utf-8"
+                                    )
+                                )
+                                if metadata.get("status") in (
+                                    RunStatus.COMPLETED.value,
+                                    RunStatus.ENDED_EARLY.value,
+                                ):
+                                    self.artifacts.metadata.unlink(missing_ok=True)
+                        except (OSError, TypeError, ValueError):
+                            self.artifacts.metadata.unlink(missing_ok=True)
+                        if evidence_writer is not None:
+                            try:
+                                evidence_writer.finalize(RunStatus.FAILED, None)
+                                metric_summary = None
+                            except BaseException as finalize_exc:
+                                cleanup_errors.append(finalize_exc)
+                if evidence_writer is not None and self.seal_evidence:
+                    try:
+                        evidence_writer.seal()
+                    except BaseException as exc:
+                        logger.error(
+                            "Evidence seal failed for run %s: %s",
+                            self.artifacts.run_id,
+                            exc,
+                        )
+                        try:
+                            evidence_writer.record_error(str(exc))
+                        except BaseException:
+                            logger.exception("Could not record evidence seal error")
+                        if not cleanup_errors and not body_exception:
+                            reason = f"evidence seal failed: {exc}"
             if cleanup_errors and not body_exception:
                 raise cleanup_errors[0]
 

@@ -16,6 +16,7 @@ import pandas as pd  # noqa: E402
 from defusedxml import ElementTree as ET  # noqa: E402
 
 from visualization.plots import plot_heatmap  # noqa: E402
+from experiments.evidence import EvidenceReader  # noqa: E402
 
 
 COMPARISON_METRICS = (
@@ -32,6 +33,8 @@ def collect_summaries(root: Path) -> pd.DataFrame:
     rows = []
     for summary_path in sorted(Path(root).rglob("summary.json")):
         run_dir = summary_path.parent
+        if EvidenceReader.validate(run_dir):
+            continue
         metadata_path = run_dir / "run_metadata.json"
         if not metadata_path.exists():
             continue

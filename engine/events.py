@@ -7,6 +7,7 @@ import json
 import logging
 from pathlib import Path
 from typing import List
+from uuid import uuid4
 
 from algorithms.registry import canonicalize_algorithm_key
 from core.types import SafetyEvent
@@ -140,8 +141,15 @@ class EventLogger:
 
     def save(self) -> None:
         """Write all buffered rows, including a header for an empty log."""
-        with open(self.output_file, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(EVENT_FIELDS))
-            writer.writeheader()
-            writer.writerows(self._rows)
+        temporary = self.output_file.with_name(
+            f".{self.output_file.name}.{uuid4().hex}.tmp"
+        )
+        try:
+            with temporary.open("w", newline="", encoding="utf-8") as output:
+                writer = csv.DictWriter(output, fieldnames=list(EVENT_FIELDS))
+                writer.writeheader()
+                writer.writerows(self._rows)
+            temporary.replace(self.output_file)
+        finally:
+            temporary.unlink(missing_ok=True)
         logger.info("Saved %d events to %s", len(self._rows), self.output_file)

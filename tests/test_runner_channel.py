@@ -13,11 +13,19 @@ from algorithms.capacity_aware_max_pressure import (
     CapacityAwareMaxPressureAlgorithm,
 )
 from core.movements import MovementKey, MovementState, PhaseMovementState
+from core.run_models import RunStatus
+from core.timebase import SimulationWindow
 from core.types import ActionResult, ControlAction, JointState, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
+from experiments.evidence import (
+    EvidenceReader,
+    EvidenceWriter,
+    RunManifest,
+    canonical_mapping_sha256,
+)
 
 
 _VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
@@ -373,6 +381,34 @@ def test_runner_binding_rejects_prebuffered_message_from_another_run(tmp_path):
     assert [(row["type"], row["detail"]) for row in events if row["type"] == "message_rejected"] == [
         ("message_rejected", "stale_run_id=stale-run"),
     ]
+
+
+def _begin_strict_evidence(
+    artifacts: RunArtifacts,
+    *,
+    duration_seconds: float = 1.0,
+    warmup_seconds: float = 0.0,
+) -> None:
+    source_hashes = {"net": "c" * 64}
+    EvidenceWriter(artifacts.run_dir).begin(RunManifest(
+        run_id=artifacts.run_id,
+        code_commit="a" * 40,
+        scene_manifest_sha256=canonical_mapping_sha256(source_hashes),
+        algorithm=artifacts.algorithm,
+        parameters={},
+        flow_multiplier=artifacts.flow_multiplier,
+        seed=artifacts.seed,
+        duration_seconds=duration_seconds,
+        warmup_seconds=warmup_seconds,
+        derived_steps=int(duration_seconds),
+        sumo_version="1.27.1",
+        python_version="3.12.13",
+        prediction_enabled=False,
+        scene_id=artifacts.intersection_id,
+        scene_source_sha256=source_hashes,
+        step_length=1.0,
+        requested_seconds=duration_seconds,
+    ))
 
 
 def test_runner_routes_every_action_batch_through_the_safety_executor(tmp_path):
@@ -892,11 +928,13 @@ class _OutputBridge(MockBridge):
     def __init__(self, artifacts):
         super().__init__()
         self.artifacts = artifacts
+        self.sumo_version = "1.27.1"
 
     def close(self):
         self.artifacts.tripinfo.write_text(
-            '<tripinfos><tripinfo id="v0" duration="10" timeLoss="2" '
-            'waitingCount="1"><emissions fuel_abs="0.5"/></tripinfo>'
+            '<tripinfos><tripinfo id="v0" depart="0" arrival="10" '
+            'duration="10" timeLoss="2" waitingCount="1">'
+            '<emissions fuel_abs="0.5" CO2_abs="1000"/></tripinfo>'
             "</tripinfos>",
             encoding="utf-8",
         )
@@ -904,6 +942,23 @@ class _OutputBridge(MockBridge):
         self.artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
         self.artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
         super().close()
+
+
+class _MalformedOutputBridge(_OutputBridge):
+    def close(self):
+        super().close()
+        self.artifacts.tripinfo.write_text("<tripinfos>", encoding="utf-8")
+
+
+class _BodyAndCloseInterruptBridge(MockBridge):
+    primary = KeyboardInterrupt("runner primary interrupt")
+    secondary = KeyboardInterrupt("runner cleanup interrupt")
+
+    def get_state(self):
+        raise type(self).primary
+
+    def close(self):
+        raise type(self).secondary
 
 
 def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
@@ -921,6 +976,145 @@ def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
     assert payload["metrics"]["avg_travel_time"] == 10
     metadata = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert "summary.json" in metadata["generated_files"]
+
+
+def test_runner_primary_keyboard_interrupt_survives_cleanup_base_exception(
+    tmp_path,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-primary-interrupt"
+    )
+    _begin_strict_evidence(artifacts)
+    _BodyAndCloseInterruptBridge.primary = KeyboardInterrupt(
+        "runner primary interrupt"
+    )
+    _BodyAndCloseInterruptBridge.secondary = KeyboardInterrupt(
+        "runner cleanup interrupt"
+    )
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_BodyAndCloseInterruptBridge(),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert caught.value is _BodyAndCloseInterruptBridge.primary
+    assert json.loads(
+        artifacts.status.read_text(encoding="utf-8")
+    )["status"] == "interrupted"
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_completed_runner_materializes_then_terminalizes_and_seals_evidence(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-completed"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    result = runner.run(SimulationWindow(1.0, 0.0))
+
+    assert result.status is RunStatus.COMPLETED
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+    assert artifacts.hashes.is_file()
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == (
+        "completed"
+    )
+
+
+def test_terminal_event_save_failure_downgrades_without_leaving_completed_summary(
+    tmp_path,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-one-event-save"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+    original_save = runner.event_logger.save
+
+    def fail_for_terminal_save():
+        if any(row["type"] == "terminal" for row in runner.event_logger.rows):
+            raise RuntimeError("terminal event save failed")
+        return original_save()
+
+    with patch.object(
+        runner.event_logger,
+        "save",
+        side_effect=fail_for_terminal_save,
+    ):
+        with pytest.raises(RuntimeError, match="terminal event save failed"):
+            runner.run(SimulationWindow(1.0, 0.0))
+
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == (
+        "failed"
+    )
+    assert not artifacts.summary.exists()
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_completed_materialization_failure_becomes_verifiable_failed_evidence(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-malformed"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_MalformedOutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(Exception):
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == "failed"
+    assert not artifacts.summary.exists()
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+@pytest.mark.parametrize("failing_method", ["write_metadata", "write_status"])
+def test_terminal_metadata_failure_never_leaves_publishable_summary(
+    tmp_path,
+    failing_method,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id=f"run-{failing_method}"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    with patch.object(
+        RunArtifacts,
+        failing_method,
+        side_effect=OSError(f"{failing_method} unavailable"),
+    ):
+        with pytest.raises(OSError, match="unavailable"):
+            runner.run(SimulationWindow(1.0, 0.0))
+
+    assert not artifacts.summary.exists()
+    manifest = json.loads(artifacts.manifest.read_text(encoding="utf-8"))
+    assert manifest["end_status"] == "failed"
+    if artifacts.metadata.exists():
+        metadata = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+        assert metadata["status"] != "completed"
 
 
 def test_close_failure_marks_metadata_failed(tmp_path):
