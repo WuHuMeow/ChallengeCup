@@ -648,3 +648,228 @@ that staging allowlist.
 The current code-head evidence above is the source of truth for this report.
 The report commit SHA is supplied after creating the requested
 `docs: bind task 12 evidence to latest code head` commit.
+
+## Round 5 Request and Connection Identity Closure (2026-08-22; fc1a4d7)
+
+This additive section supersedes the e9b2715 section as the latest code-head
+evidence. All code verification below targets
+`fc1a4d7a66c749252daff6440e51bc3fcac8b5a0` (`fix: preserve request and
+connection identity`). It does not rewrite or invalidate the historical
+commands above.
+
+Round 5 made request-step provenance a versioned, persisted contract and made
+TraCI cleanup target the exact labeled connection handle. `RunRequest` now
+persists `steps_origin`, distinguishes formal compatibility-derived steps from
+equal-valued explicit steps in equality and JSON, normalizes compatibility
+steps after `dataclasses.replace()`, and validates version/origin/value
+consistency fail-closed. The run manifest and PDF-matrix semantic key preserve
+the same identity boundary. TraCI startup now uses an internal lifecycle gate,
+a unique label, the exact registered connection handle, and the already
+recorded exact child process; production cleanup no longer calls module-global
+`traci.close()`.
+
+### Round 5 TDD RED evidence
+
+The writer recorded the following commands before their corresponding
+production changes. Each failure was caused by the missing behavior named in
+the heading rather than a collection or syntax error.
+
+1. Initial provenance and codec contract:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1
+10 failed, 10 passed in 0.79s
+```
+
+2. Manifest provenance:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py::test_run_manifest_records_request_steps_origin -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1-manifest
+2 failed in 2.49s
+```
+
+3. Unique TraCI label and exact partial-init handle:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py::test_bridge_start_failure_reaps_process_created_during_connection_setup tests/test_run_lifecycle.py::test_bridge_start_interrupt_reaps_recorded_process tests/test_run_lifecycle.py::test_bridge_init_race_does_not_close_another_owners_connection -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i2
+3 failed in 0.75s
+```
+
+4. Exact close and restart ownership:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_resilience.py::test_step_restarts_when_allowed tests/test_resilience.py::test_close_idempotent -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i2-close-restart
+2 failed in 0.82s
+```
+
+5. Provenance consistency, schema, and semantic request key:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py::test_request_payload_rejects_inconsistent_steps_origin tests/test_run_models.py::test_request_payload_schema_version_is_explicit_and_validated tests/test_tuning.py::test_request_key_includes_step_origin_and_seconds_window_inputs -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1-schema-key
+3 failed, 5 passed in 0.70s
+```
+
+6. Exact handle close interrupted by `BaseException`:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py::test_bridge_close_reaps_child_when_connection_close_is_interrupted -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i2-baseexception
+1 failed in 0.72s
+```
+
+7. Strict schema-version type:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py::test_request_payload_schema_version_is_explicit_and_validated -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1-version-type
+1 failed, 2 passed in 0.67s
+```
+
+8. Compatibility-step normalization after replacement:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py::test_replacing_compatibility_duration_rederives_replayable_steps tests/test_run_models.py::test_removing_compatibility_override_removes_derived_steps_for_replay -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1-replace-codec
+2 failed in 0.66s
+```
+
+9. Versioned payload missing required provenance:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py::test_versioned_request_payload_requires_steps_origin -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-red-i1-v1-origin
+1 failed in 0.63s
+```
+
+### Round 5 GREEN and writer verification
+
+The final request-model group, including versioned missing-origin rejection,
+returned:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-green-i1-v1-origin
+29 passed in 0.61s
+```
+
+The final exact-handle group, including partial RuntimeError, partial
+KeyboardInterrupt, other-owner TOCTOU, interrupted handle close, restart, and
+idempotent close, returned:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_lifecycle.py::test_bridge_close_reaps_child_when_connection_close_is_interrupted tests/test_run_lifecycle.py::test_bridge_start_failure_reaps_process_created_during_connection_setup tests/test_run_lifecycle.py::test_bridge_start_interrupt_reaps_recorded_process tests/test_run_lifecycle.py::test_bridge_init_race_does_not_close_another_owners_connection tests/test_resilience.py::test_step_restarts_when_allowed tests/test_resilience.py::test_close_idempotent -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-green-i2-final
+6 passed in 0.60s
+```
+
+The writer's final submitted-tree expanded focused command was:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py tests/test_run_service.py tests/test_run_lifecycle.py tests/test_resilience.py tests/test_artifacts.py tests/test_runner_channel.py tests/test_tuning.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r5-writer-focused
+151 passed in 30.19s
+```
+
+The writer also recorded GREEN results of `22 passed in 3.01s` for the initial
+I1-plus-manifest group, `8 passed in 0.60s` for the schema/key group, and
+`28 passed in 0.57s` after compatibility-replacement normalization. These are
+intermediate evidence; the final 29/6/151 results above are authoritative for
+the submitted code.
+
+### Latest code-head controller verification
+
+The controller independently reran the expanded focused set on code head
+`fc1a4d7` with a new repo-local basetemp:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_models.py tests/test_run_service.py tests/test_run_lifecycle.py tests/test_resilience.py tests/test_artifacts.py tests/test_runner_channel.py tests/test_tuning.py -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.superpowers\tmp\task12-r5-main-focused-20260822-0918
+151 passed in 31.36s
+```
+
+The new canonical repo-local full-suite run returned:
+
+```text
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.superpowers\tmp\task12-r5-main-full-20260822-0919
+655 passed in 112.08s (0:01:52)
+```
+
+Static and compatibility gates were:
+
+```text
+.\.venv\Scripts\python.exe --version
+Python 3.12.13
+
+.\.venv\Scripts\python.exe -m compileall -q algorithms api core engine experiments scripts tests
+exit 0
+
+py -3.14 --version
+Python 3.14.7
+
+py -3.14 -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests visualization
+exit 0
+
+git diff --check 71bd4b0..fc1a4d7
+PASS
+
+git diff --check c5e2223..fc1a4d7
+PASS
+```
+
+### Latest real SUMO and exact-PID evidence
+
+```text
+run_id: ca1cabbf7800
+run_dir: D:\Temp\judge-task12-r5-controller-real-20260822-0924\i1\fixed_time\x1\s42\ca1cabbf7800
+result/status/metadata: completed
+derived_steps: 100
+requested_seconds: 100.0
+steps_origin: explicit
+final_simulation_time: 100.0
+manifest PID: 16632
+run_metadata PID: 16632
+PID_ALIVE: False
+SUMO before: 0
+SUMO after: 0
+```
+
+The two PID fields identify the same exact child. That process was absent after
+shutdown, and the before/after SUMO inventories were both empty. This run
+supersedes `b7f105be2545` / PID `20164` as the latest code-head real-SUMO
+evidence.
+
+### Latest protected-input and scope gates
+
+```text
+赛题资料.7z on-disk SHA-256:
+12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F
+
+data/intersection_data tracked files: 163
+data/intersection_data files on disk: 232
+71bd4b0..fc1a4d7 protected diff: empty
+worktree protected diff: empty
+index protected diff: empty
+```
+
+Commit `fc1a4d7` contains only the nine authorized production/test files. The
+controller's `progress.md` remains unstaged, the index is empty, and existing
+untracked `.task12-*`, `.t9c`, `.t10`, `.t11`, and archive paths remain outside
+the commit.
+
+### Pre-review breaker candidates
+
+Three read-only pre-review observations remain for the formal Round 5 scoped
+review to adjudicate. They are recorded rather than silently discarded:
+
+1. If startup has already failed and exact-handle cleanup itself raises a
+   `KeyboardInterrupt`, cleanup completes but the cleanup `BaseException`
+   becomes the final visible exception instead of the earlier startup error.
+2. Direct concurrent or repeated `start()` calls on the same bridge can clear
+   discovery state before the lifecycle lock rejects the second call. The
+   production runner does not issue concurrent starts on one bridge, and true
+   multi-bridge domain concurrency is outside the Round 5 contract.
+3. A nonstandard path where an exact connection handle raises another
+   `FatalTraCIError` from `close()` can prevent the existing restart branch from
+   reaching `start()`. In SUMO 1.27.1's ordinary "Connection closed by SUMO"
+   path, `_sendExact()` first closes the socket and sets it to `None`, so the
+   following exact `Connection.close()` skips `CMD_CLOSE` and deregisters the
+   label normally. The narrower close-failure case remains for formal severity
+   and scope review.
+
+These observations are not represented as closed or dismissed here. Round 5 is
+the fifth fix round, so any formal Critical/Important result must be handled by
+the recorded breaker/adjudication process rather than an unreviewed sixth Task
+12 fix. The pre-existing `frame_sink` issue and non-canonical matrix key fields
+remain deferred Minors. Task 12 is not marked complete in this report.
