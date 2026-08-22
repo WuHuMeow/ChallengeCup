@@ -380,6 +380,28 @@ def test_is_complete_rejects_run_that_only_reaches_configured_end(tmp_path):
     assert is_complete(run_dir, request) is False
 
 
+def test_is_complete_rejects_compatibility_request_that_only_reaches_configured_end(
+    tmp_path,
+):
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=0,
+        step_length_override=1.0,
+    )
+    assert request.steps_origin == "compatibility"
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=60.0,
+        step_length=1.0,
+        configured_end_time=60.0,
+        request=request,
+    )
+
+    assert is_complete(run_dir, request) is False
+
+
 def test_is_complete_rejects_short_stats_fallback_for_formal_request(
     tmp_path, monkeypatch
 ):
@@ -396,6 +418,39 @@ def test_is_complete_rejects_short_stats_fallback_for_formal_request(
     metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
     (run_dir / "stats.xml").write_text(
         '<summary><step time="1"/></summary>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.run_pdf_matrix.EvidenceReader.validate",
+        lambda *_args: [],
+    )
+
+    assert is_complete(run_dir, request) is False
+
+
+def test_is_complete_stats_fallback_keeps_compatibility_request_seconds_first(
+    tmp_path, monkeypatch
+):
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=0,
+        step_length_override=1.0,
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=1.0,
+        step_length=1.0,
+        configured_end_time=60.0,
+        request=request,
+    )
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["final_simulation_time"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    (run_dir / "stats.xml").write_text(
+        '<summary><step time="60"/></summary>',
         encoding="utf-8",
     )
     monkeypatch.setattr(

@@ -351,9 +351,10 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             step_length = float(step_length)
             if not math.isfinite(step_length) or step_length <= 0:
                 return False
+            steps_are_explicit = request.steps_origin == "explicit"
             target_time = (
                 request.steps * step_length
-                if request.steps is not None
+                if steps_are_explicit and request.steps is not None
                 else request.duration_seconds
             )
             configured_end_time = metadata.get("configured_end_time")
@@ -361,7 +362,7 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
                 configured_end_time = float(configured_end_time)
                 if not math.isfinite(configured_end_time) or configured_end_time <= 0:
                     return False
-                if request.steps is not None:
+                if steps_are_explicit and request.steps is not None:
                     target_time = min(target_time, configured_end_time)
                 elif configured_end_time + step_length < target_time:
                     return False
@@ -382,9 +383,10 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             if not math.isfinite(md_step_len) or md_step_len <= 0:
                 return False
         step_length = float(md_step_len if md_step_len is not None else 0.1)
+        steps_are_explicit = request.steps_origin == "explicit"
         target_time = (
             request.steps * step_length
-            if request.steps is not None
+            if steps_are_explicit and request.steps is not None
             else request.duration_seconds
         )
         configured_end_time = metadata.get("configured_end_time")
@@ -392,7 +394,7 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             configured_end_time = float(configured_end_time)
             if not math.isfinite(configured_end_time) or configured_end_time <= 0:
                 return False
-            if request.steps is not None:
+            if steps_are_explicit and request.steps is not None:
                 target_time = min(target_time, configured_end_time)
             elif configured_end_time + step_length < target_time:
                 return False

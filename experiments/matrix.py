@@ -570,11 +570,27 @@ def _validate_run_directory(
     run_id: str,
     runs_root: Path,
 ) -> Path:
+    reserved_names = {"CON", "PRN", "AUX", "NUL"}
+    invalid_chars = set('<>:"/\\|?*')
     if (
         not run_id
         or run_id in {".", ".."}
         or "/" in run_id
         or "\\" in run_id
+        or any(ord(char) < 32 or char in invalid_chars for char in run_id)
+        or run_id[-1] in {".", " "}
+    ):
+        raise MatrixIntegrityError(
+            "matrix attempt run id must be a safe single path component"
+        )
+    windows_stem = run_id.split(".", 1)[0].upper()
+    if (
+        windows_stem in reserved_names
+        or (
+            len(windows_stem) == 4
+            and windows_stem[:3] in {"COM", "LPT"}
+            and windows_stem[3] in "123456789"
+        )
     ):
         raise MatrixIntegrityError(
             "matrix attempt run id must be a safe single path component"

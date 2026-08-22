@@ -784,6 +784,26 @@ def test_resume_rejects_path_traversal_run_id_before_service(tmp_path):
     assert service.requests == []
 
 
+@pytest.mark.parametrize("run_id", ["...", "evil."])
+def test_run_id_rejects_windows_alias_components(tmp_path, run_id):
+    """Reject names that Windows resolves to another directory component."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, _validate_run_directory
+
+    spec = FormalMatrix.normal()[0]
+    runs_root = tmp_path / "runs"
+    run_dir = (
+        runs_root
+        / f"i{spec.scene_id}"
+        / spec.algorithm
+        / f"x{spec.flow_multiplier:g}"
+        / f"s{spec.seed}"
+        / run_id
+    )
+
+    with pytest.raises(MatrixIntegrityError, match="safe single path component"):
+        _validate_run_directory(spec, run_dir, run_id, runs_root)
+
+
 def test_output_root_lock_fails_closed_without_mutating_manifest(tmp_path):
     """Catch two writers concurrently publishing the same matrix root."""
     from experiments.matrix import MatrixLockedError, _matrix_lock
