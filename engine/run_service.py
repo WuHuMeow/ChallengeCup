@@ -30,7 +30,7 @@ from experiments.evidence import (
 )
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
-from visualization.frame_publisher import FramePublisher
+from visualization.frame_publisher import FramePublisher, FrameRecord
 
 
 class RunService:
@@ -181,8 +181,11 @@ class RunService:
         run_id: str,
         status: RunStatus,
         reason: str = "",
-        simulation_time: float = 0.0,
+        simulation_time: float | None = None,
     ) -> None:
+        if simulation_time is None:
+            latest = self.realtime_hub.latest(run_id) or {}
+            simulation_time = float(latest.get("simulation_time", 0.0))
         self.realtime_hub.publish(
             run_id,
             {
@@ -192,6 +195,11 @@ class RunService:
                 "simulation_time": float(simulation_time),
             },
         )
+
+    def _publish_frame(self, run_id: str, record: object) -> None:
+        if not isinstance(record, FrameRecord) or record.run_id != run_id:
+            return
+        self.frame_publisher.publish(record)
 
     @staticmethod
     def _runner_accepts_argument(runner: object, name: str) -> bool:
@@ -381,7 +389,13 @@ class RunService:
                 raise
             run_kwargs: dict[str, object] = {"stop_event": stop_event}
             if self._runner_accepts_argument(runner, "frame_sink"):
-                run_kwargs["frame_sink"] = self.frame_publisher.publish
+                run_kwargs["frame_sink"] = (
+                    lambda record: self._publish_frame(run_id, record)
+                )
+            if self._runner_accepts_argument(runner, "frame_ready"):
+                run_kwargs["frame_ready"] = (
+                    lambda: self.frame_publisher.can_capture(run_id)
+                )
             returned = runner.run(window, **run_kwargs)
             result = (
                 returned

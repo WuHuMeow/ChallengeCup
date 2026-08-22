@@ -219,6 +219,23 @@ def test_paired_statistics_rejects_invalid_baseline_values(bad_value):
         paired_statistics(frame, "capacity_aware_maxpressure", "fixed_time")
 
 
+def test_paired_statistics_rejects_finite_values_that_overflow_derived_metrics():
+    from experiments.statistics import paired_statistics
+
+    frame = _paired_frame()
+    frame.loc[
+        frame["algorithm"] == "fixed_time", "avg_travel_time"
+    ] = 1e-308
+    frame.loc[
+        frame["algorithm"] == "capacity_aware_maxpressure", "avg_travel_time"
+    ] = 1e308
+
+    with pytest.raises(ValueError, match="finite"):
+        paired_statistics(
+            frame, "capacity_aware_maxpressure", "fixed_time"
+        )
+
+
 def test_paired_statistics_rejects_duplicate_pairs():
     """Catch a many-to-many merge inflating statistical significance."""
     from experiments.statistics import paired_statistics
@@ -729,6 +746,42 @@ def test_resume_rejects_attempt_run_directory_outside_matrix_root(tmp_path):
             resume=True,
             run_service=_FailedMatrixService(tmp_path / "runs"),
         )
+
+
+def test_resume_rejects_path_traversal_run_id_before_service(tmp_path):
+    """Catch a manifest run id that escapes the frozen runs root."""
+    from experiments.matrix import FormalMatrix, MatrixIntegrityError, run_matrix
+
+    spec = FormalMatrix.normal()[0]
+    run_matrix(
+        (spec,),
+        tmp_path,
+        resume=False,
+        run_service=_FailedMatrixService(tmp_path / "runs"),
+    )
+    manifest_path = tmp_path / "matrix_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    attempt = manifest["attempt_chains"][spec.run_key][0]
+    outside = tmp_path / "outside-run-id"
+    outside.mkdir(exist_ok=True)
+    traversal = r"..\..\..\..\..\outside-run-id"
+    (outside / "status.json").write_text(
+        json.dumps({
+            "run_id": traversal,
+            "status": "failed",
+            "reason": "traversal",
+        }),
+        encoding="utf-8",
+    )
+    attempt["run_id"] = traversal
+    attempt["run_dir"] = str(outside)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    service = _FailedMatrixService(tmp_path / "runs")
+
+    with pytest.raises(MatrixIntegrityError, match="run id"):
+        run_matrix((spec,), tmp_path, resume=True, run_service=service)
+
+    assert service.requests == []
 
 
 def test_output_root_lock_fails_closed_without_mutating_manifest(tmp_path):

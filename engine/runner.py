@@ -263,6 +263,7 @@ class SimulationRunner:
         stop_event: Optional[Event] = None,
         frame_sink: Callable[[object], None] | None = None,
         *,
+        frame_ready: Callable[[], bool] | None = None,
         steps: Optional[int] = None,
     ) -> RunResult | List[dict]:
         """Run for an authoritative seconds window and persist one terminal state.
@@ -342,9 +343,14 @@ class SimulationRunner:
                         frame_sink is not None
                         and now - last_frame_at >= self.frame_interval_seconds
                     ):
-                        capture = getattr(self.bridge, "capture_gui_frame", None)
-                        if capture is not None:
-                            try:
+                        try:
+                            if frame_ready is not None and not frame_ready():
+                                capture = None
+                            else:
+                                capture = getattr(
+                                    self.bridge, "capture_gui_frame", None
+                                )
+                            if capture is not None:
                                 record = capture()
                                 if record is not None:
                                     frame_sink(record)
@@ -356,13 +362,13 @@ class SimulationRunner:
                                         ),
                                         "captured_at": float(record.captured_at),
                                     })
-                                last_frame_at = now
-                            except Exception:
-                                last_frame_at = now
-                                logger.warning(
-                                    "runtime frame publication failed",
-                                    exc_info=True,
-                                )
+                            last_frame_at = now
+                        except Exception:
+                            last_frame_at = now
+                            logger.warning(
+                                "runtime frame publication failed",
+                                exc_info=True,
+                            )
                     if tick_outcome == "disconnected":
                         status = RunStatus.DISCONNECTED
                         reason = self._terminal_reason

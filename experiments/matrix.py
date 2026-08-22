@@ -570,8 +570,18 @@ def _validate_run_directory(
     run_id: str,
     runs_root: Path,
 ) -> Path:
+    if (
+        not run_id
+        or run_id in {".", ".."}
+        or "/" in run_id
+        or "\\" in run_id
+    ):
+        raise MatrixIntegrityError(
+            "matrix attempt run id must be a safe single path component"
+        )
+    resolved_root = Path(runs_root).resolve()
     expected = (
-        Path(runs_root)
+        resolved_root
         / f"i{spec.scene_id}"
         / spec.algorithm
         / f"x{spec.flow_multiplier:g}"
@@ -579,6 +589,12 @@ def _validate_run_directory(
         / run_id
     ).resolve()
     resolved = Path(run_dir).resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as exc:
+        raise MatrixIntegrityError(
+            "attempt run directory is outside the matrix runs root"
+        ) from exc
     if resolved != expected:
         raise MatrixIntegrityError(
             f"attempt run directory does not match frozen spec: {resolved}"

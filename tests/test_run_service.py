@@ -25,7 +25,7 @@ from engine.mock_bridge import MockBridge
 from engine.traci_bridge import TraCIBridge, traci
 from experiments.evidence import EvidenceReader, EvidenceWriter
 from scripts.run_pdf_matrix import build_profile_matrix, is_complete, parse_matrix_args
-from visualization.frame_publisher import FramePublisher
+from visualization.frame_publisher import FramePublisher, FrameRecord
 
 
 class RecordingRunner:
@@ -50,6 +50,13 @@ class RecordingRunner:
             sumo_version="test",
         )
         return []
+
+
+class WrongFrameRunner(RecordingRunner):
+    def run(self, window, stop_event=None, frame_sink=None):
+        if frame_sink is not None:
+            frame_sink(FrameRecord("other-run", 1, 1.0, b"wrong", 1.0))
+        return super().run(window, stop_event=stop_event, frame_sink=frame_sink)
 
 
 class ValidatedRegistry:
@@ -414,6 +421,37 @@ def test_default_smoke_flows_through_service_to_sealed_evidence(tmp_path):
     assert metadata["requested_seconds"] == 100
     assert EvidenceReader.validate(result.run_dir) == []
     assert is_complete(result.run_dir, request) is True
+
+
+def test_run_service_preserves_runner_terminal_simulation_time(tmp_path):
+    hub = RealtimeHub()
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=_smoke_evidence_runner_factory,
+        realtime_hub=hub,
+    )
+
+    result = service.run_sync(
+        RunRequest("1", "fixed_time", steps=2, output_root=tmp_path / "runs")
+    )
+
+    assert result.status is RunStatus.COMPLETED
+    assert hub.latest(result.run_id)["simulation_time"] == 2.0
+
+
+def test_run_service_rejects_frames_from_another_run(tmp_path):
+    publisher = FramePublisher()
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=WrongFrameRunner,
+        frame_publisher=publisher,
+    )
+
+    service.run_sync(
+        RunRequest("1", "fixed_time", steps=1, output_root=tmp_path / "runs")
+    )
+
+    assert publisher.latest("other-run") is None
 
 
 def test_run_service_derives_steps_from_one_second_step_length(tmp_path):

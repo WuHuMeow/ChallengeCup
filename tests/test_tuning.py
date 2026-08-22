@@ -362,6 +362,50 @@ def test_is_complete_caps_requested_steps_at_configured_end(tmp_path):
     assert is_complete(run_dir, request) is True
 
 
+def test_is_complete_rejects_run_that_only_reaches_configured_end(tmp_path):
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=0,
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=60.0,
+        step_length=1.0,
+        configured_end_time=60.0,
+        request=request,
+    )
+
+    assert is_complete(run_dir, request) is False
+
+
+def test_is_complete_rejects_short_stats_fallback_for_formal_request(
+    tmp_path, monkeypatch
+):
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=0,
+    )
+    run_dir = _write_completed_matrix_run(tmp_path, final_time=1.0)
+    metadata_path = run_dir / "run_metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["final_simulation_time"] = None
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    (run_dir / "stats.xml").write_text(
+        '<summary><step time="1"/></summary>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "scripts.run_pdf_matrix.EvidenceReader.validate",
+        lambda *_args: [],
+    )
+
+    assert is_complete(run_dir, request) is False
+
+
 def test_is_complete_rejects_non_finite_step_length(tmp_path):
     request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
     run_dir = _write_completed_matrix_run(

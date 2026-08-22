@@ -97,6 +97,43 @@ def test_realtime_hub_replays_latest_and_delivers_new_messages():
     ]
 
 
+def test_realtime_hub_serializes_cross_thread_publication_order():
+    hub = RealtimeHub()
+    first_scheduled = threading.Event()
+    release_first = threading.Event()
+    scheduled: list[str] = []
+
+    class ControlledLoop:
+        def call_soon_threadsafe(self, _callback, _queue, payload):
+            if payload["status"] == "stopping":
+                first_scheduled.set()
+                release_first.wait(timeout=1.0)
+            scheduled.append(payload["status"])
+
+    loop = ControlledLoop()
+    queue = object()
+    with hub._lock:
+        hub._subscribers["run-1"] = {(loop, queue)}
+
+    first = threading.Thread(
+        target=hub.publish,
+        args=("run-1", {"type": "status", "status": "stopping"}),
+    )
+    second = threading.Thread(
+        target=hub.publish,
+        args=("run-1", {"type": "status", "status": "terminal"}),
+    )
+    first.start()
+    assert first_scheduled.wait(timeout=1.0)
+    second.start()
+    second.join(timeout=0.1)
+    release_first.set()
+    first.join(timeout=1.0)
+    second.join(timeout=1.0)
+
+    assert scheduled == ["stopping", "terminal"]
+
+
 def test_runner_captures_frames_on_owner_thread_and_ignores_sink_failure():
     bridge = _FrameBridge()
     frames = []
@@ -117,6 +154,26 @@ def test_runner_captures_frames_on_owner_thread_and_ignores_sink_failure():
     assert bridge.capture_calls == 3
     assert [frame.sequence for frame in frames] == [1, 2, 3]
     assert len(set(bridge.capture_threads)) == 1
+
+
+def test_runner_skips_capture_when_the_frame_slot_is_unread():
+    bridge = _FrameBridge()
+    publisher = FramePublisher()
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        frame_interval_seconds=0.0,
+    )
+
+    runner.run(
+        3,
+        frame_sink=publisher.publish,
+        frame_ready=lambda: publisher.can_capture("runner"),
+    )
+
+    assert bridge.capture_calls == 1
+    assert publisher.latest("runner").sequence == 1
 
 
 def test_runner_publishes_status_metrics_and_terminal_events():

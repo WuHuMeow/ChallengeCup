@@ -27,14 +27,22 @@ class RealtimeHub:
             raise ValueError("run_id must be a non-empty string")
         payload = {"run_id": run_id, **dict(message)}
         payload["run_id"] = run_id
+        stale: list[
+            tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]
+        ] = []
         with self._lock:
             self._latest[run_id] = payload
             subscribers = tuple(self._subscribers.get(run_id, ()))
-        for loop, queue in subscribers:
-            try:
-                loop.call_soon_threadsafe(self._offer, queue, payload)
-            except RuntimeError:
-                self._remove_subscriber(run_id, loop, queue)
+            for loop, queue in subscribers:
+                try:
+                    # Keep the callback enqueue in the same critical section
+                    # as latest-state publication so cross-thread messages
+                    # retain their linearized order on each event loop.
+                    loop.call_soon_threadsafe(self._offer, queue, payload)
+                except RuntimeError:
+                    stale.append((loop, queue))
+        for loop, queue in stale:
+            self._remove_subscriber(run_id, loop, queue)
 
     def latest(self, run_id: str) -> dict[str, Any] | None:
         with self._lock:

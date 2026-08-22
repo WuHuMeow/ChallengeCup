@@ -100,6 +100,19 @@ def _strict_zero(value: object) -> bool:
     )
 
 
+def _finite_scalar(value: object, label: str) -> float:
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError(f"{label} must remain finite")
+    return numeric
+
+
+def _finite_array(values: np.ndarray, label: str) -> np.ndarray:
+    if not np.isfinite(values).all():
+        raise ValueError(f"{label} must remain finite")
+    return values
+
+
 def _safety_eligible(frame: pd.DataFrame, candidate: str) -> bool:
     missing = sorted(set(HARD_SAFETY_COLUMNS) - set(frame.columns))
     if missing:
@@ -214,26 +227,56 @@ def paired_statistics(
     if not np.isfinite(candidate_values).all():
         raise ValueError("candidate values must be finite")
 
-    differences = candidate_values - baseline_values
-    mean_difference = float(differences.mean())
-    relative_change = float(np.mean(differences / baseline_values))
-    sample_sd = float(np.std(differences, ddof=1))
+    try:
+        with np.errstate(over="raise", divide="raise", invalid="raise"):
+            differences = _finite_array(
+                np.subtract(candidate_values, baseline_values),
+                "paired differences",
+            )
+            mean_difference = _finite_scalar(
+                differences.mean(), "mean difference"
+            )
+            relative_values = _finite_array(
+                np.divide(differences, baseline_values),
+                "relative changes",
+            )
+            relative_change = _finite_scalar(
+                np.mean(relative_values), "relative change"
+            )
+            sample_sd = _finite_scalar(
+                np.std(differences, ddof=1), "sample standard deviation"
+            )
+    except FloatingPointError as exc:
+        raise ValueError("paired statistics must remain finite") from exc
     flags: list[str] = []
     if sample_sd == 0.0:
         confidence_interval = (mean_difference, mean_difference)
         cohen_dz = None
         flags.append("zero_standard_deviation")
     else:
-        margin = float(
-            student_t.ppf(0.975, len(differences) - 1)
-            * sample_sd
-            / math.sqrt(len(differences))
-        )
-        confidence_interval = (
-            mean_difference - margin,
-            mean_difference + margin,
-        )
-        cohen_dz = mean_difference / sample_sd
+        try:
+            margin = _finite_scalar(
+                student_t.ppf(0.975, len(differences) - 1)
+                * sample_sd
+                / math.sqrt(len(differences)),
+                "confidence interval margin",
+            )
+            confidence_interval = (
+                _finite_scalar(
+                    mean_difference - margin,
+                    "confidence interval lower bound",
+                ),
+                _finite_scalar(
+                    mean_difference + margin,
+                    "confidence interval upper bound",
+                ),
+            )
+            cohen_dz = _finite_scalar(
+                mean_difference / sample_sd,
+                "Cohen's dz",
+            )
+        except (FloatingPointError, OverflowError) as exc:
+            raise ValueError("paired statistics must remain finite") from exc
 
     grouped = merged.assign(difference=differences).groupby(
         ["scene_id", "flow_multiplier"], sort=False

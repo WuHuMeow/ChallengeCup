@@ -32,6 +32,16 @@ class FramePublisher:
         with self._lock:
             return self._frames.get(run_id)
 
+    def can_capture(self, run_id: str) -> bool:
+        """Return whether the current frame has been consumed or is absent."""
+        with self._lock:
+            return run_id not in self._frames
+
+    def consume(self, run_id: str) -> FrameRecord | None:
+        """Remove and return the latest frame after a client reads it."""
+        with self._lock:
+            return self._frames.pop(run_id, None)
+
     def size(self, run_id: str) -> int:
         with self._lock:
             return int(run_id in self._frames)
