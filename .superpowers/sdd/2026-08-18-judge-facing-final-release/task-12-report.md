@@ -873,3 +873,53 @@ the fifth fix round, so any formal Critical/Important result must be handled by
 the recorded breaker/adjudication process rather than an unreviewed sixth Task
 12 fix. The pre-existing `frame_sink` issue and non-canonical matrix key fields
 remain deferred Minors. Task 12 is not marked complete in this report.
+
+## Round 5 Formal Re-review and Breaker Adjudication
+
+The scoped package reviewed was
+`review-c5e2223..c8c64b7.diff` (58,527 bytes, 1,529 lines, SHA-256
+`7F3DECBC415D6BD8EE2903302270C9D0973C9942BD380FD79171DF266EC3B79E`).
+It contains the `fc1a4d7` code/test commit and the `c8c64b7` report-only commit.
+
+The formal Spec reviewer returned both original findings `ADDRESSED`, with no
+new Critical or Important breakage. It classified same-instance repeated start
+and the nonstandard close-failure restart path as non-blocking Minors, and
+classified interruption precedence during cleanup as informational.
+
+The formal Quality reviewer returned I1 `ADDRESSED`. It confirmed that the
+core of I2 is fixed: unique labels, exact partial-init handle capture, exact
+handle-only close, exact child cleanup, no production global `traci.close()`,
+and the stable existing-owner/TOCTOU/restart/idempotence tests. It nevertheless
+classified one remaining direct-API behavior as Important: discovery state is
+reset before the lifecycle lock and precondition, so a repeated or concurrent
+`start()` on the same already-running `TraCIBridge` can clear its live state
+before the second call is rejected.
+
+This is fix round 5/5, so the finding is adjudicated rather than sent through
+an unreviewed sixth fix round:
+
+- **Parked — same-instance repeated/concurrent `TraCIBridge.start()` clears
+  discovery state before rejection.** Ruling: this is a real direct-API
+  robustness gap, and the Quality severity is preserved in the record. It is
+  not load-bearing for the current production path or Tasks 13–24:
+  `RunService`/`SimulationRunner` owns one bridge in one worker, normal startup
+  is single-shot, supported restart calls `close()` before `start()`, and scene
+  switching creates the next owned run only after the old run/process finishes.
+  The five-round breaker therefore parks it for the final whole-branch review
+  and single final fix wave. If this ruling is wrong, a direct caller that
+  re-enters or concurrently calls `start()` on a live bridge can corrupt its
+  discovery state before the final wave. The smallest repair is to move reset
+  under the lifecycle gate after preconditions and add a real repeated/concurrent
+  same-instance behavior test.
+
+The exact-handle close secondary-failure restart path remains a deferred Minor:
+SUMO 1.27.1's ordinary peer-close path sets `_socket=None` before raising, so
+the subsequent exact close deregisters the label without another protocol
+send. The pre-existing `frame_sink`, unknown direct `write_status` input,
+non-canonical matrix-key fields, and same-instance start hardening remain visible
+to the final whole-branch review. No Critical finding remains.
+
+Task 12 exits its five-round loop with one parked finding and the original I1/I2
+ownership defects closed. The latest code evidence remains `fc1a4d7`; this
+post-review documentation addendum does not change code or invalidate the
+151/655/real-SUMO verification above.
