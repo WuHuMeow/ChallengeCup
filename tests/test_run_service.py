@@ -13,7 +13,7 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from core.run_models import RunRequest, RunStatus, VariantSpec
-from core.timebase import SimulationWindow
+from core.timebase import SimulationWindow, seconds_for_steps
 from core.types import Scene
 from scenes.models import SceneManifest
 from scenes.registry import SceneRegistry
@@ -319,6 +319,20 @@ def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
         "status"
     ] == "completed"
     assert len(RecordingRunner.calls) == 1
+
+
+@pytest.mark.parametrize("step_length", [1.0, 81 / 997])
+def test_explicit_steps_survive_service_window_without_float_roundtrip(
+    step_length,
+):
+    """Catch explicit steps being reconstructed with a seconds-first ceiling."""
+    request = RunRequest("1", "fixed_time", steps=100)
+
+    window = RunService._window(request, step_length)
+
+    assert window.duration_seconds == seconds_for_steps(100, step_length)
+    assert window.warmup_seconds == 0
+    assert window.explicit_steps == 100
 
 
 def test_run_service_derives_steps_from_tenth_second_scene_window(tmp_path):

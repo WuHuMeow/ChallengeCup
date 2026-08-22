@@ -72,6 +72,7 @@ class RunSpec:
     warmup_seconds: float = FORMAL_WARMUP_SECONDS
     disturbance: DisturbanceSpec | None = None
     algorithm_params: dict[str, float] = field(default_factory=dict)
+    steps: int | None = None
 
     def __post_init__(self) -> None:
         # Reuse the public request validator without binding an output path.
@@ -83,6 +84,11 @@ class RunSpec:
         object.__setattr__(self, "duration_seconds", request.duration_seconds)
         object.__setattr__(self, "warmup_seconds", request.warmup_seconds)
         object.__setattr__(self, "algorithm_params", request.algorithm_params)
+        object.__setattr__(
+            self,
+            "steps",
+            int(request.steps) if request.steps is not None else None,
+        )
 
     @property
     def intersection_id(self) -> str:
@@ -97,7 +103,7 @@ class RunSpec:
         return _canonical_json(self.to_payload())
 
     def to_payload(self) -> dict[str, object]:
-        return {
+        payload = {
             "scene_id": self.scene_id,
             "algorithm": self.algorithm,
             "flow_multiplier": self.flow_multiplier,
@@ -109,10 +115,23 @@ class RunSpec:
             ),
             "algorithm_params": dict(sorted(self.algorithm_params.items())),
         }
+        if self.steps is not None:
+            payload["steps"] = self.steps
+            payload["steps_origin"] = "explicit"
+        return payload
 
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> "RunSpec":
         values = dict(payload)
+        steps_present = "steps" in values
+        steps_origin = values.pop("steps_origin", None)
+        if steps_present and values["steps"] is None:
+            if steps_origin not in (None, "none"):
+                raise ValueError("null RunSpec steps require steps_origin 'none'")
+        elif steps_present and steps_origin != "explicit":
+            raise ValueError("RunSpec explicit steps require steps_origin 'explicit'")
+        if not steps_present and steps_origin is not None:
+            raise ValueError("RunSpec steps_origin requires explicit steps")
         disturbance = values.get("disturbance")
         if isinstance(disturbance, dict):
             values["disturbance"] = DisturbanceSpec(**disturbance)
@@ -129,6 +148,7 @@ class RunSpec:
             output_root=output_root,
             disturbance=self.disturbance,
             algorithm_params=self.algorithm_params,
+            steps=self.steps,
         )
 
 
@@ -599,8 +619,8 @@ def _validate_result_identity(spec: RunSpec, row: Mapping[str, str]) -> None:
         "intersection_id": spec.intersection_id,
         "algorithm": spec.algorithm,
         "matrix_kind": spec.matrix_kind,
-        "steps": "",
-        "steps_origin": "none",
+        "steps": str(spec.steps) if spec.steps is not None else "",
+        "steps_origin": "explicit" if spec.steps is not None else "none",
     }
     for name, expected in expected_text.items():
         if str(row.get(name, "")) != expected:
@@ -809,8 +829,10 @@ def _result_rows(
                 "disturbance_intensity": disturbance.intensity if disturbance else "",
                 "duration_seconds": spec.duration_seconds,
                 "warmup_seconds": spec.warmup_seconds,
-                "steps": "",
-                "steps_origin": "none",
+                "steps": spec.steps if spec.steps is not None else "",
+                "steps_origin": (
+                    "explicit" if spec.steps is not None else "none"
+                ),
                 "algorithm_params": _canonical_json(spec.algorithm_params),
                 "run_id": entry.run_id,
                 "status": entry.status,

@@ -93,6 +93,13 @@ def build_profile_matrix(args: argparse.Namespace) -> tuple[RunSpec, ...]:
         else set(FORMAL_ALGORITHMS)
     )
     flows = {1.0} if args.profile == "smoke" else set(FORMAL_FLOWS)
+    explicit_steps = (
+        100
+        if args.profile == "smoke"
+        and args.duration_seconds is None
+        and args.warmup_seconds is None
+        else None
+    )
     return tuple(
         RunSpec(
             spec.scene_id,
@@ -102,6 +109,7 @@ def build_profile_matrix(args: argparse.Namespace) -> tuple[RunSpec, ...]:
             duration_seconds=duration,
             warmup_seconds=warmup,
             algorithm_params=spec.algorithm_params,
+            steps=explicit_steps,
         )
         for spec in FormalMatrix.normal()
         for selected_seed in selected_seeds

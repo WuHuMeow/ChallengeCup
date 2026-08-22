@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 
@@ -32,12 +32,20 @@ class SimulationWindow:
 
     duration_seconds: float
     warmup_seconds: float
+    explicit_steps: int | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         duration = _finite_positive("duration_seconds", self.duration_seconds)
         warmup = _finite_non_negative("warmup_seconds", self.warmup_seconds)
         if warmup >= duration:
             raise ValueError("warmup_seconds must be less than duration_seconds")
+        explicit_steps = self.explicit_steps
+        if explicit_steps is not None and (
+            isinstance(explicit_steps, bool)
+            or not isinstance(explicit_steps, int)
+            or explicit_steps <= 0
+        ):
+            raise ValueError("explicit_steps must be an integer > 0")
         object.__setattr__(self, "duration_seconds", duration)
         object.__setattr__(self, "warmup_seconds", warmup)
 

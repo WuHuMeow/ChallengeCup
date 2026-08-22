@@ -239,7 +239,10 @@ class SimulationRunner:
         if window is not None and steps is not None:
             raise ValueError("provide either window or steps, not both")
         requested = steps if steps is not None else window
-        seconds_authoritative = isinstance(requested, SimulationWindow)
+        seconds_authoritative = (
+            isinstance(requested, SimulationWindow)
+            and requested.explicit_steps is None
+        )
         legacy_return = not isinstance(requested, SimulationWindow)
         resolved_window, target_steps = self._resolve_window(requested)
         target_seconds = resolved_window.duration_seconds
@@ -565,7 +568,12 @@ class SimulationRunner:
     ) -> tuple[SimulationWindow, int]:
         step_length = self._effective_step_length()
         if isinstance(requested, SimulationWindow):
-            return requested, steps_for_seconds(requested.duration_seconds, step_length)
+            target_steps = (
+                requested.explicit_steps
+                if requested.explicit_steps is not None
+                else steps_for_seconds(requested.duration_seconds, step_length)
+            )
+            return requested, target_steps
         if requested is None:
             requested = int(get_config().get("sumo.default_simulation_steps", 36000))
         if isinstance(requested, bool) or not isinstance(requested, int) or requested <= 0:

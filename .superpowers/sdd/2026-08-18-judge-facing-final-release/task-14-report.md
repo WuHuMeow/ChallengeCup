@@ -220,3 +220,70 @@ All commands used `D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.ve
 - No real 540-run SUMO execution was performed. `progress.md`, `赛题资料.7z`,
   `data/intersection_data`, and all scratch/basetemp directories remain outside
   the explicit staging set.
+
+## Fix round 2: smoke requests 100 actual simulation steps
+
+This round preserves the earlier seconds-first formal contract and the quick
+profile's 600-second meaning. The authoritative plan explicitly says “quick
+duration to 600 seconds, smoke to 100 steps” (see
+`docs/superpowers/plans/2026-08-18-judge-facing-final-release.md:284`), and the
+Task 24 execution checklist calls for a “100-step scene 1 smoke” alongside the
+“600-second scene 1 quick demo” (same plan, line 1178). Smoke is therefore 100
+simulation ticks, not 100 seconds.
+
+### Root cause and RED evidence
+
+- Historical real smoke RED at base `160c230` (`run
+  738880afb5a2`) showed scene 1's `step_length=1.0` produced manifest
+  `derived_steps=10`: `build_profile_matrix()` represented the default smoke
+  as a 10-second seconds-first `RunSpec`, and `RunSpec.to_request()` therefore
+  emitted `steps=None / steps_origin=none`.
+- New profile/matrix RED:
+  `.venv/Scripts/python.exe -m pytest tests/test_formal_matrix.py
+  tests/test_tuning.py -q -k "formal_cli_profile_builds_exact_frozen_540_specs
+  or smoke_cli_accepts_explicit_seed_and_seconds or
+  default_smoke_cli_requests_100_actual_steps or quick_cli_defaults_to_three_frozen_seeds
+  or smoke_matrix_publishes_and_resumes_exact_100_step_evidence"
+  ` -> `2 failed, 3 passed`; default smoke lacked explicit steps and the
+  matrix service could not produce a 100-step request.
+- New exact-tick RED:
+  `.venv/Scripts/python.exe -m pytest tests/test_run_service.py
+  tests/test_runner_channel.py -q -k
+  "explicit_steps_survive_service_window_without_float_roundtrip or
+  explicit_window_executes_exact_tick_count"` -> `4 failed` because
+  `SimulationWindow` had no exact-step marker. Independently,
+  `seconds_for_steps(100, 81/997)` followed by the seconds-first ceiling
+  returned `101`, proving that converting explicit steps to seconds and back
+  is not exact for every valid scene timebase.
+
+### GREEN implementation and evidence
+
+- Default smoke now constructs `RunSpec(steps=100)` and persists
+  `steps=100 / steps_origin=explicit` through `RunRequest`, matrix manifest,
+  matrix results JSON, and matrix CSV. Smoke invocations with either explicit
+  duration or warmup retain the existing seconds-first override behavior.
+- Formal and quick `RunSpec` payloads remain seconds-first (`steps` and
+  `steps_origin` absent in the frozen formal payload, and `steps=None` in the
+  resulting request), preserving existing formal run keys/digests and quick's
+  600-second semantics. Explicit RunSpec payloads include both fields in their
+  run key and reject inconsistent `steps_origin` on reload.
+- `SimulationWindow.explicit_steps` is an internal, non-comparison marker.
+  RunService carries it from explicit `RunRequest` to the runner; both
+  `RunService` manifest `derived_steps` and `SimulationRunner` tick loops use
+  the exact integer, while seconds-first windows still use the existing
+  coverage ceiling. This prevents the `81/997` 100-to-101 tick regression.
+- Focused GREEN after the fixes:
+  `... -k "...smoke... or ...explicit_steps..."` -> `9 passed`.
+- Covering GREEN:
+  `python -m pytest tests/test_formal_matrix.py tests/test_analyze_matrix.py
+  tests/test_experiments.py tests/test_run_models.py -q
+  --basetemp=.task14-r2-covering-core` -> `123 passed, 1 warning`;
+  `python -m pytest tests/test_run_service.py tests/test_runner_channel.py
+  tests/test_tuning.py -q --basetemp=.task14-r2-covering-lifecycle` ->
+  `116 passed, 1 warning`;
+  `python -m pytest tests/test_validation_scripts.py tests/test_evidence_contract.py
+  -q --basetemp=.task14-r2-covering-evidence` -> `81 passed, 1 warning`.
+
+The existing warning is the repository's denied `.pytest_cache` write; all
+isolated basetemp results above passed. No real 540-run SUMO execution was
+performed in this fix round, and this report does not declare Task 14 complete.

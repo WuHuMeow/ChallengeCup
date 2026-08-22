@@ -764,7 +764,29 @@ def test_formal_cli_profile_builds_exact_frozen_540_specs(tmp_path):
     }
     assert all(spec.duration_seconds == 3600 for spec in specs)
     assert all(spec.warmup_seconds == 600 for spec in specs)
+    assert all("steps" not in spec.to_payload() for spec in specs)
+    assert all("steps_origin" not in spec.to_payload() for spec in specs)
+    assert all(spec.to_request(tmp_path / "runs").steps is None for spec in specs)
+    assert all(
+        spec.to_request(tmp_path / "runs").steps_origin == "none"
+        for spec in specs
+    )
     assert args.resume is True
+
+
+def test_formal_runspec_roundtrip_accepts_explicit_none_steps(tmp_path):
+    """Catch legacy seconds-first payloads with an explicit null step field."""
+    from experiments.matrix import FormalMatrix, RunSpec
+
+    spec = FormalMatrix.normal()[0]
+    payload = spec.to_payload()
+    payload["steps"] = None
+    payload["steps_origin"] = "none"
+
+    restored = RunSpec.from_payload(payload)
+
+    assert restored.run_key == spec.run_key
+    assert restored.to_request(tmp_path / "runs").steps is None
 
 
 @pytest.mark.parametrize(
@@ -802,6 +824,47 @@ def test_smoke_cli_accepts_explicit_seed_and_seconds(tmp_path):
     assert {spec.seed for spec in specs} == {7}
     assert {spec.duration_seconds for spec in specs} == {20}
     assert {spec.warmup_seconds for spec in specs} == {5}
+    requests = [spec.to_request(tmp_path / "runs") for spec in specs]
+    assert {request.steps for request in requests} == {None}
+    assert {request.steps_origin for request in requests} == {"none"}
+
+
+def test_default_smoke_cli_requests_100_actual_steps(tmp_path):
+    """Catch smoke duration being converted through a scene-specific timebase."""
+    from scripts.run_pdf_matrix import build_profile_matrix, parse_matrix_args
+
+    args = parse_matrix_args([
+        "--profile", "smoke", "--output-root", str(tmp_path)
+    ])
+
+    specs = build_profile_matrix(args)
+    requests = [spec.to_request(tmp_path / "runs") for spec in specs]
+
+    assert len(specs) == 1
+    assert specs[0].to_payload()["steps"] == 100
+    assert specs[0].to_payload()["steps_origin"] == "explicit"
+    assert {request.steps for request in requests} == {100}
+    assert {request.steps_origin for request in requests} == {"explicit"}
+    restored = type(specs[0]).from_payload(specs[0].to_payload())
+    assert restored.run_key == specs[0].run_key
+
+
+@pytest.mark.parametrize(
+    "override",
+    (["--duration-seconds", "20"], ["--warmup-seconds", "5"]),
+)
+def test_any_explicit_smoke_window_flag_uses_seconds_first(tmp_path, override):
+    """Catch one explicit time flag being silently ignored by 100-step smoke."""
+    from scripts.run_pdf_matrix import build_profile_matrix, parse_matrix_args
+
+    args = parse_matrix_args([
+        "--profile", "smoke", "--output-root", str(tmp_path), *override
+    ])
+
+    request = build_profile_matrix(args)[0].to_request(tmp_path / "runs")
+
+    assert request.steps is None
+    assert request.steps_origin == "none"
 
 
 def test_quick_cli_defaults_to_three_frozen_seeds(tmp_path):
@@ -815,3 +878,9 @@ def test_quick_cli_defaults_to_three_frozen_seeds(tmp_path):
     specs = build_profile_matrix(args)
     assert len(specs) == 54
     assert {spec.seed for spec in specs} == {42, 43, 44}
+    assert all(spec.duration_seconds == 600 for spec in specs)
+    assert all(spec.to_request(tmp_path / "runs").steps is None for spec in specs)
+    assert all(
+        spec.to_request(tmp_path / "runs").steps_origin == "none"
+        for spec in specs
+    )

@@ -264,7 +264,11 @@ class RunService:
             self._verify_scene_identity(manifest, scene)
             step_length = self._step_length(request, manifest.step_length)
             window = self._window(request, step_length)
-            derived_steps = steps_for_seconds(window.duration_seconds, step_length)
+            derived_steps = (
+                window.explicit_steps
+                if window.explicit_steps is not None
+                else steps_for_seconds(window.duration_seconds, step_length)
+            )
             artifacts.write_manifest({
                 "requested_seconds": window.duration_seconds,
                 "warmup_seconds": window.warmup_seconds,
@@ -697,6 +701,7 @@ class RunService:
             return SimulationWindow(
                 seconds_for_steps(request.steps, step_length),
                 0.0,
+                explicit_steps=request.steps,
             )
         return SimulationWindow(request.duration_seconds, request.warmup_seconds)
 

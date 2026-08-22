@@ -522,6 +522,41 @@ class _FakeService:
         )
 
 
+class _CompletedMatrixService:
+    def __init__(self, root):
+        self.root = Path(root)
+        self.requests = []
+
+    def run_sync(self, request):
+        self.requests.append(request)
+        parent = (
+            self.root
+            / f"i{request.intersection_id}"
+            / request.algorithm
+            / f"x{request.flow_multiplier:g}"
+            / f"s{request.seed}"
+        )
+        parent.mkdir(parents=True, exist_ok=True)
+        step_length = 1.0
+        run_dir = _write_completed_matrix_run(
+            parent,
+            final_time=float(request.steps) * step_length,
+            step_length=step_length,
+            request=request,
+            run_id=f"smoke-{len(self.requests)}",
+        )
+        return RunResult(
+            run_id=run_dir.name,
+            status=RunStatus.COMPLETED,
+            reason="",
+            run_dir=run_dir,
+            summary=json.loads(
+                (run_dir / "summary.json").read_text(encoding="utf-8")
+            ),
+            algorithm=request.algorithm,
+        )
+
+
 class _InvalidLiveResultService:
     def __init__(self, root):
         self.root = root
@@ -739,6 +774,74 @@ def test_matrix_uses_canonical_disk_summary_for_live_results(tmp_path):
     assert results[0].summary["metrics"]["throughput"] == 1
     rows = list(csv.DictReader((tmp_path / "matrix.csv").open(encoding="utf-8")))
     assert rows[0]["throughput"] == "1"
+
+
+def test_smoke_matrix_publishes_and_resumes_exact_100_step_evidence(tmp_path):
+    """Catch explicit smoke identity loss in artifacts or completed resume."""
+    from experiments.matrix import load_sealed_matrix_rows, run_matrix
+    from scripts.run_pdf_matrix import build_profile_matrix, parse_matrix_args
+
+    specs = build_profile_matrix(parse_matrix_args([
+        "--profile", "smoke", "--output-root", str(tmp_path)
+    ]))
+    first_service = _CompletedMatrixService(tmp_path / "runs")
+
+    first = run_matrix(
+        specs,
+        tmp_path,
+        resume=False,
+        run_service=first_service,
+    )
+
+    assert len(first_service.requests) == 1
+    assert first_service.requests[0].steps == 100
+    assert first_service.requests[0].steps_origin == "explicit"
+    manifest_path = tmp_path / "matrix_manifest.json"
+    results_path = tmp_path / "matrix_results.json"
+    csv_path = tmp_path / "matrix.csv"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    result_row = json.loads(results_path.read_text(encoding="utf-8"))["rows"][0]
+    csv_row = next(csv.DictReader(csv_path.open(encoding="utf-8")))
+    assert manifest["specs"][0]["request"]["steps"] == 100
+    assert manifest["specs"][0]["request"]["steps_origin"] == "explicit"
+    assert result_row["steps"] == 100
+    assert result_row["steps_origin"] == "explicit"
+    assert csv_row["steps"] == "100"
+    assert csv_row["steps_origin"] == "explicit"
+    sealed_rows = load_sealed_matrix_rows(csv_path, specs)
+    assert sealed_rows[0]["steps"] == "100"
+    assert sealed_rows[0]["steps_origin"] == "explicit"
+
+    immutable_paths = [manifest_path, results_path, csv_path]
+    run_dir = first.entries[0].run_dir
+    run_manifest = json.loads(
+        (run_dir / "manifest.json").read_text(encoding="utf-8")
+    )
+    run_metadata = json.loads(
+        (run_dir / "run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert run_manifest["derived_steps"] == 100
+    assert run_manifest["requested_seconds"] == 100.0
+    assert run_manifest["warmup_seconds"] == 0.0
+    assert run_metadata["requested_steps"] == 100
+    assert run_metadata["requested_seconds"] == 100.0
+    assert run_metadata["warmup_seconds"] == 0.0
+    immutable_paths.extend(path for path in run_dir.rglob("*") if path.is_file())
+    before = {path: path.read_bytes() for path in immutable_paths}
+    resume_service = _CompletedMatrixService(tmp_path / "runs")
+
+    resumed = run_matrix(
+        specs,
+        tmp_path,
+        resume=True,
+        run_service=resume_service,
+    )
+
+    assert resume_service.requests == []
+    assert resumed.skipped == 1
+    assert resumed.retried == 0
+    assert resumed.entries == first.entries
+    assert {path: path.read_bytes() for path in immutable_paths} == before
 
 
 def test_tuning_writes_all_candidates_selected_params_and_holdout(tmp_path):

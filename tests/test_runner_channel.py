@@ -14,7 +14,7 @@ from algorithms.capacity_aware_max_pressure import (
 )
 from core.movements import MovementKey, MovementState, PhaseMovementState
 from core.run_models import RunStatus
-from core.timebase import SimulationWindow
+from core.timebase import SimulationWindow, seconds_for_steps
 from core.types import ActionResult, ControlAction, JointState, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
 from engine.edge_channel import EdgeChannel, EdgeMessage
@@ -585,6 +585,29 @@ def test_half_second_channel_releases_after_exactly_two_ticks(tmp_path):
     runner.run(5)
 
     assert algorithm.steps == [0, 1, 2]
+
+
+@pytest.mark.parametrize("step_length", [1.0, 81 / 997])
+def test_explicit_window_executes_exact_tick_count(tmp_path, step_length):
+    """Catch floating-point seconds roundtrips adding an explicit smoke tick."""
+    algorithm = CountingAlgorithm()
+    bridge = MockBridge(step_length=step_length)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+        step_length=step_length,
+    )
+
+    runner.run(SimulationWindow(
+        seconds_for_steps(100, step_length),
+        0.0,
+        explicit_steps=100,
+    ))
+
+    assert len(algorithm.steps) == 100
+    assert bridge._current_step == 100
 
 
 def test_delayed_valid_control_action_is_applied_before_message_expiry(tmp_path):
