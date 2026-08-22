@@ -23,8 +23,8 @@ from algorithms.registry import get_algorithm_registry  # noqa: E402
 ALGOS = [
     spec.key for spec in get_algorithm_registry().list(formal_only=True)
 ]
-FLOW_MULTIPLIERS = [1.0, 1.5]
-SEEDS = [42, 123, 456]
+FLOW_MULTIPLIERS = [1.0, 1.25]
+SEEDS = [42, 43, 44]
 ONE_SECOND_INTERSECTIONS = set(range(1, 11)) | {14}
 
 JOBS = [

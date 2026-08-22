@@ -15,20 +15,101 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from algorithms.registry import get_algorithm_registry  # noqa: E402
 from core.run_models import RunRequest, RunResult, RunStatus  # noqa: E402
 from engine.artifacts import RunArtifacts  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
 from experiments.evidence import EvidenceReader  # noqa: E402
-from experiments.tuning import tune_ca_mp  # noqa: E402
-
-
-ALGORITHMS = tuple(
-    spec.key for spec in get_algorithm_registry().list(formal_only=True)
+from experiments.matrix import (  # noqa: E402
+    FORMAL_ALGORITHMS,
+    FORMAL_FLOWS,
+    FORMAL_SEEDS,
+    FormalMatrix,
+    RunSpec,
+    run_matrix,
 )
-FLOW_MULTIPLIERS = (1.0, 1.5)
-SEEDS = (42, 123, 456)
+
+
+ALGORITHMS = FORMAL_ALGORITHMS
+FLOW_MULTIPLIERS = FORMAL_FLOWS
+SEEDS = FORMAL_SEEDS
 REQUIRED_ARTIFACTS = RunArtifacts.required_output_names()
+
+
+def parse_matrix_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the bounded smoke/quick and frozen formal matrix profiles."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--profile", choices=("smoke", "quick", "formal"), default="formal"
+    )
+    parser.add_argument("--duration-seconds", type=float, default=None)
+    parser.add_argument("--warmup-seconds", type=float, default=None)
+    parser.add_argument("--output-root", type=Path, required=True)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--seed", type=int, default=None)
+    return parser.parse_args(argv)
+
+
+def build_profile_matrix(args: argparse.Namespace) -> tuple[RunSpec, ...]:
+    """Build a CLI profile without allowing formal-factor overrides."""
+    if args.profile == "formal":
+        if args.seed is not None:
+            raise ValueError("formal profile does not accept --seed")
+        if args.duration_seconds not in (None, 3600.0):
+            raise ValueError("formal profile duration is frozen at 3600 seconds")
+        if args.warmup_seconds not in (None, 600.0):
+            raise ValueError("formal profile warmup is frozen at 600 seconds")
+        return FormalMatrix.all()
+
+    defaults = {
+        "smoke": (10.0, 0.0),
+        "quick": (600.0, 60.0),
+    }
+    default_duration, default_warmup = defaults[args.profile]
+    duration = (
+        default_duration if args.duration_seconds is None else args.duration_seconds
+    )
+    warmup = default_warmup if args.warmup_seconds is None else args.warmup_seconds
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("duration-seconds must be finite and > 0")
+    if (
+        not math.isfinite(warmup)
+        or warmup < 0
+        or warmup >= duration
+    ):
+        raise ValueError("warmup-seconds must be finite, >= 0, and less than duration")
+    selected_seeds = (
+        (42,)
+        if args.profile == "smoke" and args.seed is None
+        else FORMAL_SEEDS
+        if args.profile == "quick" and args.seed is None
+        else (args.seed,)
+    )
+    if any(seed is None or seed < 0 for seed in selected_seeds):
+        raise ValueError("seed must be >= 0")
+    scenes = {"smoke": {"1"}, "quick": {"1", "11", "16"}}[args.profile]
+    algorithms = (
+        {"fixed_time"}
+        if args.profile == "smoke"
+        else set(FORMAL_ALGORITHMS)
+    )
+    flows = {1.0} if args.profile == "smoke" else set(FORMAL_FLOWS)
+    return tuple(
+        RunSpec(
+            spec.scene_id,
+            spec.algorithm,
+            spec.flow_multiplier,
+            selected_seed,
+            duration_seconds=duration,
+            warmup_seconds=warmup,
+            algorithm_params=spec.algorithm_params,
+        )
+        for spec in FormalMatrix.normal()
+        for selected_seed in selected_seeds
+        if spec.scene_id in scenes
+        and spec.algorithm in algorithms
+        and spec.flow_multiplier in flows
+        and spec.seed == 42
+    )
 
 
 def _selected_params(output_root: Path) -> dict[str, float]:
@@ -242,7 +323,11 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             return False
 
         requested_steps = metadata.get("requested_steps")
-        if requested_steps is not None and requested_steps != request.steps:
+        if (
+            request.steps_origin == "explicit"
+            and requested_steps is not None
+            and requested_steps != request.steps
+        ):
             return False
 
         # Primary: trust recorded final_simulation_time in metadata
@@ -255,7 +340,11 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             step_length = float(step_length)
             if not math.isfinite(step_length) or step_length <= 0:
                 return False
-            target_time = request.steps * step_length
+            target_time = (
+                request.steps * step_length
+                if request.steps is not None
+                else request.duration_seconds
+            )
             configured_end_time = metadata.get("configured_end_time")
             if configured_end_time is not None:
                 configured_end_time = float(configured_end_time)
@@ -406,32 +495,19 @@ def run_pdf_matrix(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, required=True)
-    parser.add_argument("--steps", type=int, default=36000)
-    parser.add_argument("--quick", action="store_true")
-    parser.add_argument("--no-resume", action="store_true")
-    parser.add_argument("--tune", action="store_true")
-    args = parser.parse_args()
-    selected = None
-    if args.tune:
-        selected = tune_ca_mp(
-            args.output_root,
-            steps=100 if args.quick else args.steps,
-        )
-    intersections = ("1", "11", "16") if args.quick else None
-    steps = 100 if args.quick else args.steps
-    results = run_pdf_matrix(
-        args.output_root,
-        steps=steps,
-        resume=not args.no_resume,
-        intersections=intersections,
-        selected_params=selected,
-    )
-    counts = {}
-    for result in results:
-        counts[result.status.value] = counts.get(result.status.value, 0) + 1
-    print(json.dumps({"runs": len(results), "statuses": counts}, ensure_ascii=False))
+    args = parse_matrix_args()
+    try:
+        specs = build_profile_matrix(args)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    report = run_matrix(specs, args.output_root, args.resume)
+    print(json.dumps({
+        "runs": len(report.entries),
+        "completed": report.completed,
+        "failed": report.failed,
+        "skipped": report.skipped,
+        "retried": report.retried,
+    }, ensure_ascii=False))
 
 
 if __name__ == "__main__":

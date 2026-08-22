@@ -24,7 +24,26 @@ smoke:
   steps: 100
 
 experiments:
+  formal_schema_version: 1
+  formal_expected_runs: 540
+  formal_algorithms:
+    - fixed_time
+    - classic_maxpressure
+    - capacity_aware_maxpressure
+  formal_flow_multipliers: [1.0, 1.25]
   formal_seeds: [42, 43, 44]
+  formal_duration_seconds: 3600
+  formal_warmup_seconds: 600
+  formal_disturbance_seed: 42
+  formal_disturbance_flow_multiplier: 1.0
+  hard_safety_gates:
+    - collision_count
+    - red_light_count
+    - illegal_transition_count
+  observational_safety_metrics:
+    - harsh_braking_count
+    - teleport_count
+    - potential_conflict_count
 
 scene:
   # 20 路口 × 2 流量等级 = 40 个变体

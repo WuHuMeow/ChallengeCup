@@ -19,6 +19,7 @@ from core.run_models import RunRequest, RunResult
 from core.types import TrafficLevel
 from engine.artifacts import RunArtifacts
 from engine.run_service import RunService
+from experiments.matrix import FORMAL_ALGORITHMS, FORMAL_SEEDS
 from scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
@@ -55,13 +56,11 @@ def run_batch(
     if intersection_ids is None:
         intersection_ids = [str(index) for index in range(1, 21)]
     if algorithms is None:
-        algorithms = [
-            spec.key for spec in get_algorithm_registry().list(formal_only=True)
-        ]
+        algorithms = list(FORMAL_ALGORITHMS)
     if levels is None:
         levels = [TrafficLevel.NORMAL, TrafficLevel.HIGH]
     if seeds is None:
-        seeds = [42, 43, 44]
+        seeds = list(FORMAL_SEEDS)
     if output_root is None:
         output_root = get_config().path("paths.output_root") / "runs"
     service = run_service or RunService(output_root=output_root)

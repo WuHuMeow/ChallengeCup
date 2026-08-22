@@ -19,9 +19,14 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "docs" / "ia-ib-final-verification.md"
 sys.path.insert(0, str(ROOT))
 
-from core.run_models import RunRequest, RunStatus  # noqa: E402
+from core.run_models import DisturbanceSpec, RunRequest, RunStatus  # noqa: E402
 from engine.run_service import RunService  # noqa: E402
 from experiments.evidence import EvidenceReader  # noqa: E402
+from experiments.matrix import (  # noqa: E402
+    FormalMatrix,
+    RunSpec,
+    run_matrix as execute_formal_matrix,
+)
 from scripts.run_pdf_matrix import (  # noqa: E402
     build_pdf_matrix,
     is_complete,
@@ -430,8 +435,9 @@ def _matrix_row_identity(row: dict[str, str]) -> tuple[str, str, float, int, int
 
 def audit_matrix_csv(
     matrix_csv: Path,
-    expected: int = 360,
+    expected: int = 540,
     expected_requests: list[RunRequest] | None = None,
+    expected_specs: tuple[RunSpec, ...] | None = None,
 ) -> CheckResult:
     """Audit an existing combined matrix without launching new SUMO runs."""
     started = time.perf_counter()
@@ -444,7 +450,11 @@ def audit_matrix_csv(
     keys = set()
     for row in rows:
         try:
-            keys.add(_matrix_row_identity(row))
+            keys.add(
+                row["run_key"]
+                if expected_specs is not None
+                else _matrix_row_identity(row)
+            )
         except (KeyError, TypeError, ValueError) as exc:
             errors.append(f"invalid matrix identity: {exc}")
     if len(rows) != expected or len(keys) != expected:
@@ -461,6 +471,15 @@ def audit_matrix_csv(
                 f"missing={len(expected_keys - keys)} "
                 f"unexpected={len(keys - expected_keys)}"
             )
+    if expected_specs is not None:
+        actual_run_keys = {row.get("run_key", "") for row in rows}
+        expected_run_keys = {spec.run_key for spec in expected_specs}
+        if actual_run_keys != expected_run_keys:
+            errors.append(
+                "request set mismatch: "
+                f"missing={len(expected_run_keys - actual_run_keys)} "
+                f"unexpected={len(actual_run_keys - expected_run_keys)}"
+            )
     for row in rows:
         run_id = row.get("run_id", "unknown")
         if row.get("status") != RunStatus.COMPLETED.value:
@@ -469,12 +488,26 @@ def audit_matrix_csv(
             )
             continue
         try:
+            steps_value = row.get("steps", "").strip()
+            disturbance_kind = row.get("disturbance_kind", "").strip()
+            disturbance = None
+            if disturbance_kind:
+                disturbance = DisturbanceSpec(
+                    kind=disturbance_kind,
+                    begin_seconds=float(row["disturbance_begin_seconds"]),
+                    end_seconds=float(row["disturbance_end_seconds"]),
+                    target=row["disturbance_target"],
+                    intensity=float(row["disturbance_intensity"]),
+                )
             request = RunRequest(
                 intersection_id=row["intersection_id"],
                 algorithm=row["algorithm"],
-                steps=int(row["steps"]),
+                steps=int(steps_value) if steps_value else None,
+                duration_seconds=float(row.get("duration_seconds") or 3600.0),
+                warmup_seconds=float(row.get("warmup_seconds") or 600.0),
                 flow_multiplier=float(row["flow_multiplier"]),
                 seed=int(row["seed"]),
+                disturbance=disturbance,
             )
             run_dir = Path(row["run_dir"])
             if not run_dir.is_absolute():
@@ -501,6 +534,46 @@ def verify_matrix(
     matrix_csv: Path | None = None,
 ) -> CheckResult:
     started = time.perf_counter()
+    if not quick:
+        specs = FormalMatrix.all()
+        matrix_root = verification_root / "matrix"
+        if matrix_csv is not None:
+            return audit_matrix_csv(
+                matrix_csv,
+                expected=540,
+                expected_specs=specs,
+            )
+        try:
+            report = execute_formal_matrix(specs, matrix_root, resume=True)
+            errors = [
+                f"{entry.run_id}: {entry.status}: {entry.reason}"
+                for entry in report.entries
+                if entry.status != RunStatus.COMPLETED.value
+            ]
+            if len(report.entries) != 540:
+                errors.append(f"expected 540 rows, got {len(report.entries)}")
+            return _result(
+                "matrix",
+                started,
+                "python scripts/run_pdf_matrix.py --profile formal --resume "
+                f"--output-root {matrix_root}",
+                [],
+                errors,
+                mode="audited" if report.skipped == 540 else "executed",
+                evidence_paths=[
+                    str(matrix_root / "matrix.csv"),
+                    str(matrix_root / "matrix_manifest.json"),
+                    str(matrix_root / "matrix_results.json"),
+                ],
+            )
+        except Exception as exc:
+            return _result(
+                "matrix",
+                started,
+                "python scripts/run_pdf_matrix.py --profile formal --resume",
+                [],
+                [f"{type(exc).__name__}: {exc}"],
+            )
     intersections = ("1", "11", "16") if quick else None
     steps = 100 if quick else 36000
     expected = 54 if quick else 360
@@ -567,7 +640,7 @@ def verify_matrix(
         started,
         (
             "python scripts/run_pdf_matrix.py "
-            f"{'--quick ' if quick else ''}--output-root "
+            "--profile quick --resume --output-root "
             f"{verification_root / 'matrix'}"
         ),
         [],

@@ -375,6 +375,40 @@ def test_audit_matrix_csv_rejects_the_wrong_request_set(tmp_path, monkeypatch):
     assert any("request set mismatch" in error for error in result.errors)
 
 
+def test_audit_matrix_csv_accepts_seconds_first_formal_run_spec(tmp_path, monkeypatch):
+    """Catch the release auditor requiring removed legacy step identities."""
+    from experiments.matrix import RunSpec
+    from scripts import verify_ia_ib
+
+    spec = RunSpec("1", "fixed_time", 1.0, 42)
+    matrix_csv = tmp_path / "matrix.csv"
+    matrix_csv.write_text(
+        "run_key,scene_id,intersection_id,algorithm,flow_multiplier,seed,"
+        "matrix_kind,disturbance_kind,duration_seconds,warmup_seconds,"
+        "run_id,status,reason,run_dir\n"
+        f'"{spec.run_key.replace(chr(34), chr(34) * 2)}",1,1,fixed_time,'
+        f"1.0,42,normal,,3600,600,run-1,completed,,{tmp_path / 'run-1'}\n",
+        encoding="utf-8",
+    )
+    checked = []
+    monkeypatch.setattr(
+        verify_ia_ib,
+        "is_complete",
+        lambda run_dir, request: checked.append(request) or True,
+    )
+
+    result = verify_ia_ib.audit_matrix_csv(
+        matrix_csv,
+        expected=1,
+        expected_specs=(spec,),
+    )
+
+    assert result.status == "pass"
+    assert checked[0].steps is None
+    assert checked[0].duration_seconds == 3600
+    assert checked[0].warmup_seconds == 600
+
+
 def test_verify_matrix_rejects_new_completed_result_below_horizon(
     tmp_path,
     monkeypatch,

@@ -52,8 +52,8 @@ def test_pdf_matrix_has_exact_360_requests():
         "classic_maxpressure",
         "capacity_aware_maxpressure",
     }
-    assert {request.flow_multiplier for request in requests} == {1.0, 1.5}
-    assert {request.seed for request in requests} == {42, 123, 456}
+    assert {request.flow_multiplier for request in requests} == {1.0, 1.25}
+    assert {request.seed for request in requests} == {42, 43, 44}
     assert all(request.steps == 36000 for request in requests)
 
 
@@ -217,7 +217,13 @@ def _write_completed_matrix_run(
             "algorithm_params": (
                 dict(request.algorithm_params) if request is not None else {}
             ),
-            "requested_steps": requested_steps,
+            "requested_steps": (
+                requested_steps
+                if request is None
+                else int(request.steps)
+                if request.steps is not None
+                else None
+            ),
             "steps_origin": (
                 request.steps_origin if request is not None else "explicit"
             ),
@@ -305,6 +311,23 @@ def test_is_complete_rejects_short_native_sumo_run(tmp_path):
 def test_is_complete_accepts_full_native_sumo_run(tmp_path):
     request = build_pdf_matrix(tmp_path, steps=36000, intersections=("1",))[0]
     run_dir = _write_completed_matrix_run(tmp_path, final_time=3599.9)
+
+    assert is_complete(run_dir, request) is True
+
+
+def test_is_complete_accepts_full_seconds_first_formal_run(tmp_path):
+    """Catch a formal request being rejected merely because steps is None."""
+    request = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=600,
+    )
+    run_dir = _write_completed_matrix_run(
+        tmp_path,
+        final_time=3599.9,
+        request=request,
+    )
 
     assert is_complete(run_dir, request) is True
 
@@ -812,42 +835,3 @@ def test_matrix_script_help_runs_directly():
     )
 
     assert completed.returncode == 0, completed.stderr
-
-
-def test_cli_tuning_parameters_are_frozen_into_following_matrix(
-    tmp_path,
-    monkeypatch,
-):
-    from scripts import run_pdf_matrix as module
-
-    selected = {
-        "overflow_occupancy_threshold": 0.85,
-        "prediction_weight": 0.0,
-        "base_green": 25.0,
-    }
-    captured = {}
-    monkeypatch.setattr(
-        module,
-        "tune_ca_mp",
-        lambda output_root, steps: selected,
-    )
-    monkeypatch.setattr(
-        module,
-        "run_pdf_matrix",
-        lambda *args, **kwargs: captured.update(kwargs) or [],
-    )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "run_pdf_matrix.py",
-            "--quick",
-            "--tune",
-            "--output-root",
-            str(tmp_path),
-        ],
-    )
-
-    module.main()
-
-    assert captured["selected_params"] == selected
