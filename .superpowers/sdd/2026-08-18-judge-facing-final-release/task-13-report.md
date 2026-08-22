@@ -357,7 +357,7 @@ SUMO PIDs after: []
 ```
 
 Every programmed check returned true. The manifest `code_commit` exactly
-matches the current HEAD, the canonical summary was loaded through the reader,
+matches the current Task 13 code evidence head, the canonical summary was loaded through the reader,
 and the exact owned PID no longer existed after cleanup. No process-name
 termination was used.
 
