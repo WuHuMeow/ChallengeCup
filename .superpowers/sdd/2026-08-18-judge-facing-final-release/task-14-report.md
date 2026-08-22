@@ -107,3 +107,18 @@ All commands used `D:\WorkPlace\challenge-cup\.worktrees\judge-final-release\.ve
   deleted, repacked, or staged.
 - Scratch/basetemp directories were not staged.
 - Staging uses explicit file names only; no `git add -A` or `git add .`.
+
+## Pre-review correction
+
+- Controller pre-review reproduced one strict style failure with
+  `python -m flake8 <all Task14 changed Python files> --max-line-length=100`:
+  `experiments/runner.py:129:20 E131 continuation line unaligned for hanging
+  indent`.
+- Corrected only the `help=` keyword indentation in the existing
+  `ArgumentParser.add_argument` call; behavior and interfaces are unchanged.
+- Re-ran the exact strict flake8 command -> exit 0 with no output.
+- Re-ran the controller-focused equivalent:
+  `python -m pytest tests/test_formal_matrix.py tests/test_analyze_matrix.py
+  tests/test_experiments.py -q --basetemp=.task14-prereview-focused`
+  -> `65 passed, 1 warning in 17.47s`. The warning remains the pre-existing
+  denied `.pytest_cache` write; the isolated basetemp run passed.

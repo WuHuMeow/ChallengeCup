@@ -126,7 +126,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--algorithm",
         choices=[spec.key for spec in get_algorithm_registry().list()],
         default="fixed_time",
-                   help="控制算法")
+        help="控制算法")
     args = p.parse_args(argv)
     try:
         intersection = int(args.intersection)
