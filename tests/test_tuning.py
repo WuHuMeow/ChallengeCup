@@ -91,6 +91,30 @@ def test_request_key_includes_step_origin_and_seconds_window_inputs():
     assert no_override_identity["step_length_override"] is None
 
 
+@pytest.mark.parametrize(
+    "request_overrides",
+    [
+        {"variant": VariantSpec(signal_duration_scale=1.1)},
+        {
+            "disturbance": DisturbanceSpec(
+                "construction",
+                begin_seconds=100.0,
+                end_seconds=200.0,
+                target="lane-1",
+                intensity=0.5,
+            )
+        },
+        {"edge_delay_steps": 2},
+        {"edge_directions": ("north",)},
+    ],
+)
+def test_request_key_includes_execution_dimensions(request_overrides):
+    baseline = RunRequest("1", "fixed_time", steps=100)
+    changed = RunRequest("1", "fixed_time", steps=100, **request_overrides)
+
+    assert request_key(baseline) != request_key(changed)
+
+
 def test_tuning_grid_and_seed_split_are_exact():
     assert PARAMETER_GRID == {
         "overflow_occupancy_threshold": (0.85, 0.90, 0.95),

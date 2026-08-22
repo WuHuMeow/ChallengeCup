@@ -206,7 +206,64 @@ def test_generate_run_figures_rejects_evidence_changed_during_source_read(
     with pytest.raises(ValueError, match="evidence changed"):
         generate_run_figures(run_dir)
 
-    assert not (run_dir / "figures" / output_name).exists()
+    assert not (run_dir / "figures").exists()
+    assert not list(run_dir.parent.glob(f".{run_dir.name}.figures.*.tmp"))
+
+
+def test_generate_run_figures_restores_previous_publication_if_swap_fails(
+    tmp_path,
+    monkeypatch,
+):
+    matrix = _sample_matrix(tmp_path / "matrix")
+    run_dir = next(matrix.rglob("summary.json")).parent
+    output_dir = run_dir / "figures"
+    output_dir.mkdir()
+    (output_dir / "previous.txt").write_text("trusted previous", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_staging_publication(path, target):
+        if path.name.endswith(".tmp") and Path(target) == output_dir:
+            raise OSError("figure publication unavailable")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staging_publication)
+
+    with pytest.raises(OSError, match="figure publication unavailable"):
+        generate_run_figures(run_dir)
+
+    assert (output_dir / "previous.txt").read_text(encoding="utf-8") == (
+        "trusted previous"
+    )
+    assert not list(run_dir.parent.glob(f".{run_dir.name}.figures.*.tmp"))
+    assert not list(run_dir.parent.glob(".figures.*.backup"))
+
+
+@pytest.mark.parametrize(
+    "reader_name",
+    ["_queue_timeseries", "_trajectory_plot"],
+)
+def test_generate_matrix_figures_publishes_nothing_if_source_changes(
+    tmp_path,
+    monkeypatch,
+    reader_name,
+):
+    from visualization import report
+
+    matrix = _sample_matrix(tmp_path / "matrix")
+    output_dir = tmp_path / "aggregate-figures"
+    original_reader = getattr(report, reader_name)
+
+    def mutate_after_read(source, output):
+        original_reader(source, output)
+        source.write_text("tampered after read", encoding="utf-8")
+
+    monkeypatch.setattr(report, reader_name, mutate_after_read)
+
+    with pytest.raises(ValueError, match="evidence changed"):
+        generate_matrix_figures(matrix, output_dir)
+
+    assert not output_dir.exists()
+    assert not list(tmp_path.glob(".aggregate-figures.*.tmp"))
 
 
 def test_every_figure_has_provenance_manifest(tmp_path):

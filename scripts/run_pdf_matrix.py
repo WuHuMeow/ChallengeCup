@@ -99,6 +99,14 @@ def request_key(request: RunRequest) -> str:
         "algorithm_params_fingerprint": hashlib.sha256(
             encoded_parameters
         ).hexdigest(),
+        "variant": asdict(request.variant),
+        "disturbance": (
+            asdict(request.disturbance)
+            if request.disturbance is not None
+            else None
+        ),
+        "edge_delay_steps": int(request.edge_delay_steps),
+        "edge_directions": list(request.edge_directions),
     }
     return json.dumps(
         identity,

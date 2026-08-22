@@ -859,14 +859,17 @@ class EvidenceReader:
                     "scene_manifest_sha256 must be 64 lowercase hex characters",
                     "manifest.json",
                 )
-            for field in (
+            for provenance_field in (
                 "code_commit",
                 "scene_manifest_sha256",
                 "sumo_version",
                 "python_version",
             ):
-                if manifest.get(field) in (None, "", "unknown"):
-                    issue("unknown_provenance", f"completed evidence has unknown {field}")
+                if manifest.get(provenance_field) in (None, "", "unknown"):
+                    issue(
+                        "unknown_provenance",
+                        f"completed evidence has unknown {provenance_field}",
+                    )
             for name in RunArtifacts.evidence_required_output_names():
                 path = run_dir / name
                 if unsafe_link(path, name):
@@ -1022,14 +1025,35 @@ class EvidenceReader:
                             "potential_conflict",
                         )),
                     }
-                    if not isinstance(metrics, Mapping) or required_metrics - set(metrics):
-                        issue("summary_schema", "summary lacks canonical metrics", "summary.json")
-                    if not isinstance(units, Mapping) or units.get("fuel_ml") != "ml" or units.get("co2_g") != "g":
-                        issue("summary_schema", "summary lacks explicit metric units", "summary.json")
+                    if (
+                        not isinstance(metrics, Mapping)
+                        or required_metrics - set(metrics)
+                    ):
+                        issue(
+                            "summary_schema",
+                            "summary lacks canonical metrics",
+                            "summary.json",
+                        )
+                    if (
+                        not isinstance(units, Mapping)
+                        or units.get("fuel_ml") != "ml"
+                        or units.get("co2_g") != "g"
+                    ):
+                        issue(
+                            "summary_schema",
+                            "summary lacks explicit metric units",
+                            "summary.json",
+                        )
                     if summary.get("run_id") != run_id:
                         issue("run_id_mismatch", "summary run_id does not match", "summary.json")
-                    if summary.get("warmup_seconds") != manifest.get("warmup_seconds"):
-                        issue("summary_schema", "summary warmup does not match manifest", "summary.json")
+                    if summary.get("warmup_seconds") != manifest.get(
+                        "warmup_seconds"
+                    ):
+                        issue(
+                            "summary_schema",
+                            "summary warmup does not match manifest",
+                            "summary.json",
+                        )
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     issue("invalid_json", str(exc), "summary.json")
             try:
@@ -1348,7 +1372,11 @@ class EvidenceReader:
             except OSError as exc:
                 issue("evidence_io", str(exc), name)
         if set(safe_files) != expected_names:
-            issue("hash_coverage", "hash file coverage does not match evidence files", "hashes.json")
+            issue(
+                "hash_coverage",
+                "hash file coverage does not match evidence files",
+                "hashes.json",
+            )
         for relative, expected in safe_files.items():
             path = run_dir / str(relative)
             if unsafe_link(path, str(relative)):
