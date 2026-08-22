@@ -365,3 +365,247 @@
 - Task 10 独立审查未通过：0 Critical、4 Important、0 Minor；规范 Issues found，质量 Needs fixes。开放项：容量仅在 live movement snapshot 时失败而非 capacity-aware 正式预检；动态绿灯分母把零/负 phase 计入“正压力平均”；EdgeMessage 不校验 active run_id/payload_version；M2/M3 manifest 不可区分且缺少逐 movement 分量、阻塞原因、选择理由和最终动作的可序列化审计记录。
 - Task 10 reviewer `Cannot verify` 经控制器确认成为第 5 个 Important：`RunService` 把 `edge_delay_steps` 原样作为 `delay_seconds`。0.5 秒步长、2-step 延迟、5 tick 行为探针实际只交付 `[0]`，应交付 `[0,1,2]`；必须按实际 step length 换算并增加非 1.0 秒步长覆盖。
 - Task 10 fix round 1/5：已准备派回原实现单元；必须逐项 TDD RED/GREEN，并重跑聚焦、全量、非单位步长 EdgeMessage、真实 SUMO、Python 3.14.7、保护项校验及 scoped 独立复审。保持 Task 10，不开始 Task 11。
+
+## Task 10 review fix round 1
+
+- 修复提交：`de258cd` (`fix: validate edge message evidence timing`)；修复范围 `4428ce3..de258cd`，包含启动前容量预检、严格正压力平均、消息 run/version 合同、M2/M3 归因审计、step 到仿真秒换算，以及消息时间/事件证据时间补强。
+- 双轨 scoped 复审：原 5 个 Important 中容量预检和严格正压力平均为 ADDRESSED；run/version 绑定、可复原算法审计、非单位步长 override 行为仍为 NOT ADDRESSED。新增 3 个 Important：容量感知配置缺少有限值/安全区间校验、并列选择原因不可解释、非有限 EdgeMessage 时间可进入通道。
+- 控制器复现：已绑定后的现有测试为 `3 passed`；未绑定 channel 先缓存 `run_id=stale` 再绑定 active run 后仍交付旧消息且无拒绝事件；`sent_at=-Inf` 和 `expires_at=+Inf` 均可交付；原 sumocfg 步长 1.0、override 0.5、delay 2 时 channel 为 1.0 秒但真实配置仍为 1.0 秒，实际只等待 1 tick；M4 的 `step()` 后预测调用为 1 次，随后生成 audit 增至 2 次，audit phase 0 总分 `0.775` 与记录的 movement pressure 和 `0.4` 不一致。
+- 审计最终动作缺口：当前 algorithm audit 在 `apply_actions()` 前写入，不能记录共享执行边界的实际 applied/rejected 结果；round 2 只接线现有执行结果，不提前实现 Task 11 的统一安全执行器。
+- Task 10: fix round 1/5 (2 addressed, 6 open; commits `4428ce3..de258cd`).
+- Task 10 fix round 2/5：保持单一实现写轨；对 6 个开放 Important 逐项行为级 TDD RED/GREEN，随后执行控制器聚焦/全量/真实 SUMO/保护项门禁和双域 scoped 复审。Task 11 继续等待。
+
+## Task 10 review fix round 2
+
+- 修复提交：`273c9eb` (`fix: close capacity-aware review findings`)；实现单元聚焦 `104 passed`、全量 `484 passed`、20/20 官方容量预检、真实 100 步 EdgeMessage/SUMO run `bcf313da0b32` completed，Python 3.14.7 compileall 与保护项校验通过。
+- 双域 scoped 复审：预绑定 run/version、真实 step override、配置有限值/安全区间和非有限 EdgeMessage 时间 4 项 ADDRESSED；legacy `phase_states` fallback 使可复原算法审计和并列理由 2 项 NOT ADDRESSED。消息/时间域未发现新的 Critical/Important。
+- 控制器聚焦复跑：`104 passed in 10.43s`；但最小 legacy 探针复现同一 tick EWMA 从应有 `300` 二次推进到 `450`，实际 `set_phase=1` 而 audit 误记 `safe_fallback_all_blocked/no_action`。
+- Task 10: fix round 2/5 (4 addressed, 2 open; commits `de258cd..273c9eb`).
+- Task 10 fix round 3/5：恢复原实现单元，用单一 legacy fallback 根因测试同时锁定单次预测更新、真实动作审计和 deterministic tie 解释；不进入 Task 11。
+
+## Task 10 review fix round 3
+
+- 修复提交：`e792a1f` (`fix: freeze legacy capacity-aware decision snapshots`)；实现单元 RED 为 3 项预期失败，GREEN 为 3 项通过，扩大聚焦 `107 passed`、全量 `487 passed`、20/20 官方容量预检、真实 100 步 EdgeMessage/SUMO run `826f71073922` completed，Python 3.14.7 compileall 与保护项校验通过。
+- scoped 独立复审：上一轮 legacy 单次 EWMA、真实动作/ActionResult 审计、deterministic tie 归因均为 ADDRESSED；新增 2 个 Important：公开观察接口通过父类 `step()` 提前提交控制状态，以及 pending transition wait/complete 的顶层原因无法精确区分。另有 1 个 Minor：无 phase states、无 green 与 all blocked 被压成同一原因。
+- 控制器与三路只读交叉复核稳定复现观察污染：仅调用 `score_breakdown()` 或 `audit_record()` 就可令 `pending_target_phase` 从 `None` 变为 `2`，并推进 CloudPolicy EWMA/下发缓存；observer-first 与直接 `step()` 的后继动作不同，因此不是无害缓存。
+- 控制器确认两个同源 Task 10 规范缺口：M3 manifest 为 `prediction_enabled=false`，legacy fallback 却写入预测历史；冻结 `max_green=30.0`，legacy audit 动作时长却为 `56.75675675675675` 且实例上限被父类下发改成 `90.0`。
+- Task 10: minor (deferred): legacy 无 phase states、无 green 与 all blocked 的顶层原因折叠；交由最终 whole-branch review 复核是否必须在发布前关闭。
+- Task 10: fix round 3/5 (2 addressed, 4 open; commits `273c9eb..e792a1f`).
+- Task 10 fix round 4/5：切换到全新高能力实现单元；以纯 decision plan 和显式、幂等 commit 分离观察与提交，统一关闭 observer 污染、pending 原因、M3 预测开关越界和绿灯上限/manifest 漂移；先做行为级 RED，再做最小实现，不进入 Task 11。
+- Ruling: Round 4 采用不可变 decision/cloud plan、内容指纹、owner + epoch + revision 和显式 commit；区分 pending/committed plan，`step()` 是唯一内部提交点，stale/跨 reset/跨 owner plan 必须拒绝 �� Round 3 的根因是观察接口执行有副作用状态机，保存恢复或继续复制判断树无法证明完整性 �� if wrong, 需要回退 `ca_max_pressure.py`/`cloud_policy.py` 的内部 seam 并重做 Round 4 行为测试，但不得把 bridge 动作去重提前放入 Task 10。
+
+## Task 10 review fix round 4
+
+- 修复提交：`45d92a6` (`fix: make capacity-aware planning transactional`)；7 组行为 RED 均按预期失败后 GREEN，最终 amended focused `74 passed`、expanded focused `125 passed`、全量 `505 passed`、20/20 官方容量预检、真实 SUMO run `d89343774b4f` completed（wait=2、audit=98、rejected=0、illegal=0），Python 3.14.7 与保护项门禁通过。
+- 双域 scoped re-review：Round 4 的 4 个原始 Important 全部 ADDRESSED；新增 5 个 Important，分别是：更新 pending 存在时已提交 plan 的重复 commit 不再幂等；CloudPolicy/直接 CAMax 可在较新 commit 后重建旧历史；复合 cache 命中未验证嵌套 policy owner/epoch/revision；直接 `CAMaxPressureAlgorithm.step()` 重复同状态时重放旧动作而非保留旧兼容行为；planner 绕过公开可覆盖的 `phase_pressure()` 扩展 seam。
+- 控制器源码核对确认 validator 顺序、history guard 缺失、nested cache 快返和静态 `_phase_pressure_for()` 调用均与审查证据一致；不提前进入 Task 11。
+- Task 10: fix round 4/5 (4 addressed, 5 open; commits `e792a1f..45d92a6`).
+- Ruling: supersede Round 4 中“同语义状态重复 `step()` 必须重复返回相同动作”的宽泛条款，仅对直接 `CAMaxPressureAlgorithm.step()` 保留修复前公开行为；内部重复 `commit_plan(plan)` 仍必须幂等，但 `step()` 可以基于已提交 controller state 重新规划并返回原本的 no-action �� Task 10 明确要求父控制器兼容，bridge 级重复动作控制仍属于 Task 11 �� if wrong, 只需调整 direct parent step 的 committed-plan reuse 策略，不得引入 executor 去重。
+- Task 10 fix round 5/5：恢复 Round 4 的高能力实现单元，以 5 个新 Important 的行为 RED 补齐 validator 顺序、历史单调性、嵌套 policy 有效性、父 step 兼容和 scoring override seam；完成后必须再做 scoped 双域复审，Task 11 继续等待。
+- Task 10 Round 5 实现提交：`3941a55` (`fix: close final max-pressure transaction gaps`)；实现报告记录 GREEN `9 passed`、amended focused `83 passed`、expanded focused `134 passed`、全量 `514 passed`、20/20 官方容量预检、真实 100 步 EdgeMessage/SUMO run `0af71d81ce6a` completed、Python 3.14.7 compileall、完整性和保护项门禁通过。恢复控制器在同一 HEAD 上重跑九项目标行为测试为 `9 passed in 0.49s`，提交范围与保护输入复核无变化。
+- Task 10 Round 5 双域 scoped re-review：五个原始 Important 均为 ADDRESSED；事务/历史/嵌套生命周期复审未发现新 breakage。兼容/回归复审发现 1 个新的 Important：`CloudPolicy.predict(state)` 与 `dispatch_params(state)` 在同一 observation 上顺序调用时，第二个公共操作被 Round 5 历史 guard 误判为 `cloud_history_unavailable`。控制器双向探针稳定复现，且 `45d92a6` 无此限制；根因是 Cloud 层用包含 prediction/dispatch flags 的完整 plan key 判断历史变化，而 legacy 层只用 observation fingerprint。
+- Task 10: fix round 5/5 (5 addressed, 1 new Important open — same-observation cross-operation CloudPolicy history regression; commits `45d92a6..3941a55`).
+- Task 10: parked — same-observation sequential `CloudPolicy.predict()`/`dispatch_params()` raises `cloud_history_unavailable` — Ruling: this is a real public compatibility regression introduced by Round 5, but no Task 11 interface or current production algorithm depends on separate same-tick prediction and dispatch (production requests combined or one operation); the five-round breaker forbids a sixth Task 10 fix dispatch, so carry it explicitly to the final whole-branch review/fix wave rather than widening Task 11 — if wrong, a direct CloudPolicy consumer can fail before the final fix wave and must be repaired by narrowing the history guard to changed observation fingerprints while retaining the old-history tests.
+- Task 10: complete (commits `ca5be1b..3941a55`, 1 parked; 1 prior deferred Minor remains for final review).
+
+## Task 11 implementation
+
+- 状态：进行中；基线为 `3941a55`，先从现有 `engine.action_validation`、`TraCIBridge.apply_actions()`、Runner 直接写入和 CA-MP transition 逻辑建立行为 RED，再集中到 `SafetyExecutor`。
+- Ruling: Task 11 新建 `tests/test_action_validation.py`；计划 Files 表漏列该文件，但验收命令和 commit 清单都明确要求它，现有 validator 行为测试主要散落在 `tests/test_traci_outputs.py` — if wrong, 可把新增专属测试合并回现有测试文件而不改变生产接口。
+- Ruling: Task 11 可最小修改 `engine/runner.py` 及其直接覆盖测试，把生产动作写入从 `bridge.apply_actions()` 改为 `SafetyExecutor.apply()` — `SafetyExecutor.apply()` 被定义为唯一信号写入路径，且计划的 Task 11 -> Task 12 handoff 明确要求 Runner 调用该路径 — if wrong, Runner 适配可单独回退，但“唯一生产写入路径”合同将无法成立。
+- Ruling: Task 11 可最小修改 `algorithms/ca_max_pressure.py`；Step 2 明确要求移出其中的 transition sequencing，虽然 Files 表只列 classic/capacity wrappers — if wrong, 该迁移可回退为 executor 仅编排算法候选动作，但会保留重复 transition ownership。
+- Task 11 实现提交：`ead4672` (`feat: enforce one safe signal action path`)；实现报告记录 required focused `35 passed`、affected `175 passed`、全量 `543 passed`、classic/capacity-aware 两个 100-step 真实 SUMO run、Python 3.14.7 compileall、唯一生产写入搜索和保护项门禁通过。
+- Task 11 独立审查未通过：3 Critical、4 Important、0 Minor；规范 Issues found，质量 Needs fixes。Critical：绿色 `set_phase_duration` 可缩短最小绿；`set_program` 绕过全部时序/拓扑校验且抑制一次观察检查；合法图中的直接绿边可跳过黄灯/全红。Important：timing rejection 被写成 `illegal_transition` 硬门槛事件；`ControlAction` 无创建/到期合同；不安全 duration 被静默改写却对原动作返回 accepted；Runner 固定使用 10 秒而未接入权威场景/算法最小绿。
+- Reviewer 的三个 `Cannot verify from diff` 项由控制器解决：实现报告中的 focused/affected/full 命令与结果完整可读；两个真实 run 的产物目录、run_id 和事件内容已读取；保护归档 SHA-256、官方数据 163/232 计数及保护路径零 diff 已在同一 HEAD 复核。这些不是额外规范缺口。
+- 控制器真实证据核对：classic run `4706f6b5aaaa` 的 `events.csv` 含 70 条 `illegal_transition`，capacity-aware run `9b98fe664dfd` 含 72 条，均由 minimum-green/yellow timing rejection 派生；因此报告中“`illegal_phase_transition=0`”不能满足全局 `illegal_transition=0` 硬门槛，独立审查对应 Important 已确认。
+- Task 11 fix round 1/5：恢复原实现单元；对 7 项开放 finding 逐项行为级 TDD RED/GREEN，补齐动作时效、绿色 duration、program 安全初始化、clearance 路径、fallback/审计语义和权威最小绿接线；修复后必须重跑 focused、affected、全量、fixed/classic/capacity-aware 真实 SUMO、Python 3.14.7、保护门禁和 scoped 独立复审。Task 12 继续等待。
+
+## Task 11 review fix round 1
+
+- 修复提交：`f7a823d` (`fix: close safety executor review gaps`)；实现报告记录 focused `115 passed`、affected `239 passed`、全量 `563 passed`，三路 100 步真实 SUMO 均完成，adaptive `illegal_transition=0`，Python 3.14.7 compileall、唯一生产写入搜索和保护项门禁通过。
+- scoped 独立复审：原 7 项中 6 项 ADDRESSED；`set_program` 虽限制为启动阶段，但 program definition 仅校验正时长、信号字符和 state 长度，仍可安装短绿、直接绿到绿或缺少/过短黄灯与全红清空的计划，因此 1 项 Critical 仍 OPEN；未发现其他 Important/Minor。
+- Task 11: fix round 1/5 (6 addressed, 1 open — startup program definition lacks independent minimum-green/yellow/all-red validation; commits `ead4672..f7a823d`).
+- Task 11 fix round 2/5：恢复原实现单元，以短绿、缺失清空相位、黄灯/全红不足为行为 RED，完成 startup program 的独立安全校验并重跑覆盖测试、全量回归、fixed 真实 SUMO和保护项门禁；Task 12 继续等待。
+
+## Task 11 review fix round 2
+
+- 修复提交：`376689d` (`fix: validate startup signal programs`)；实现报告记录 focused `121 passed`、affected `245 passed`、全量 `569 passed`，Python 3.14.7 compileall、唯一生产写入搜索和保护输入门禁通过；fixed-time 100 步真实 SUMO run `baa105b06e08` completed，`action_rejected=0`、`illegal_transition=0`。
+- TDD RED/GREEN 覆盖短绿、直接绿到绿、缺失/过短黄灯和缺失/过短全红，共 `6 failed` → `6 passed`；独立 program 校验现在在任何 bridge 写入和 observation suppress 之前拒绝不安全定义。
+- Task 11: fix round 2/5 (1 addressed, 0 open; commit `376689d`). 等待 scoped 独立复审后再标记 Task 11 complete；Task 12 继续等待。
+
+## Task 11 review fix round 3
+
+- Round 2 scoped 独立复审发现 2 个 Critical：variant additional signal program
+  直接绕过 `SafetyExecutor` 写入，以及 startup yellow 只检查任意 signal、未按
+  departing movement 对齐。两项均以行为级 RED 锁定。
+- Task 11 fix round 3 实现提交：`5a727d2` (`fix: close startup signal safety boundary gaps`)；
+  variant program 现在只生成 startup `ControlAction`，由 `SafetyExecutor` 在初始
+  启动/重连统一校验、写入和记录；yellow duration 按 departing green 的 signal index
+  逐项累计；fixed-time 对不安全 source variant 记录拒绝后继续安装自身 frozen plan。
+- Round 3 实现报告证据：focused `132 passed`、affected `273 passed`、full
+  `574 passed`、两路真实 SUMO smoke、Python 3.14.7 compileall、diff-check、归档
+  SHA-256 和官方数据 163/232 保护门禁通过。主 agent 独立 affected 回归为 `320 passed`，
+  full 回归为 `574 passed in 95.76s`。
+- Round 3 当前状态：等待独立 scoped re-review；Task 11 不得在 reviewer verdict 前标记
+  complete，Task 12 继续冻结。review package 为
+  `review-376689d..5a727d2.diff`。
+- 主 agent 独立复核：当前 HEAD 全量 `574 passed in 95.76s`，受影响扩展集 `320 passed`，
+  compileall 与 diff-check 通过；fixed smoke `b6a87220fc60` 完成 100 步/100.0 秒，事件含
+  1 个 `unsafe_startup_program` source-variant rejection、1 个 accepted frozen fixed plan、
+  0 `illegal_transition`；variant smoke `ff429e382183` 完成 100 步/10.0 秒（0.1 秒步长），
+  variant startup program 通过安全边界，0 `illegal_transition`，SUMO 进程退出。
+- Round 3 scoped 双轨复审：spec reviewer 判定两个原 Critical 均 ADDRESSED 且 PASS；
+  quality reviewer 新发现 1 个 Important：`TraCIBridge.start()` 仅为 `tls_ids[0]`
+  生成 variant startup action，旧实现会处理全部已发现 TLS，因而其他 TLS 的
+  `variant_*` program 被静默丢弃，既未通过 `SafetyExecutor` 也无 ActionResult/event。
+- Task 11: fix round 3/5 (2 addressed, 1 new Important open - multi-TLS variant
+  programs are silently discarded; commits `376689d..5a727d2`).
+- Task 11 fix round 4/5：切换到全新高能力实现单元；先以多 TLS additional file 建立
+  行为 RED，要求每个匹配的 variant program 生成 startup action、逐 TLS 使用真实
+  startup state 通过共享 `SafetyExecutor`、并为每个 accepted/rejected 结果记录带 TLS
+  关联的事件；不得用首 TLS 的 `JointState` 校验其他 TLS，也不得静默丢弃。Task 12
+  继续冻结。
+- 主 agent Round 4 根因与基线探针：当前 bridge 双 TLS additional fixture 只返回
+  `ACTION_COUNT=1`、`TLS_IDS=tls_a`；`SafetyExecutor` 又以传入 `JointState.tls_id`
+  校验 action，因此仅把发现循环扩到全部 TLS 仍会把非首 TLS 误拒为 `unknown_tls`。
+  20 个官方 `.net.xml` 均为单 TLS（`MAX_TLS=1`、`MULTI_TLS_FILES=0`），故本轮用
+  构造的多 TLS 真实组件测试证明回归闭合，并保留官方单 TLS SUMO smoke 作兼容门禁。
+- Task 11 Round 4 实现提交：`71bd4b0` (`fix: preserve multi-TLS variant startup actions`)；
+  `TraCIBridge` 记录当前进程全部 TLS、逐 TLS 构造 startup state，Runner 逐 action
+  经过 `SafetyExecutor`，secondary sink 不污染 primary movement builder，事件携带
+  TLS `entity_ids`。
+- Task 11 Round 4 主代理验证：关键集 `94 passed`；full `577 passed in 83.85s`；
+  compileall、diff-check、唯一生产写入扫描通过；fixed/classic 两路真实 SUMO smoke
+  均完成 100 步且 `illegal_transition=0`；归档 SHA-256 为
+  `12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f`，官方数据仍
+  为 163 tracked / 232 disk，保护路径无 diff。
+- Task 11 Round 4 双域 scoped re-review：spec 与 quality 均 PASS；原 multi-TLS
+  Important、fallback/direct-write/event 合同均 ADDRESSED，未发现新的
+  Critical/Important/Minor。证据文件为 `task-11-r4-spec-rereview.md` 与
+  `task-11-r4-quality-rereview.md`。
+- Task 11: complete (commits `5a727d2..71bd4b0`, scoped re-review clean; 2 reviewers
+  PASS; Task 10 parked compatibility finding remains for final whole-branch wave).
+
+## Task 12 implementation
+
+- 状态：进行中；基线为 `71bd4b0`。新生命周期必须按
+  `queued -> starting -> running -> stopping -> terminal` 单向迁移，terminal 不可覆盖。
+- Ruling: 用户 stop 的新证据统一使用 `interrupted`；`stopped` 仅保留 legacy 读取兼容
+  — Task 12 批准的 handoff 已明确该 canonical 状态，计划样例中的 STOPPED 集合不是
+  新写入合同 — if wrong, 只需在序列化兼容层映射，不得恢复双重 terminal 语义。
+- Ruling: stop/switch_scene 必须等待该 run 自己的 future/runner/process，且只作用于其
+  精确 PID；禁止按进程名或全局 SUMO 扫描清理 — 计划要求 never kill another run —
+  if wrong, 只能放宽等待超时策略，不能放宽 ownership。
+- Ruling: 保留 `run_metadata.json` 兼容消费者，同时新增原子 `manifest.json` 与
+  `status.json`；Runner 迁移到 `SimulationWindow`/仿真秒，但保留 legacy integer smoke
+  caller adapter — if wrong, 后续报告/可视化任务会出现不必要的大范围迁移。
+
+## Task 12 implementation and review recovery
+
+- Task 12 原始实现提交为 `d4ab93b` (`fix: make run lifecycle and scene switching safe`)；
+  后续按审查逐步追加 `1a97e8a`、`e0c8ca9`、`3b7847d`、`574f199`、`e9b2715`，
+  未 reset、rebase 或 amend。报告绑定提交为 `f7e0c8d` 与纠正提交 `c5e2223`。
+- 已闭合的生命周期边界包括：validated scene/timebase 及 source/hash identity、formal
+  warmup 与 explicit steps 的进程内区分、malformed status 终态恢复、exact child PID
+  回收、stop/switch 等待所属 future/process、existing TraCI connection preflight 拒绝。
+- `e9b2715` 上主代理最新代码门禁：focused `127 passed`；repo-local canonical full
+  `631 passed in 123.84s`；compileall 与 diff-check 通过；真实 SUMO run
+  `b7f105be2545` 完成 100 steps / 100.0 simulation seconds，manifest/metadata PID
+  `20164` 一致，PID 已退出且无残留 SUMO。
+- 保护输入门禁：`赛题资料.7z` SHA-256 为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；
+  `data/intersection_data` 为 163 tracked / 232 disk；Task 12 提交与 index 均不得包含
+  这两个保护目标。
+- Round 4 formal scoped review：Spec PASS；Quality 为 NEEDS FIXES，0 Critical、
+  2 Important、3 Minor。两个 Important 分别是 `_CompatibilitySteps(int)` provenance
+  不可持久化导致 JSON replay 丢 formal warmup，以及 `traci.init()` TOCTOU cleanup
+  可能通过 global `traci.close()` 关闭另一 owner。`frame_sink` 与另外两个 API/test
+  观察保持 deferred Minor。
+- Task 12: fix round 4/5 (先前 lifecycle/timebase finding 已闭合；Round 4 scoped quality
+  新增 2 Important；commits `e0c8ca9..c5e2223`).
+
+## Task 12 review fix round 5
+
+- 状态：进行中；基线 `c5e2223`。第 5/5 轮采用唯一 Sol/xhigh writer，主代理与
+  Terra/Sol 只读审计并行；writer 只能显式暂存 Task 12 文件，必须排除本 ledger、
+  scratch/evidence 目录、保护归档和官方数据。
+- Round 5 I1 RED：`tests/test_run_models.py` 初始 provenance/JSON 合同为
+  `10 failed, 10 passed`；失败覆盖 formal/explicit equality、缺失 `steps_origin`、
+  缺失 `to_payload/from_payload`、两类 window round-trip、嵌套/Path 恢复、
+  inconsistent origin fail-closed 与 legacy plain-int fallback。
+- Round 5 I2 RED：partial-init RuntimeError、KeyboardInterrupt 与 TOCTOU other-owner
+  三个 lifecycle 测试均按预期失败：label 仍为 `default` 或 exact own handle 未关闭；
+  exact child cleanup 断言已通过。目标实现为模块内 single-active lifecycle gate、
+  unique attempt label、exact Connection handle close 和 exact child PID cleanup，禁止
+  global `traci.close()`，但不把本轮扩张为多 bridge 并发重构。
+- Round 5 补充 closure：`RunRequest` payload 必须含 versioned、可持久化的
+  `steps_origin`，矛盾 origin/value fail closed，manifest 记录 provenance；
+  `scripts/run_pdf_matrix.py` semantic request key 必须纳入 origin 与实际 window 输入，
+  formal/explicit 同值不得碰撞。
+- Round 5 只读 payload 审计补充 Important：显式 `schema_version=1` 的 payload 若缺少
+  `steps_origin` 必须 fail closed，只有完全无 schema version 的 legacy payload 才允许
+  推断 provenance；否则 formal JSON 会静默降为 explicit 并丢失 warmup。
+- Task 12: minor (deferred): `scripts/run_pdf_matrix.request_key()` 尚未纳入
+  `edge_delay_steps`、`edge_directions` 与 variant；canonical PDF matrix 当前不产生这些
+  值，故不延长 Round 5，但最终 whole-branch review 必须判断该函数是否应收紧为 canonical
+  matrix-only identity 或扩展为完整 RunRequest semantic identity。
+- Task 12 fix round 5/5：实现、GREEN、追加提交、最新 HEAD 主代理门禁与 scoped
+  Spec/Quality 双域复审尚未完成；在这些流程节点闭环前不得标记 Task 12 complete，
+  不得进入 Task 13。
+
+### Round 5 code head and controller gates
+
+- Round 5 实现提交：`fc1a4d7` (`fix: preserve request and connection identity`)；提交仅含
+  9 个授权 code/test 文件，未包含本 ledger、报告、scratch、保护归档或官方数据，index
+  为空。writer expanded focused 为 `151 passed in 30.19s`，compileall/diff-check 通过。
+- 主代理 latest-HEAD 验证：expanded focused `151 passed in 31.36s`；repo-local full
+  `655 passed in 112.08s`；venv Python 3.12.13 与系统 Python 3.14.7 compileall 均 exit 0；
+  `git diff --check 71bd4b0..fc1a4d7` 和 `c5e2223..fc1a4d7` 通过。
+- 主代理真实 SUMO：run `ca1cabbf7800`，目录
+  `D:\Temp\judge-task12-r5-controller-real-20260822-0924\i1\fixed_time\x1\s42\ca1cabbf7800`；
+  status/metadata/result 均 completed，100 derived steps / 100.0 requested seconds /
+  100.0 final simulation seconds，`steps_origin=explicit`；manifest/metadata PID 均为
+  `16632`，PID 已退出，SUMO before/after 均为 0。
+- latest protected gate：`赛题资料.7z` SHA-256 仍为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；
+  官方数据仍为 163 tracked / 232 disk；branch/worktree/index 的保护路径 diff 均为空。
+- Round 5 pre-review breaker candidates（尚待 formal scoped 双域复审裁定）：
+  1) startup 原始 failure 后 exact handle close 若再抛 KeyboardInterrupt，会以 cleanup
+  BaseException 作为最终异常；child/state 仍已清理；
+  2) 同一 bridge 的 unsupported concurrent/repeated `start()` 会在 lifecycle lock 外先清空
+  discovery state 再拒绝；当前生产 Runner 不并发调用同一 bridge start；
+  3) FatalTraCIError restart 路径若 exact handle close 本身再抛 FatalTraCIError，会阻断
+  restart；SUMO 1.27.1 的常规“Connection closed by SUMO”路径先把 socket 置 None，随后
+  exact close 可正常注销，但非常规 close failure 仍有窄风险。
+- 上述候选不得静默丢弃；若 Round 5 formal re-review 判为 Critical/Important，则按五轮
+  breaker 逐项记录 Ruling/park 或 load-bearing handoff，不再派第 6 轮 Task 12 fix。
+
+### Round 5 formal re-review and breaker closure
+
+- scoped review package 为 `review-c5e2223..c8c64b7.diff`，58,527 bytes / 1,529 lines，
+  SHA-256 `7F3DECBC415D6BD8EE2903302270C9D0973C9942BD380FD79171DF266EC3B79E`；
+  包含 code/test 提交 `fc1a4d7` 与 report-only 提交 `c8c64b7`。
+- Spec reviewer：I1/I2 均 ADDRESSED，无新 Critical/Important；把同实例重复/并发 start
+  与非常规 exact-handle close failure 归为非阻塞 Minor。
+- Quality reviewer：I1 ADDRESSED；I2 的 unique label、exact partial handle、exact child、
+  no global close 与现有 owner/TOCTOU/restart 合同均已闭合；仍保留 1 个 Important：
+  同一运行中 `TraCIBridge` 的重复/并发 `start()` 会在 lifecycle lock/precondition 前
+  清空 discovery state，随后才拒绝第二次启动。
+- Task 12: fix round 5/5（原 I1 已闭合；I2 exact ownership 主缺陷已闭合，1 个 scoped
+  Important 仍开放；commits `c5e2223..c8c64b7`）。
+- Task 12: parked — same-instance repeated/concurrent `TraCIBridge.start()` clears discovery
+  state before rejection — Ruling: 这是一个真实 direct-API robustness gap，保留 Quality
+  严重度；但当前 `RunService`/`SimulationRunner` 为单 worker、单 bridge、单次启动，受支持
+  restart 先 `close()` 后 `start()`，scene switch 也等待旧 run/process 完成，故不承载
+  Tasks 13–24 的生产路径。五轮 breaker 将其移交最终 whole-branch review 的单一最终修复波；
+  if wrong，直接调用者重复或并发 start 可破坏 live discovery state，最小修复应把 reset
+  移入 lifecycle gate/precondition 之后，并添加真实同实例 repeated/concurrent 行为测试。
+- Task 12 deferred Minor：非常规 exact `Connection.close()` 二次失败可中断 fatal restart；
+  `request_key()` 的非 canonical edge/variant 字段；既有未使用 `frame_sink`；直接调用
+  `write_status()` 可接受 unknown status。全部保留到最终 whole-branch review，不得静默丢弃。
+- breaker 裁决已写入 report-only 提交 `87885c6` (`docs: record task 12 breaker
+  adjudication`)；没有代码变化，不使 `fc1a4d7` 上的 151 focused / 655 full / 真实 SUMO
+  latest-HEAD 证据失效。
+- Task 12: complete（commits `71bd4b0..87885c6`，1 个 parked Important 与上述 deferred
+  Minor 已显式移交最终 whole-branch wave；Round 5 breaker 已裁决，最新代码证据绑定
+  `fc1a4d7`）。
