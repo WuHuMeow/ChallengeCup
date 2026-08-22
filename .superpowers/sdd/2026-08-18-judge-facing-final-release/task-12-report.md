@@ -8,6 +8,21 @@ Baseline: `71bd4b05acc866d79e96bcecb2cb703fedbaa8ec`
 
 Commit message: `fix: make run lifecycle and scene switching safe`
 
+## Current Code Evidence Head
+
+The current code evidence head for this report is
+`e9b2715dedb60438f80b741fef69fb2fffaed4ee`. The current Task 12 additive fixes
+are preserved as follows:
+
+- `3b7847db6d251efe239376767d7123fa79151c5c` — `fix: close lifecycle review findings`
+- `574f199fc6dd5725a0f02e07b9dc0ed2e6aa67fc` — `fix: harden lifecycle startup cleanup`
+- `e9b2715dedb60438f80b741fef69fb2fffaed4ee` — `fix: close lifecycle ownership regressions`
+
+Earlier Task 12 commits remain in history and are not rewritten. All earlier
+59, 592, 90, 602, 106, and 610 pass counts, old PIDs 17416, 25052, 19276,
+and 10928, and the previous `574f199` latest-evidence addendum are historical
+and superseded by the e9b2715 evidence below.
+
 ## Outcome
 
 Implemented the lifecycle-safe `RunService` and `SimulationRunner` contract.
@@ -76,21 +91,25 @@ rejected starting transition, the race suite returned:
 14 passed in 12.88s
 ```
 
-The required final focused command returned:
+The historical final focused command returned 59 passes; this result is
+superseded by the latest code-head verification below:
 
 ```text
 59 passed in 18.45s
 ```
 
-## Final Verification
+## Final Verification (Historical — Superseded)
 
-Final full suite command:
+The following full-suite result is historical and superseded by the latest
+code-head verification below.
+
+Historical full suite command:
 
 ```text
 .\.venv\Scripts\python.exe -m pytest -q --basetemp=.task12-pytest-commit-full
 ```
 
-Result:
+Historical result:
 
 ```text
 592 passed, 1 warning in 94.77s
@@ -122,7 +141,7 @@ Executed a real fixed-time scene 1 run through `RunService` with the explicit
 legacy smoke request `steps=100`. The service adapted it to a
 `SimulationWindow`, while the runner and evidence remained seconds-based.
 
-Historical run (superseded by the re-entry run below):
+Historical run (superseded by the 2026-08-22 latest evidence below):
 
 ```text
 run_id: 5b1b4d404815
@@ -140,9 +159,10 @@ SUMO PIDs before: []
 SUMO PIDs after: []
 ```
 
-The verification queried PID `17416` exactly after cleanup and separately
-compared read-only pre/post SUMO inventories. It did not terminate or kill by
-name.
+The historical verification queried PID `17416` exactly after cleanup and
+separately compared read-only pre/post SUMO inventories. It did not terminate
+or kill by name. PID `17416` is historical and superseded by the current
+run's PID `20164`.
 
 ## Protected Inputs
 
@@ -219,20 +239,23 @@ archive/scratch paths are intentionally excluded from the Task 12 commit.
 - Task 10's parked same-observation `CloudPolicy.predict()` /
   `dispatch_params()` compatibility finding remains intentionally out of scope.
 
-## Re-entry Verification Addendum
+## Re-entry Verification Addendum (Historical — Superseded)
 
 The single-writer recovery session reran the required race and verification
-matrix on the final tree. The focused command returned `59 passed in 18.09s`.
+matrix on the then-current tree. Its focused result, `59 passed in 18.09s`, is
+historical and superseded by the latest code-head verification below.
 The three deterministic recovery tests returned `3 passed in 3.34s`; the first
 RED run had reproduced `stopping -> starting` becoming `failed`. The recovery
 handoff's concurrent-stop and already-stopping switch fixes were already
 present when reread and were preserved rather than overwritten.
 
-The no-cache, repo-local full command returned `592 passed in 121.79s
-(0:02:01)`. A same-volume real SUMO run produced run ID `7c69507a6cba`,
-completed 100 steps at final simulation time `100.0`, and recorded exact PID
-`25052` in both `manifest.json` and `run_metadata.json`. Immediately afterward
-PID `25052` was absent and the remaining SUMO process count was `0`.
+The historical no-cache, repo-local full command returned `592 passed in
+121.79s (0:02:01)`. Its same-volume real SUMO run produced run ID
+`7c69507a6cba`, completed 100 steps at final simulation time `100.0`, and
+recorded exact PID `25052` in both `manifest.json` and `run_metadata.json`.
+Immediately afterward PID `25052` was absent and the remaining SUMO process
+count was `0`; this historical PID evidence is superseded by the current
+run's PID `20164` below.
 
 Fresh static gates were `COMPILEALL PASS` for
 `algorithms api cloud core engine experiments ml scenes scripts tests` and
@@ -242,7 +265,7 @@ official data remained `163` tracked / `232` on disk, with no protected-path
 diff. The installed SUMO binary is `1.27.1`; the existing metadata extractor
 still records server version `22`, which remains outside this Task 12 scope.
 
-## Fix-Round Addendum (2026-08-21)
+## Fix-Round Addendum (2026-08-21; Historical — Superseded)
 
 This follow-up closes the lifecycle compatibility review gaps without changing
 the existing controller changes in `progress.md` or this report's earlier
@@ -299,7 +322,7 @@ pytest/output directories are ACL-blocked, generated `.task12-*` paths remain
 untracked and unstaged, and Task 10's parked CloudPolicy compatibility finding
 is out of scope.
 
-## Validated Scene Timebase Supplemental Fix (2026-08-21)
+## Validated Scene Timebase Supplemental Fix (2026-08-21; Historical — Superseded)
 
 This additive fix requires `RunService` to resolve an exact passing manifest
 through `SceneRegistry.list_scenes(formal_only=True)` before constructing the
@@ -335,7 +358,7 @@ constructed a runner instead of failing at the validated-scene boundary.
 The supplemental commit hash is reported in the post-commit handoff because a
 commit cannot contain its own final hash without changing that hash.
 
-## Validated Scene Review Fix Round 2 (2026-08-21)
+## Validated Scene Review Fix Round 2 (2026-08-21; Historical — Superseded)
 
 This additive round closes the five scoped review findings while preserving the
 controller's `progress.md` change and all protected inputs. The validated
@@ -389,14 +412,14 @@ git diff --check
 DIFF_CHECK_OK
 ```
 
-The external `D:\Temp` full-suite attempt produced four unrelated fixed-time
+The historical external `D:\Temp` full-suite attempt produced four unrelated fixed-time
 plan path failures because those tests require a repo-local `tmp_path`; the
 repo-local rerun above is the authoritative full result. The configured
 `output/tmp` and existing scratch directories remain ACL-blocked/untracked and
-were not staged. A fresh real SUMO run is intentionally left for the controller
-handoff rather than fabricated in this writer round.
+were not staged. The statement that a fresh real SUMO run was left for a
+controller handoff is historical and superseded by the latest run below.
 
-## Startup Ownership and Request Reconstruction Fix Round 3 (2026-08-21)
+## Startup Ownership and Request Reconstruction Fix Round 3 (2026-08-21; Historical — Superseded)
 
 The controller re-review found two additional lifecycle boundary defects in the
 fix-round tree. A request reconstructed with `dataclasses.replace()` could
@@ -441,5 +464,186 @@ The changed request marker is an internal, hidden init field so
 startup now rejects an active connection before `Popen` and catches
 `BaseException` while preserving the original error after best-effort exact
 child cleanup. No process-name enumeration or unrelated-process cleanup was
-introduced. A fresh real SUMO run after this additive commit remains a
-controller handoff gate.
+introduced. The earlier statement that a fresh real SUMO run remained a
+controller handoff gate is historical and superseded by the latest run below.
+
+## Latest Code-HEAD Verification (2026-08-22, 574f199; Historical — Superseded)
+
+All verification in this historical addendum targeted the then-current code
+evidence head `574f199fc6dd5725a0f02e07b9dc0ed2e6aa67fc`; it is superseded by
+the e9b2715 verification below.
+
+### Fresh automated verification
+
+Full suite:
+
+```text
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .superpowers\tmp\task12-resume-20260822-full
+610 passed in 111.99s (0:01:51)
+```
+
+Focused lifecycle/API/artifact/resilience suite:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-resume-20260822-focused
+106 passed in 42.53s
+```
+
+Complete compile gate and protected code-range diff check:
+
+```text
+.\.venv\Scripts\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests visualization
+COMPILEALL_OK
+
+git diff --check 71bd4b0..HEAD
+DIFF_CHECK_OK
+```
+
+### Fresh real SUMO and exact-PID evidence
+
+```text
+run_id: a0ae899b0598
+run_dir: D:\Temp\judge-task12-resume-20260822-real\i1\fixed_time\x1\s42\a0ae899b0598
+status: completed
+derived_steps: 100
+requested_seconds: 100.0
+final_simulation_time: 100.0
+manifest PID: 10928
+run_metadata PID: 10928
+PID alive after cleanup: false
+remaining SUMO processes: 0
+```
+
+The manifest and metadata identify the same exact child PID; cleanup left no
+remaining SUMO process. This latest PID evidence supersedes historical PIDs
+`17416` and `25052`.
+
+### Protected inputs and worktree scope
+
+```text
+赛题资料.7z SHA-256:
+12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F
+
+data/intersection_data tracked files: 163
+data/intersection_data files on disk: 232
+base-to-code-head protected diff: empty
+index protected diff: empty
+```
+
+The archive is untracked/unstaged and is outside the `71bd4b0..574f199`
+commits. The protected `data/intersection_data` files and the `.t9c`, `.t10`,
+and `.t11` paths were not modified. Before this report write, the only tracked
+worktree modification was the controller's `progress.md`; pre-existing
+untracked protection/evidence directories were outside this report and were
+not staged.
+
+The fresh tests and gates above are evidence for code head `574f199...`; this
+report-only evidence commit is not itself claimed to have undergone code tests.
+Its commit SHA is supplied in the handoff after commit creation.
+
+## Round 4 Review Findings (2026-08-22; e9b2715)
+
+The Round 4 review findings were closed by the additive e9b2715 code head. The
+review buckets and their RED/GREEN evidence are recorded without rewriting the
+earlier rounds:
+
+- A — TraCI connection ownership and partial-start cleanup. RED reproduced
+  `2 failed`; GREEN A returned `4 passed`.
+- B — malformed status-artifact validation, recovery, and terminal metadata
+  ownership. RED reproduced `9 failed, 10 passed`; GREEN B returned `19 passed`.
+- C — compatibility-step reconstruction and launch-boundary ownership. RED
+  reproduced `1 failed`; GREEN C returned `5 passed`.
+
+The writer's expanded focused verification returned `111 passed in 28.05s`.
+The main agent's independent targeted verification returned `27 passed in
+3.02s`. Terra's post-fix code audit returned `PASS` with no new Critical or
+Important findings. The pre-existing deferred `frame_sink` issue remains a
+Minor finding and is not claimed as fixed by this round.
+
+## Latest Code-HEAD Verification (2026-08-22, e9b2715)
+
+All current verification in this addendum targets code evidence head
+`e9b2715dedb60438f80b741fef69fb2fffaed4ee`. The report-only commit created
+after this addendum is documentation evidence and is not represented as a
+code-test target.
+
+### Focused and full-suite verification
+
+The exact eight-file focused command was:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r4-focused
+127 passed in 42.75s
+```
+
+The first full-suite attempt used an external `D:\Temp` basetemp and returned
+`627 passed` with four fixed-time source-boundary environment failures. Those
+four failures were environmental consequences of the external basetemp, not
+the canonical contract result. The required repo-local canonical rerun was
+green:
+
+```text
+canonical in-repo basetemp full suite
+631 passed in 123.84s
+```
+
+The external attempt is recorded transparently and is not presented as a
+canonical failure; the in-repo rerun above is the authoritative full result.
+
+### Static gates and protected inputs
+
+```text
+.\.venv\Scripts\python.exe -m compileall -q algorithms api cloud core engine experiments ml scenes scripts tests visualization
+exit 0
+
+git diff --check 71bd4b0..e9b2715
+PASS
+
+赛题资料.7z on-disk SHA-256:
+12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F
+
+data/intersection_data tracked files: 163
+data/intersection_data files on disk: 232
+base-to-code-head protected diff: empty
+protected index diff: empty
+```
+
+The archive hash is an on-disk integrity observation; the archive remains
+untracked and unstaged and is outside the `71bd4b0..e9b2715` commits. That
+hash is distinct from the empty Git protected-path diff evidence. The official
+`data/intersection_data` files and `.t9c`, `.t10`, and `.t11` paths were not
+modified or staged.
+
+### Fresh real SUMO and exact-PID evidence
+
+```text
+run_id: b7f105be2545
+run_dir: D:\Temp\judge-task12-r4-controller-real\i1\fixed_time\x1\s42\b7f105be2545
+status: completed
+derived_steps: 100
+requested_seconds: 100.0
+final_simulation_time: 100.0
+manifest PID: 20164
+run_metadata PID: 20164
+PID_ALIVE: False
+SUMO before: 0
+SUMO after: 0
+```
+
+The manifest and metadata identify the same exact child PID, and the
+before/after SUMO inventories both contain zero processes. This fresh run is
+the current real-SUMO evidence and supersedes historical PIDs `17416`,
+`25052`, `19276`, and `10928`.
+
+### Worktree scope
+
+The controller's `progress.md` remains an unstaged ledger modification.
+Pre-existing scratch and protected evidence paths remain untracked. At the
+code commit boundary the protected index was empty; only this explicitly
+allowed report is staged for the evidence-only follow-up commit. No code,
+tests, `.t*` paths, `赛题资料.7z`, or `data/intersection_data/**` are part of
+that staging allowlist.
+
+The current code-head evidence above is the source of truth for this report.
+The report commit SHA is supplied after creating the requested
+`docs: bind task 12 evidence to latest code head` commit.
