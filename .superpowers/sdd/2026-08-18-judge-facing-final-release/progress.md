@@ -609,3 +609,191 @@
 - Task 12: complete（commits `71bd4b0..87885c6`，1 个 parked Important 与上述 deferred
   Minor 已显式移交最终 whole-branch wave；Round 5 breaker 已裁决，最新代码证据绑定
   `fc1a4d7`）。
+
+## Task 13 implementation
+
+- 状态：进行中；基线 `ea8b1a9`。Task 13 冻结 run-scoped evidence 与 metric semantics，
+  是 Task 8 completed/unfinished 与 safety fields、Task 12 artifacts/terminal states 到
+  Task 14/22 formal matrix 的 load-bearing 交接点。
+- Ruling: brief 的 `RunSummary` 为类型笔误；复用既有 `core.types.MetricSummary`，允许最小
+  修改 `core/types.py` 增加 `from_raw_outputs()` 与安全汇总字段，不创建同名并行 summary
+  类型 — if wrong，后续 Task 14/16/17 会出现互不兼容的两套指标合同。
+- Ruling: 计划 Files 表未列但生产接线必需的 `engine/runner.py`、`engine/run_service.py` 与
+  直接回归测试可最小扩展；不得重构 Task 8 safety collector、Task 10 CloudPolicy、Task 12
+  lifecycle/process ownership — if wrong，可从提交中剥离接线适配，但孤立 EvidenceWriter
+  将无法满足“每次生产 run 都写同一证据合同”。
+- Ruling: 证据为 additive contract；保留 `manifest.json`、`status.json` 与
+  `run_metadata.json` 兼容，新建 versioned `provenance.json` 与 `hashes.json`。hash manifest
+  使用 run-relative path -> SHA-256，不自哈希，所有 JSON/CSV 采用同目录临时文件原子替换
+  — if wrong，只需迁移 hash envelope，不得破坏已冻结的 Task 12 identity/status 写入。
+- Ruling: 保留既有 `required_output_names()` 作为 legacy raw/stable 列表，新增严格
+  `evidence_required_output_names()`；Task 13 起 canonical resume/validation 必须使用后者或
+  `EvidenceReader`，因此旧 fixture/API 不突变，但缺 provenance/hash 的旧 run 不能冒充新
+  completed evidence — if wrong，可在 Task 14 迁移消费者，但正式矩阵开始前必须关闭。
+- Ruling: `hashes.json` 只能在最终 `status.json` 与 `run_metadata.json` 落盘后生成，覆盖
+  最终 manifest/provenance/status/metadata/raw/metrics/events/summary 并显式排除自身；
+  `EvidenceWriter.finalize()` 不得重写 Task 12 status — if wrong，后续同终态同步会令刚生成
+  的 hash 立即失效。
+- Ruling: completed/ended_early 的可发布证据必须具有完整非空 raw/metrics/events/summary 与
+  有效 hash；failed/interrupted/disconnected 等 terminal 必须保留 manifest、provenance、
+  status、failure reason 和当时已有文件，但不得伪造完整 SUMO output 或 completed summary
+  — if wrong，Task 14 resume 可能把失败 run 误判为有效完成证据。
+- Ruling: warmup 按 simulation seconds；time-series/event 只聚合
+  `simulation_seconds >= warmup_seconds`，tripinfo 只把 `depart >= warmup_seconds` 的完成车辆
+  纳入 throughput/完成车辆均值，unfinished 单独计数且永不进入完成车辆指标。fuel 为 ml、
+  CO2 从 mg 独立换算为 g；summary 必须显式包含 collision、red_light、
+  illegal_transition、harsh_braking、teleport、potential_conflict 六类计数 — if wrong，
+  formal matrix 会混入 warmup 全旅程或把未完成车辆/能源/安全口径混合。
+- TDD 边界：先覆盖 completed/unfinished、warmup、fuel/CO2、六类 safety、manifest/provenance
+  必填、terminal 分层、run_id/hash/空文件、原子写无 tmp 与 legacy visualization/metadata
+  兼容，再运行计划 focused、affected、full、compileall、diff-check 和真实 SUMO evidence
+  smoke；保护归档与官方数据始终零修改/零暂存。
+- Task 13 fresh baseline：repo-local full 为 `655 passed in 107.88s`，RED 前 tracked code
+  零改动。首批 collection RED 为 `ModuleNotFoundError: experiments.evidence`；添加仅抛
+  `NotImplementedError` 的接口骨架后，7 个证据/指标行为测试为 `7 failed in 0.54s`。
+- Ruling: evidence terminalization 使用两阶段：`finalize()` 在 Task 12 terminal commit 前原子
+  物化 summary/snapshots，使 would-be completed 的物化失败仍可变为 failed；Task 12 落盘
+  最终 metadata/status 后再 `seal()` hashes。seal 失败只让 `EvidenceReader` fail closed，
+  不得覆盖已终态 status；原 body/BaseException 始终保持 primary — if wrong，hash 顺序或
+  cleanup 二次异常会制造不可验证的 completed run 或掩盖真实失败。
+- 首批 GREEN：7 个核心 evidence contract 为 `7 passed in 0.53s`；扩大到 metrics、
+  artifacts、safety 为 `56 passed in 0.96s`。
+- 第二批 schema/parser RED 为 `9 failed, 8 deselected`，seal RED 为
+  `1 failed, 16 deselected`；逐项补齐 request dimensions、strict depart/arrival、identity/
+  stopped 拒绝、semantic validation、unsafe hash path、partial summary 与 sealed guard 后，
+  分别 GREEN `9 passed`、`1 passed`，完整 evidence 集 `17 passed in 0.66s`。
+- consumer RED/GREEN：legacy completed run 与未验证 summary 原会被 resume/visualization
+  接受，`2 failed`；接入 `EvidenceReader` 后为 `2 passed`，canonical completed contract
+  从 Task 13 起 fail closed。
+- atomic CSV RED/GREEN：MetricsCollector/EventLogger 写入失败会截断旧 snapshot，
+  `2 failed`；同目录 temp+replace 后 `2 passed`，失败保留旧 snapshot 且无 tmp 残留。
+- lifecycle production RED：direct Runner completed/malformed、Service early scene failure、
+  Service normal 与 KeyboardInterrupt 共 `6 failed in 4.49s`；根因分别为缺 seal、
+  service-only path 缺 begin/finalize/seal，以及 KI 内存/磁盘停留 running。当前进入生产
+  ownership 接线与异常优先级 GREEN。
+- Task 13 strict-reader breaker RED/GREEN：首轮 `8 failed, 21 passed, 1 skipped`，补齐
+  direct/ancestor reparse、events 全行 identity/time、四类 XML、hash 算法/覆盖/路径、JSON
+  exact type/finiteness、manifest/provenance/status/metadata identity/timebase 与 canonical
+  summary/raw 对照后，复审集为 `41 passed`；`evidence_error` 另以 `1 failed` 锁定后 GREEN。
+- Task 13 lifecycle breaker RED/GREEN：secondary finalize/seal/status/metadata failure、
+  Runner/Service `BaseException` primary preservation、cancelled future terminalization 与持久
+  status failure 共先后出现 `10 failed`、`2 failed`；修复后对应为 `10 passed`、`2 passed`。
+  自定义非 evidence-managed runner 可保持 lifecycle compatibility，但 `EvidenceReader` 与
+  `is_complete()` 必须永久拒绝其作为 canonical publishable evidence。
+- Task 13 提交：`c9da80b` (`feat: define run-scoped evidence and metric semantics`)；19 个
+  production/test 文件显式暂存，未包含本 ledger、scratch、保护归档或官方数据，index 随后
+  为空。latest affected 为 `246 passed in 57.69s`。
+- Task 13 首次 post-commit 真实 SUMO 门禁捕获 server-version tuple bug：run
+  `3223b1418723` / PID `15488` 的其他 evidence/PID 检查通过，但 manifest/metadata 误记
+  TraCI protocol `22`，因此仅作为 historical RED；单测先得到 `1 failed`，随后提交
+  `5ee5a66` (`fix: record SUMO server version`) 并以 tuple index 1 记录 `1.27.1`。
+- Task 13 latest code-head 门禁：SUMO-version focused `75 passed in 29.90s`；full
+  `720 passed in 130.19s`；venv Python 3.12.13 与系统 Python 3.14.7 均 compileall 122 files/
+  exit 0；`git diff --check ea8b1a9..5ee5a66` 通过。
+- Task 13 latest 真实 SUMO：run `968823f6861e`，目录
+  `D:\Temp\t13-real-sumo-100-final2\i1\fixed_time\x1\s42\968823f6861e`；
+  result/status/metadata completed，`EvidenceReader issues=[]`，13 个 required artifacts 均
+  non-empty，manifest code commit exact `5ee5a667...`，SUMO version `1.27.1`，100 steps /
+  100.0 requested/final seconds / 100 simulation rows；hash 覆盖完整，PID `22312` 已退出，
+  SUMO before/after 均为空。
+- Task 13 latest protected gate：归档 SHA-256 仍为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；官方数据仍为
+  163 tracked / 232 disk；baseline..HEAD、worktree 与 index 的保护路径 diff 均为空。
+- Task 13：代码/测试/门禁已完成；scoped Spec/Quality/Mutation 三域并行终审、报告提交与
+  ledger 闭环进行中。在三域 Critical/Important 清零且报告/ledger 提交前不得标记 complete。
+- Task 13 scoped Mutation review：唯一 finding 为 `EvidenceReader.validate()` 的临时文件
+  `glob()` 枚举未捕获 OSError/PermissionError，valid artifact 上可直接抛出；其余独立
+  hash/CSV/XML/JSON/metadata/evidence_error/symlink-junction/stat/seal/custom-runner harness
+  均 fail closed。此 finding 与 Quality P2 重合，已进入 TDD fix。
+- Task 13 scoped Quality review：NEEDS FIXES。可复现 findings 为：custom runner 抛
+  `SystemExit` 后 done=True 但 state/status 留 running；Python >=3.10 声明下 3.10/3.11 无
+  `Path.is_junction()` 导致 Windows junction/reparse fail-open；events row 的 step/confidence/
+  entity_ids/source/context 校验不足；temporary glob IO 外泄。Terra writer 正按 RED/GREEN
+  处理，任何代码变化后旧 `5ee5a66` latest-HEAD 门禁必须全部重跑。
+- Task 13 Quality 另报“raw+summary+hashes 协调改写可通过”的外部可信根 P1。当前进入
+  Spec/主代理 threat-model 裁决：brief 只冻结 run-scoped SHA-256 self-consistency，未提供
+  签名密钥、外部 digest、只读账本或不可变存储；在无外部信任锚时本地代码无法证明
+  adversarial authenticity。不得静默降级：若 Spec 判定现合同要求 authenticity，则必须
+  新增可信根接口并延长 Task 13；否则报告必须显式声明仅检测意外损坏，并把发布级外部
+  digest/signing anchor 移交 Task 22/24 final evidence packaging。
+- Task 13 scoped Spec 初审：FAIL。Critical 为 generic `SystemExit` 未终态化且 Runner cleanup
+  可覆盖 primary；Important 为 matrix live、tuning、single-run visualization、API summary
+  consumers fail-open，events SafetyEvent 字段/context 不严格，Python 3.10/3.11 junction
+  fail-open，RunManifest 4 个额外字段无默认，manifest/status/metadata failure_reason 不自洽；
+  legacy aliases 缺 units 为 Minor。Spec 裁定同目录 hashes 仅保证损坏检测/自洽，协调改写的
+  adversarial authenticity 不属于当前 brief；外部 trust anchor 显式移交 Task 22/24。
+- Task 13 final-findings TDD RED：evidence/reparse/events `11 failed`；RunService SystemExit
+  `1 failed` 且 status=running；matrix/tuning consumers `2 failed`；single-run visualization
+  `1 failed`；主代理另锁定 API submit `1 failed` 与“strict but wrong request live result”
+  `1 failed`。不得把这些初审前的 720/full 或真实 SUMO 证据继续称 latest。
+- Task 13 final-findings GREEN：API `14 passed`、evidence `55`、RunService `34`、runner
+  channel `36`、lifecycle `28`、tuning/matrix `20`、visualization `4`、events/artifacts/
+  metrics `39`；主代理 fresh affected `230 passed in 72.77s`，compileall/diff-check 通过。
+- Task 13 fix commit：`9b74a61` (`fix: close task 13 final review findings`)；14 个 code/test
+  文件显式暂存，未包含本 ledger、报告、scratch 或保护输入，index 随后为空。修复 generic
+  BaseException primary/terminal、所有 Windows reparse 属性、Reader glob I/O、canonical
+  events/context、reason/units/RunManifest compatibility，并把 matrix live identity、tuning、
+  visualization 与 API 所有 summary 出口收束到严格 evidence 边界。
+- Task 13 latest full 首次使用 `D:\Temp` basetemp 得到 `4 failed, 738 passed`；四项全为
+  `FixedTimePlanResolver` 按既有合同拒绝仓库外 pytest timing fixture，不是 Task 13 行为失败。
+  改用 fresh repo-local basetemp 后 authoritative full 为 `742 passed in 138.32s`。
+- Task 13 latest static/protected：venv Python 3.12.13 与系统 Python 3.14.7 对 122 files
+  compileall 均 exit 0；`git diff --check ea8b1a9..9b74a61` 通过；归档 SHA-256 仍为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；官方数据仍为
+  163 tracked / 232 disk；baseline/worktree/index 保护 diff 均为空，index 为空。
+- Task 13 latest 真实 SUMO：run `074551e3bdc5`，目录
+  `D:\Temp\t13-real-sumo-100-9b74a61-20260822-112328\i1\fixed_time\x1\s42\074551e3bdc5`；
+  result/status/metadata completed，Reader issues=[]，13/13 required non-empty，manifest
+  commit exact `9b74a61c...`，SUMO version `1.27.1`，100 steps / 100.0 seconds / 100 rows，
+  hash coverage exact；PID `17200` 已退出，SUMO before/after 均为空。
+- Task 13：原 Spec/Quality/Mutation 三位 reviewer 正在 `ea8b1a9..9b74a61` latest-HEAD
+  scoped 复审；三域结果、report-only commit 与 ledger commit 闭环前仍不得标记 complete。
+- Task 13 latest-HEAD Spec 复审：旧 Critical/Important/Minor 全部 ADDRESSED，无新 Critical；
+  仍 FAIL 于 1 个新 Important：`verify_ia_ib.verify_ca_mp_smoke/exact_metrics` 未调用 Reader，
+  可把 completed+summary 但 seal-invalid 的 run 判 PASS。Quality 同样确认此 finding。
+- Task 13 latest-HEAD Quality 复审：SystemExit、Windows reparse、glob never-throw、events、
+  API/visual/PDF matrix 均 ADDRESSED；NEEDS FIXES 于 2 个 Important：上述 IA/IB verifier；
+  tuning 虽把 invalid evidence 转为 inf，但全 inf 仍按参数排序选 winner 并写
+  selected_params/holdout，必须在 invalid/non-finite calibration 时中止且不产成功交付物。
+- Task 13 latest-HEAD Mutation 复审：另有 1 个 Important integrity gap：API 与 tuning 只验证
+  run_dir，却继续使用调用方传入的 `RunResult.summary`；custom runner 可让磁盘 strict summary
+  throughput=1 而内存 summary=999999，并被 API/tuning 消费。matrix live 也必须在
+  `is_complete` 后从磁盘 reload，不能把未绑定内存 summary 写入 matrix。
+- Task 13 fix round 2 已派 Terra writer：TDD 收束 tuning workflow、IA/IB verifier 与所有
+  in-memory/disk summary binding；新提交、latest full/compile/protected/real-SUMO 及三域复审
+  全部完成前不得关闭 Task 13。
+- Task 13 fix round 2/5 RED→GREEN：tuning/matrix canonical/fail-closed 为
+  `6 failed, 20 deselected`，IA/IB seal gate 为 `2 failed, 19 deselected`，API 伪内存
+  summary 为 `1 failed, 13 deselected`，RunService 伪 runner summary 为
+  `1 failed, 34 deselected`；修复后 tuning `27 passed`、API `14 passed`、IA/IB
+  validation `21 passed`、evidence contract `55 passed`、RunService `35 passed`。提交
+  `b1a1ec7` (`fix: bind task 13 consumers to sealed evidence`) 把 API、tuning、live
+  matrix、IA/IB verifier、RunService summary 全部绑定到 Reader 验证的 sealed disk
+  snapshot，并让 invalid/non-finite tuning 与 publication failure fail closed。
+- Task 13 fix round 3/5 RED→GREEN：主代理以 `2 failed` 锁定 seal 后 raw summary 与
+  tuning 成功标志边界，并以另一个 `2 failed` 锁定单运行/聚合 figure source change、swap
+  failure 的半发布风险；GREEN 后 exact affected 为 `103 passed in 26.71s`。提交
+  `d1edd10` (`fix: publish validated figure sets atomically`) 让 run/aggregate 图集在同卷
+  staging 中生成、发布前复验、整目录原子换位，并在失败时恢复旧 public set。
+- Task 13 exact code-head `d1edd109916a3372cab5dfcbd367df7f7b10dbb3` 最终门禁：
+  full `771 passed in 158.25s`；venv Python 3.12.13 与系统 Python 3.14.7 compileall
+  均 exit 0；targeted flake8 exit 0；`git diff --check ea8b1a9..d1edd109` clean；归档
+  SHA-256 仍为 `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`，
+  官方数据仍为 163 tracked / 232 disk，baseline/worktree/index 保护 diff 均为空。
+- Task 13 exact code-head 真实 SUMO：run `28f57c800100`，目录
+  `D:\Temp\t13-real-sumo-100-d1edd10-20260822-122630\i1\fixed_time\x1\s42\28f57c800100`；
+  result/status/metadata completed，Reader issues=[]，canonical summary loaded，13/13
+  required non-empty，hash coverage exact，manifest commit exact `d1edd109...`，SUMO
+  manifest/metadata version `1.27.1`，100 requested/derived steps、100.0 requested/final
+  seconds、step 1.0、warmup 0、100 simulation rows，`is_complete=true`；manifest/metadata
+  exact PID `24348` 已退出，SUMO before/after 均为空，未使用进程名终止。
+- Task 13 exact-HEAD 三域终审：Spec CLEAN（关键回归 `10 passed`，同补丁 affected
+  `103 passed`）；Contract CLEAN（`103 passed`）；Mutation CLEAN（`4 passed` 加原子
+  publication/rollback/manual mutation probes）。Critical/Important 均为零。
+- Task 13 minor (deferred)：`EvidenceReader.validate()` 体量偏大；其 fail-closed 行为与
+  Task 13 契约已验证，本轮不阻塞，显式移交 final whole-branch review 评估受控重构。
+- Task 13 报告提交：`4b6e0ea` (`docs: record task 13 evidence contract`)；措辞澄清追加
+  `db51125` (`docs: clarify task 13 code evidence head`)。两次均仅显式暂存 Task 13 report，
+  progress、scratch、保护归档和官方数据未进入提交，index 随后为空。
+- Task 13: complete (commits `ea8b1a9..db51125`, review clean；权威代码证据 head
+  `d1edd109`，报告 `4b6e0ea` + `db51125`，最新 771/full 与真实 SUMO/PID 门禁已记录)。
