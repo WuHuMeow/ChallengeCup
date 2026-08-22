@@ -10,6 +10,7 @@ from statistics import mean
 
 from core.run_models import RunRequest, RunResult, RunStatus
 from engine.run_service import RunService
+from experiments.evidence import EvidenceReader
 
 
 PARAMETER_GRID = {
@@ -39,7 +40,11 @@ def parameter_candidates() -> list[dict[str, float]]:
 
 
 def _metrics(result: RunResult) -> dict | None:
-    if result.status is not RunStatus.COMPLETED or not result.summary:
+    if (
+        result.status is not RunStatus.COMPLETED
+        or not result.summary
+        or EvidenceReader.validate(result.run_dir)
+    ):
         return None
     metrics = result.summary.get("metrics")
     return metrics if isinstance(metrics, dict) else None

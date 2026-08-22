@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -18,13 +19,21 @@ from api.models import (
 )
 from cloud.cloud_policy import CloudPolicy
 from engine.run_service import RunService
+from experiments.evidence import EvidenceReader
+
+
+def _validated_result(result):
+    """Preserve lifecycle state while withholding unverified summaries."""
+    if result.summary is not None and EvidenceReader.validate(result.run_dir):
+        return replace(result, summary=None)
+    return result
 
 
 def _result_or_404(run_service: RunService, run_id: str):
     result = run_service.get(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="unknown run_id")
-    return result
+    return _validated_result(result)
 
 
 def create_app(run_service: RunService | None = None) -> FastAPI:
@@ -82,7 +91,7 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
             result = application.state.run_service.submit(payload.to_domain())
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return RunResultModel.from_domain(result)
+        return RunResultModel.from_domain(_validated_result(result))
 
     @application.get("/api/runs/{run_id}", response_model=RunResultModel)
     def get_run(run_id: str) -> RunResultModel:

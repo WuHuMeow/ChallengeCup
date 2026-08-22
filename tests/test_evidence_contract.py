@@ -3,8 +3,10 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import stat
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -79,14 +81,30 @@ def _write_events(path: Path) -> None:
         )
         writer.writeheader()
         writer.writerow(
-            {"run_id": path.parent.name, "simulation_seconds": 599, "type": "collision"}
+            {
+                "run_id": path.parent.name,
+                "intersection_id": "1",
+                "algorithm": "fixed_time",
+                "step": 0,
+                "simulation_seconds": 599,
+                "type": "collision",
+                "entity_ids": "[]",
+                "source": "test_fixture",
+                "confidence": 1.0,
+            }
         )
         for index, event_type in enumerate(SAFETY_TYPES):
             writer.writerow(
                 {
                     "run_id": path.parent.name,
+                    "intersection_id": "1",
+                    "algorithm": "fixed_time",
+                    "step": index + 1,
                     "simulation_seconds": 600 + index,
                     "type": event_type,
+                    "entity_ids": "[]",
+                    "source": "test_fixture",
+                    "confidence": 1.0,
                 }
             )
 
@@ -221,6 +239,29 @@ def test_scene_mapping_hash_is_order_independent_and_hashes_the_complete_mapping
     )
 
 
+def test_run_manifest_keeps_legacy_constructor_arguments_compatible():
+    manifest = RunManifest(
+        run_id="legacy-run",
+        code_commit="a" * 40,
+        scene_manifest_sha256="unknown",
+        algorithm="fixed_time",
+        parameters={},
+        flow_multiplier=1.0,
+        seed=42,
+        duration_seconds=1.0,
+        warmup_seconds=0.0,
+        derived_steps=1,
+        sumo_version="unknown",
+        python_version="3.10",
+        prediction_enabled=False,
+    )
+
+    assert manifest.scene_id == ""
+    assert manifest.scene_source_sha256 == {}
+    assert manifest.step_length is None
+    assert manifest.requested_seconds == 0.0
+
+
 def test_completed_evidence_is_atomic_hashed_and_preserves_legacy_summary_aliases(tmp_path):
     artifacts, summary = _completed_evidence(tmp_path)
 
@@ -234,8 +275,13 @@ def test_completed_evidence_is_atomic_hashed_and_preserves_legacy_summary_aliase
     assert payload["metrics"]["co2_g"] == 4.0
     assert payload["metrics"]["collision_count"] == 1
     assert payload["units"]["fuel_ml"] == "ml"
+    assert payload["units"]["fuel_consumption"] == "ml"
     assert payload["units"]["co2_g"] == "g"
     assert payload["units"]["avg_travel_time_seconds"] == "s"
+    assert payload["units"]["avg_travel_time"] == "s"
+    assert payload["units"]["avg_delay"] == "s"
+    assert payload["units"]["avg_queue_length"] == "vehicles"
+    assert payload["units"]["max_queue_length"] == "vehicles"
     assert summary.completed_vehicle_count == 2
 
     hashes = json.loads(artifacts.hashes.read_text(encoding="utf-8"))
@@ -353,6 +399,8 @@ def test_record_event_rejects_other_run_and_atomically_preserves_safety_fields(t
     assert rows == [{
         **{name: "" for name in EVENT_FIELDS},
         "run_id": "run-events",
+        "intersection_id": "1",
+        "algorithm": "fixed_time",
         "step": "12",
         "simulation_seconds": "612.5",
         "type": "potential_conflict",
@@ -469,6 +517,20 @@ def test_reader_checks_semantics_even_when_tampered_files_are_rehashed(tmp_path)
     assert "hash_mismatch" not in {issue.code for issue in issues}
 
 
+def test_reader_rejects_rehashed_manifest_failure_reason_mismatch(tmp_path):
+    artifacts, _ = _completed_evidence(tmp_path)
+
+    def corrupt_manifest(payload):
+        payload["failure_reason"] = "invented terminal reason"
+
+    _rewrite_json_and_rehash(artifacts, "manifest.json", corrupt_manifest)
+
+    codes = {issue.code for issue in EvidenceReader.validate(artifacts.run_dir)}
+
+    assert "failure_reason" in codes
+    assert "hash_mismatch" not in codes
+
+
 def test_reader_rejects_unsafe_hash_paths_and_unexpected_failed_summary(tmp_path):
     artifacts = RunArtifacts.create(
         tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-failed-path"
@@ -578,12 +640,14 @@ def test_reader_rejects_symlinked_contract_output_even_when_hash_matches(
         artifacts.metrics.symlink_to(real_metrics.name)
     except OSError:
         real_metrics.replace(artifacts.metrics)
-        original_is_symlink = Path.is_symlink
+        original_lstat = Path.lstat
         monkeypatch.setattr(
             Path,
-            "is_symlink",
-            lambda path: (
-                path == artifacts.metrics or original_is_symlink(path)
+            "lstat",
+            lambda path, *args, **kwargs: (
+                SimpleNamespace(st_mode=stat.S_IFLNK, st_file_attributes=0)
+                if path == artifacts.metrics
+                else original_lstat(path, *args, **kwargs)
             ),
         )
     else:
@@ -603,11 +667,15 @@ def test_writer_refuses_to_seal_a_symlinked_required_output(tmp_path, monkeypatc
     summary = _write_completed_inputs(artifacts)
     writer.finalize(RunStatus.COMPLETED, summary)
     _finish_status_and_metadata(artifacts, RunStatus.COMPLETED, "")
-    original_is_symlink = Path.is_symlink
+    original_lstat = Path.lstat
     monkeypatch.setattr(
         Path,
-        "is_symlink",
-        lambda path: path == artifacts.stats or original_is_symlink(path),
+        "lstat",
+        lambda path, *args, **kwargs: (
+            SimpleNamespace(st_mode=stat.S_IFLNK, st_file_attributes=0)
+            if path == artifacts.stats
+            else original_lstat(path, *args, **kwargs)
+        ),
     )
 
     with pytest.raises(ValueError, match="symlink"):
@@ -647,6 +715,7 @@ def test_reader_checks_identity_and_finite_time_on_every_event_row(
         writer = csv.DictWriter(output, fieldnames=list(EVENT_FIELDS))
         writer.writerow({
             "run_id": run_id,
+            "step": 7,
             "simulation_seconds": simulation_seconds,
             "type": "run_note",
             "detail": "ordinary non-safety event",
@@ -846,17 +915,97 @@ def test_reader_rejects_reparse_point_in_run_directory_ancestry(
 ):
     artifacts, _ = _completed_evidence(tmp_path)
     junction = artifacts.run_dir.parent
-    original_is_junction = getattr(Path, "is_junction", lambda path: False)
+    original_lstat = Path.lstat
+
+    def reparse_lstat(path, *args, **kwargs):
+        if path == junction:
+            return SimpleNamespace(
+                st_mode=stat.S_IFDIR,
+                st_file_attributes=0x0400,
+            )
+        return original_lstat(path, *args, **kwargs)
+
     monkeypatch.setattr(
         Path,
-        "is_junction",
-        lambda path: path == junction or original_is_junction(path),
-        raising=False,
+        "lstat",
+        reparse_lstat,
     )
 
     codes = {issue.code for issue in EvidenceReader.validate(artifacts.run_dir)}
 
     assert "reparse_point" in codes
+
+
+@pytest.mark.parametrize("exception_type", [OSError, PermissionError])
+def test_reader_converts_temporary_glob_failures_to_evidence_issues(
+    tmp_path,
+    monkeypatch,
+    exception_type,
+):
+    artifacts, _ = _completed_evidence(tmp_path)
+    original_glob = Path.glob
+
+    def fail_run_glob(path, pattern):
+        if path == artifacts.run_dir:
+            raise exception_type("cannot enumerate temporary files")
+        return original_glob(path, pattern)
+
+    monkeypatch.setattr(Path, "glob", fail_run_glob)
+
+    issues = EvidenceReader.validate(artifacts.run_dir)
+
+    assert "evidence_io" in {issue.code for issue in issues}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("step", "true"),
+        ("type", ""),
+        ("accepted", "maybe"),
+        ("action_value", "not-json"),
+        ("entity_ids", '{"not": "a-list"}'),
+        ("entity_ids", ""),
+        ("source", ""),
+        ("confidence", "1.5"),
+        ("confidence", "NaN"),
+    ],
+)
+def test_reader_rejects_rehashed_malformed_event_schema_rows(
+    tmp_path,
+    field,
+    value,
+):
+    artifacts, _ = _completed_evidence(tmp_path)
+    rows = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rows[0][field] = value
+    with artifacts.events.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=list(EVENT_FIELDS))
+        writer.writeheader()
+        writer.writerows(rows)
+    _rehash(artifacts, "events.csv")
+
+    codes = {issue.code for issue in EvidenceReader.validate(artifacts.run_dir)}
+
+    assert "events_schema" in codes
+    assert "hash_mismatch" not in codes
+
+
+def test_reader_rejects_event_schema_with_unexpected_column_after_rehash(tmp_path):
+    artifacts, _ = _completed_evidence(tmp_path)
+    rows = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    fieldnames = [*EVENT_FIELDS, "untrusted"]
+    rows[0]["untrusted"] = "extra"
+    with artifacts.events.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    _rehash(artifacts, "events.csv")
+
+    codes = {issue.code for issue in EvidenceReader.validate(artifacts.run_dir)}
+
+    assert "events_schema" in codes
+    assert "hash_mismatch" not in codes
 
 
 def test_summary_integer_counts_do_not_accept_json_booleans(tmp_path):

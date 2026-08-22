@@ -327,6 +327,11 @@ class SimulationRunner:
             reason = str(exc) or type(exc).__name__
             body_exception = True
             raise
+        except BaseException as exc:
+            status = RunStatus.FAILED
+            reason = str(exc) or type(exc).__name__
+            body_exception = True
+            raise
         finally:
             cleanup_errors: list[Exception] = []
             metric_summary: MetricSummary | None = None

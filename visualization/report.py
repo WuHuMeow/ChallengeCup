@@ -134,6 +134,8 @@ def _write_manifest(
 def generate_run_figures(run_dir: Path) -> list[Path]:
     """Generate summary, time-series, and FCD figures for one run."""
     run_dir = Path(run_dir)
+    if EvidenceReader.validate(run_dir):
+        raise ValueError("run figures require strict evidence")
     output_dir = run_dir / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
     summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from core.run_models import RunStatus
 from core.types import MetricSummary
@@ -14,7 +15,11 @@ from experiments.evidence import (
     canonical_mapping_sha256,
 )
 from visualization.plots import plot_heatmap
-from visualization.report import collect_summaries, generate_matrix_figures
+from visualization.report import (
+    collect_summaries,
+    generate_matrix_figures,
+    generate_run_figures,
+)
 
 
 def _write_summary_csv(path):
@@ -156,6 +161,20 @@ def test_collect_summaries_reads_run_identity_and_exact_metrics(tmp_path):
     assert set(frame["algorithm"]) == {"fixed_time", "ca_maxpressure"}
     assert "avg_travel_time" in frame.columns
     assert all(Path(path).is_file() for path in frame["summary_path"])
+
+
+def test_generate_run_figures_rejects_unvalidated_evidence(tmp_path):
+    run_dir = tmp_path / "unverified-run"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps({"metrics": {"throughput": 999}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="strict evidence"):
+        generate_run_figures(run_dir)
+
+    assert not (run_dir / "figures").exists()
 
 
 def test_every_figure_has_provenance_manifest(tmp_path):

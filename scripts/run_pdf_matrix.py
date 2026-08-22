@@ -297,6 +297,10 @@ def run_pdf_matrix(
                 result = _load_result(request, run_id)
             else:
                 result = service.run_sync(request)
+                if not is_complete(result.run_dir, request):
+                    raise ValueError(
+                        "live matrix result is not strict evidence for its request"
+                    )
                 state[key] = result.run_id
                 _atomic_json(state_path, state)
             results.append(result)

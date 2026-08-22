@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath
 import math
 import re
+import stat
 import platform
 import subprocess
 import threading
@@ -117,8 +118,21 @@ def _is_finite_number(value: object) -> bool:
 
 
 def _is_link_or_junction(path: Path) -> bool:
-    is_junction = getattr(path, "is_junction", None)
-    return path.is_symlink() or bool(is_junction and is_junction())
+    """Reject links and every Windows reparse point on all supported Pythons."""
+    try:
+        details = path.lstat()
+    except FileNotFoundError:
+        # Missing optional partial-evidence outputs are handled by their
+        # callers; they are not links.  Preserve other I/O failures so the
+        # reader can surface them as evidence issues.
+        return False
+    if stat.S_ISLNK(details.st_mode):
+        return True
+    # pathlib.Path.is_junction() is only present in Python 3.12+.  The
+    # Windows file attribute is available from lstat on every supported
+    # interpreter and identifies junctions and every other reparse point.
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+    return bool(getattr(details, "st_file_attributes", 0) & reparse_flag)
 
 
 def _json_exact_equal(left: object, right: object) -> bool:
@@ -151,10 +165,10 @@ class RunManifest:
     sumo_version: str
     python_version: str
     prediction_enabled: bool
-    scene_id: str
-    scene_source_sha256: Mapping[str, str]
-    step_length: float | None
-    requested_seconds: float
+    scene_id: str = ""
+    scene_source_sha256: Mapping[str, str] = field(default_factory=dict)
+    step_length: float | None = None
+    requested_seconds: float = 0.0
     request_dimensions: Mapping[str, object] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, object]:
@@ -417,6 +431,7 @@ class EvidenceWriter:
         from engine.events import EVENT_FIELDS
 
         fieldnames = list(EVENT_FIELDS)
+        manifest = _load_json(self.run_dir / "manifest.json")
         if path.exists() and path.stat().st_size > 0:
             with path.open(newline="", encoding="utf-8") as source:
                 reader = csv.DictReader(source)
@@ -428,6 +443,8 @@ class EvidenceWriter:
             row = {name: "" for name in fieldnames}
             row.update({
                 "run_id": event.run_id,
+                "intersection_id": str(manifest.get("scene_id", "")),
+                "algorithm": str(manifest.get("algorithm", "")),
                 "step": str(event.step),
                 "simulation_seconds": str(event.simulation_seconds),
                 "type": event.event_type,
@@ -484,7 +501,15 @@ class EvidenceReader:
             return [EvidenceIssue("evidence_io", str(exc), str(run_dir))]
         if not is_directory:
             return [EvidenceIssue("missing_run_dir", "run directory does not exist")]
-        for temporary in sorted(run_dir.glob("*.tmp")) + sorted(run_dir.glob(".*.tmp")):
+        try:
+            temporary_paths = (
+                sorted(run_dir.glob("*.tmp"))
+                + sorted(run_dir.glob(".*.tmp"))
+            )
+        except OSError as exc:
+            issue("evidence_io", str(exc), str(run_dir))
+            temporary_paths = []
+        for temporary in temporary_paths:
             issue("temporary_file", "atomic temporary file remains", temporary.name)
 
         payloads: dict[str, dict[str, object]] = {}
@@ -555,8 +580,14 @@ class EvidenceReader:
             issue("status_mismatch", "terminal status fields do not agree")
         if value not in _PUBLISHABLE and not str(status.get("reason", "")).strip():
             issue("failure_reason", "non-publishable terminal status requires a reason")
-        if value not in _PUBLISHABLE and metadata.get("reason") != status.get("reason"):
+        if metadata.get("reason") != status.get("reason"):
             issue("failure_reason", "status and metadata failure reasons differ")
+        if manifest.get("failure_reason") != status.get("reason"):
+            issue(
+                "failure_reason",
+                "manifest and status failure reasons differ",
+                "manifest.json",
+            )
 
         manifest_required = {
             "run_id",
@@ -1082,9 +1113,23 @@ class EvidenceReader:
             try:
                 with events_path.open(newline="", encoding="utf-8") as source:
                     reader = csv.DictReader(source)
-                    if reader.fieldnames is None or not set(EVENT_FIELDS) <= set(reader.fieldnames):
-                        issue("events_schema", "events.csv header is incomplete", "events.csv")
+                    if tuple(reader.fieldnames or ()) != EVENT_FIELDS:
+                        issue(
+                            "events_schema",
+                            "events.csv header does not match the canonical schema",
+                            "events.csv",
+                        )
                     for row in reader:
+                        if (
+                            set(row) != set(EVENT_FIELDS)
+                            or any(not isinstance(row.get(field), str) for field in EVENT_FIELDS)
+                        ):
+                            issue(
+                                "events_schema",
+                                "events.csv contains a malformed row",
+                                "events.csv",
+                            )
+                            continue
                         event_type = row.get("type")
                         if row.get("run_id") != run_id:
                             issue(
@@ -1092,6 +1137,65 @@ class EvidenceReader:
                                 "event run_id does not match evidence",
                                 "events.csv",
                             )
+                        if not re.fullmatch(r"\d+", row.get("step", "") or ""):
+                            issue(
+                                "events_schema",
+                                "event step must be a non-negative integer",
+                                "events.csv",
+                            )
+                        if not event_type:
+                            issue(
+                                "events_schema",
+                                "event type is required",
+                                "events.csv",
+                            )
+                        accepted = row.get("accepted", "")
+                        if accepted not in ("", "true", "false"):
+                            issue(
+                                "events_schema",
+                                "event accepted must be true, false, or empty",
+                                "events.csv",
+                            )
+                        action_value = row.get("action_value", "")
+                        if action_value:
+                            try:
+                                decoded_action = json.loads(action_value)
+                                if _json_non_finite_paths(decoded_action):
+                                    raise ValueError("action_value contains non-finite JSON")
+                            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                                issue("events_schema", str(exc), "events.csv")
+                        entity_ids = row.get("entity_ids", "")
+                        decoded_entities: object | None = None
+                        if entity_ids:
+                            try:
+                                decoded_entities = json.loads(entity_ids)
+                                if (
+                                    not isinstance(decoded_entities, list)
+                                    or any(
+                                        not isinstance(entity_id, str)
+                                        for entity_id in decoded_entities
+                                    )
+                                ):
+                                    raise ValueError(
+                                        "entity_ids must be a JSON array of strings"
+                                    )
+                            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                                issue("events_schema", str(exc), "events.csv")
+                        confidence_raw = row.get("confidence", "")
+                        if confidence_raw:
+                            try:
+                                confidence = float(confidence_raw)
+                                if (
+                                    not math.isfinite(confidence)
+                                    or not 0.0 <= confidence <= 1.0
+                                ):
+                                    raise ValueError
+                            except (TypeError, ValueError):
+                                issue(
+                                    "events_schema",
+                                    "event confidence must be finite and within [0, 1]",
+                                    "events.csv",
+                                )
                         event_time_raw = row.get("simulation_seconds", "")
                         if event_time_raw not in (None, ""):
                             try:
@@ -1117,6 +1221,36 @@ class EvidenceReader:
                             issue(
                                 "events_schema",
                                 "safety event simulation_seconds is invalid",
+                                "events.csv",
+                            )
+                        if not row.get("source", ""):
+                            issue(
+                                "events_schema",
+                                "safety event source is required",
+                                "events.csv",
+                            )
+                        if not entity_ids or not isinstance(decoded_entities, list):
+                            issue(
+                                "events_schema",
+                                "safety event entity_ids must be a JSON array",
+                                "events.csv",
+                            )
+                        if not confidence_raw:
+                            issue(
+                                "events_schema",
+                                "safety event confidence is required",
+                                "events.csv",
+                            )
+                        if row.get("intersection_id") != manifest.get("scene_id"):
+                            issue(
+                                "events_schema",
+                                "safety event intersection_id does not match manifest",
+                                "events.csv",
+                            )
+                        if row.get("algorithm") != manifest.get("algorithm"):
+                            issue(
+                                "events_schema",
+                                "safety event algorithm does not match manifest",
                                 "events.csv",
                             )
             except Exception as exc:

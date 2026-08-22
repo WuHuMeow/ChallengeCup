@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from core.run_models import RunRequest, RunResult, RunStatus
 from core.types import MetricSummary
 from engine.artifacts import RunArtifacts
@@ -15,6 +17,7 @@ from experiments.evidence import (
 )
 from experiments.tuning import (
     PARAMETER_GRID,
+    _metrics,
     calibration_seeds,
     holdout_seeds,
     tune_ca_mp,
@@ -134,35 +137,47 @@ def _write_completed_matrix_run(
     *,
     step_length=0.1,
     configured_end_time=None,
+    request=None,
+    run_id=None,
 ):
-    run_dir = tmp_path / f"run-{final_time}"
+    resolved_run_id = run_id or f"run-{final_time}"
+    intersection_id = request.intersection_id if request is not None else "1"
+    algorithm = request.algorithm if request is not None else "fixed_time"
+    flow_multiplier = request.flow_multiplier if request is not None else 1.0
+    seed = request.seed if request is not None else 42
+    requested_steps = (
+        int(request.steps)
+        if request is not None and request.steps is not None
+        else 36000
+    )
+    run_dir = tmp_path / resolved_run_id
     run_dir.mkdir()
     artifacts = RunArtifacts(
         run_dir=run_dir,
-        intersection_id="1",
-        algorithm="fixed_time",
-        flow_multiplier=1.0,
-        seed=42,
+        intersection_id=intersection_id,
+        algorithm=algorithm,
+        flow_multiplier=flow_multiplier,
+        seed=seed,
         run_id=run_dir.name,
     )
     source_hashes = {"net": "b" * 64, "sumocfg": "c" * 64}
-    requested_seconds = 36000 * step_length
+    requested_seconds = requested_steps * step_length
     writer = EvidenceWriter(run_dir)
     writer.begin(RunManifest(
         run_id=artifacts.run_id,
         code_commit="a" * 40,
         scene_manifest_sha256=canonical_mapping_sha256(source_hashes),
-        algorithm="fixed_time",
-        parameters={},
-        flow_multiplier=1.0,
-        seed=42,
+        algorithm=algorithm,
+        parameters=(dict(request.algorithm_params) if request is not None else {}),
+        flow_multiplier=flow_multiplier,
+        seed=seed,
         duration_seconds=requested_seconds,
         warmup_seconds=0.0,
-        derived_steps=36000,
+        derived_steps=requested_steps,
         sumo_version="1.27.1",
         python_version="3.12.13",
         prediction_enabled=False,
-        scene_id="1",
+        scene_id=intersection_id,
         scene_source_sha256=source_hashes,
         step_length=step_length,
         requested_seconds=requested_seconds,
@@ -201,7 +216,7 @@ def _write_completed_matrix_run(
         started_at="2026-08-22T00:00:00+00:00",
         ended_at="2026-08-22T01:00:00+00:00",
         sumo_version="1.27.1",
-        requested_steps=36000,
+        requested_steps=requested_steps,
         requested_seconds=requested_seconds,
         warmup_seconds=0.0,
         final_simulation_time=final_time,
@@ -303,23 +318,105 @@ class _FakeService:
 
     def run_sync(self, request):
         self.requests.append(request)
-        run_id = f"run-{len(self.requests)}"
-        run_dir = self.root / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        step_length = request.step_length_override or 0.1
+        requested_steps = request.steps or 1
+        run_dir = _write_completed_matrix_run(
+            self.root,
+            final_time=float(requested_steps) * step_length,
+            step_length=step_length,
+            request=request,
+            run_id=f"run-{len(self.requests)}",
+        )
         return RunResult(
-            run_id=run_id,
+            run_id=run_dir.name,
             status=RunStatus.COMPLETED,
             reason="",
             run_dir=run_dir,
-            summary={
-                "metrics": {
-                    "avg_travel_time": 20.0,
-                    "avg_queue_length": 2.0,
-                    "fuel_consumption": 100.0,
-                    "throughput": 50,
-                }
-            },
+            summary=json.loads((run_dir / "summary.json").read_text(encoding="utf-8")),
         )
+
+
+class _InvalidLiveResultService:
+    def __init__(self, root):
+        self.root = root
+
+    def run_sync(self, request):
+        run_dir = self.root / "unverified-live-result"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return RunResult(
+            run_id=run_dir.name,
+            status=RunStatus.COMPLETED,
+            reason="",
+            run_dir=run_dir,
+            summary={"metrics": {"throughput": 999}},
+        )
+
+
+class _MismatchedLiveResultService:
+    def __init__(self, root):
+        self.root = root
+        self.calls = 0
+
+    def run_sync(self, request):
+        self.calls += 1
+        self.root.mkdir(parents=True, exist_ok=True)
+        run_dir = _write_completed_matrix_run(
+            self.root,
+            final_time=3600.0 + self.calls,
+        )
+        return RunResult(
+            run_id=run_dir.name,
+            status=RunStatus.COMPLETED,
+            reason="",
+            run_dir=run_dir,
+            summary=json.loads((run_dir / "summary.json").read_text(encoding="utf-8")),
+        )
+
+
+def test_matrix_rejects_unvalidated_live_result_before_writing_matrix(tmp_path):
+    service = _InvalidLiveResultService(tmp_path / "runs")
+
+    with pytest.raises(ValueError, match="strict evidence"):
+        run_pdf_matrix(
+            tmp_path,
+            steps=1,
+            resume=False,
+            intersections=("1",),
+            run_service=service,
+        )
+
+    assert not (tmp_path / "matrix.csv").exists()
+
+
+def test_matrix_rejects_valid_live_evidence_for_a_different_request(tmp_path):
+    service = _MismatchedLiveResultService(tmp_path / "runs")
+
+    with pytest.raises(ValueError, match="strict evidence"):
+        run_pdf_matrix(
+            tmp_path,
+            steps=1,
+            resume=False,
+            intersections=("11",),
+            run_service=service,
+        )
+
+    assert service.calls == 1
+    assert not (tmp_path / "matrix.csv").exists()
+
+
+def test_tuning_metrics_rejects_completed_result_without_strict_evidence(tmp_path):
+    run_dir = tmp_path / "unverified-result"
+    run_dir.mkdir()
+    result = RunResult(
+        run_id="unverified-result",
+        status=RunStatus.COMPLETED,
+        reason="",
+        run_dir=run_dir,
+        summary={"metrics": {"throughput": 999}},
+    )
+
+    assert _metrics(result) is None
 
 
 def test_tuning_writes_all_candidates_selected_params_and_holdout(tmp_path):

@@ -961,6 +961,17 @@ class _BodyAndCloseInterruptBridge(MockBridge):
         raise type(self).secondary
 
 
+class _BodyExitAndCloseInterruptBridge(MockBridge):
+    primary = SystemExit("runner requested exit")
+    secondary = KeyboardInterrupt("runner cleanup interrupt")
+
+    def get_state(self):
+        raise type(self).primary
+
+    def close(self):
+        raise type(self).secondary
+
+
 def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     runner = SimulationRunner(
@@ -1005,6 +1016,30 @@ def test_runner_primary_keyboard_interrupt_survives_cleanup_base_exception(
     assert json.loads(
         artifacts.status.read_text(encoding="utf-8")
     )["status"] == "interrupted"
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_runner_primary_system_exit_survives_cleanup_base_exception(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-primary-exit"
+    )
+    _begin_strict_evidence(artifacts)
+    _BodyExitAndCloseInterruptBridge.primary = SystemExit("runner requested exit")
+    _BodyExitAndCloseInterruptBridge.secondary = KeyboardInterrupt(
+        "runner cleanup interrupt"
+    )
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_BodyExitAndCloseInterruptBridge(),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert caught.value is _BodyExitAndCloseInterruptBridge.primary
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == "failed"
     assert EvidenceReader.validate(artifacts.run_dir) == []
 
 

@@ -443,6 +443,27 @@ class RunService:
                     persist_artifact=False,
                 )
             raise
+        except BaseException as exc:
+            reason = str(exc) or type(exc).__name__
+            current = self._states.get(run_id)
+            if current is None or current.status not in TERMINAL_STATUSES:
+                status, terminal_reason = self._terminalize_partial_evidence(
+                    artifacts,
+                    RunStatus.FAILED,
+                    reason,
+                    requested_steps=(
+                        derived_steps if "derived_steps" in locals() else None
+                    ),
+                    window=window if "window" in locals() else None,
+                    step_length=step_length if "step_length" in locals() else None,
+                )
+                self._states.transition(
+                    run_id,
+                    status,
+                    terminal_reason,
+                    persist_artifact=False,
+                )
+            raise
         finally:
             with self._lock:
                 self._runners.pop(run_id, None)

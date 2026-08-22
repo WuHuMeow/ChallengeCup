@@ -196,6 +196,16 @@ class InterruptingRunner:
         raise type(self).error
 
 
+class ExitingRunner:
+    error = SystemExit("runner requested process exit")
+
+    def __init__(self, **kwargs):
+        self.artifacts = kwargs["artifacts"]
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        raise type(self).error
+
+
 class FailingRunner:
     error = RuntimeError("runner body failed")
 
@@ -590,6 +600,26 @@ def test_run_service_keyboard_interrupt_preserves_primary_and_terminalizes_evide
         "interrupted"
     )
     assert service.get(run_dir.name).status is RunStatus.INTERRUPTED
+    assert EvidenceReader.validate(run_dir) == []
+
+
+def test_run_service_system_exit_preserves_primary_and_terminalizes_failed_evidence(
+    tmp_path,
+):
+    ExitingRunner.error = SystemExit("runner requested process exit")
+    service = RunService(output_root=tmp_path / "runs", runner_factory=ExitingRunner)
+
+    with pytest.raises(SystemExit) as caught:
+        service.run_sync(
+            RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+        )
+
+    assert caught.value is ExitingRunner.error
+    status_path = next((tmp_path / "runs").rglob("status.json"))
+    run_dir = status_path.parent
+    assert json.loads(status_path.read_text(encoding="utf-8"))["status"] == "failed"
+    assert service.get(run_dir.name).status is RunStatus.FAILED
+    assert service._done[run_dir.name].is_set()
     assert EvidenceReader.validate(run_dir) == []
 
 
