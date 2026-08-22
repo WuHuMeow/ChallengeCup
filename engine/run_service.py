@@ -57,6 +57,7 @@ class RunService:
         self._futures: dict[str, Future[RunResult]] = {}
         self._runners: dict[str, object] = {}
         self._artifacts: dict[str, RunArtifacts] = {}
+        self._terminal_events: set[str] = set()
         self._lock = threading.RLock()
         self.frame_publisher = frame_publisher or FramePublisher()
         self.realtime_hub = realtime_hub or RealtimeHub()
@@ -98,8 +99,13 @@ class RunService:
             return False
 
         stop_event.set()
+        terminal_event_seen = False
         try:
-            self._states.transition(run_id, RunStatus.STOPPING, "stop requested")
+            with self._lock:
+                terminal_event_seen = run_id in self._terminal_events
+                if not terminal_event_seen:
+                    self._states.transition(run_id, RunStatus.STOPPING, "stop requested")
+                    self._publish_status(run_id, RunStatus.STOPPING, "stop requested")
         except ValueError:
             raced = self._states.get(run_id)
             if raced is not None and (
@@ -111,8 +117,10 @@ class RunService:
             if self._artifact_status(artifacts) in TERMINAL_STATUSES:
                 self._wait_until_done(run_id)
                 return False
-            raise
-        self._publish_status(run_id, RunStatus.STOPPING, "stop requested")
+                raise
+        if terminal_event_seen:
+            self._wait_until_done(run_id)
+            return False
 
         if future is not None and future.cancel():
             try:
@@ -183,23 +191,28 @@ class RunService:
         reason: str = "",
         simulation_time: float | None = None,
     ) -> None:
-        if simulation_time is None:
-            latest = self.realtime_hub.latest(run_id) or {}
-            simulation_time = float(latest.get("simulation_time", 0.0))
-        self.realtime_hub.publish(
+        self.realtime_hub.publish_status(
             run_id,
-            {
-                "type": "status",
-                "status": status.value,
-                "reason": reason,
-                "simulation_time": float(simulation_time),
-            },
+            status.value,
+            reason,
+            simulation_time,
         )
 
-    def _publish_frame(self, run_id: str, record: object) -> None:
+    def _publish_frame(self, run_id: str, record: object) -> bool:
         if not isinstance(record, FrameRecord) or record.run_id != run_id:
-            return
+            return False
         self.frame_publisher.publish(record)
+        return True
+
+    def _publish_runtime_event(
+        self,
+        run_id: str,
+        message: dict[str, object],
+    ) -> None:
+        if message.get("type") == "terminal":
+            with self._lock:
+                self._terminal_events.add(run_id)
+        self.realtime_hub.publish(run_id, message)
 
     @staticmethod
     def _runner_accepts_argument(runner: object, name: str) -> bool:
@@ -370,7 +383,7 @@ class RunService:
             )
             if isinstance(runner, SimulationRunner):
                 runner.seal_evidence = False
-                runner.event_sink = lambda message: self.realtime_hub.publish(
+                runner.event_sink = lambda message: self._publish_runtime_event(
                     run_id, message
                 )
             with self._lock:
@@ -432,15 +445,16 @@ class RunService:
                         EvidenceReader.load_summary(artifacts.run_dir),
                         result.algorithm,
                     )
-            current = self._states.get(run_id)
-            if current is not None and current.status not in TERMINAL_STATUSES:
-                result = self._states.transition(
-                    run_id,
-                    result.status,
-                    result.reason,
-                    summary=result.summary,
-                )
-                self._publish_status(run_id, result.status, result.reason)
+            with self._lock:
+                current = self._states.get(run_id)
+                if current is not None and current.status not in TERMINAL_STATUSES:
+                    result = self._states.transition(
+                        run_id,
+                        result.status,
+                        result.reason,
+                        summary=result.summary,
+                    )
+                    self._publish_status(run_id, result.status, result.reason)
             return result
         except Exception as exc:
             reason = str(exc) or type(exc).__name__
@@ -554,6 +568,7 @@ class RunService:
         finally:
             with self._lock:
                 self._runners.pop(run_id, None)
+                self._terminal_events.discard(run_id)
             done_event.set()
 
     def _finish_interrupted_before_start(self, artifacts: RunArtifacts) -> RunResult:

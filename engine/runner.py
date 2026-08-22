@@ -261,7 +261,7 @@ class SimulationRunner:
         self,
         window: SimulationWindow | int | None = None,
         stop_event: Optional[Event] = None,
-        frame_sink: Callable[[object], None] | None = None,
+        frame_sink: Callable[[object], bool | None] | None = None,
         *,
         frame_ready: Callable[[], bool] | None = None,
         steps: Optional[int] = None,
@@ -353,15 +353,16 @@ class SimulationRunner:
                             if capture is not None:
                                 record = capture()
                                 if record is not None:
-                                    frame_sink(record)
-                                    self._publish_event({
-                                        "type": "frame",
-                                        "sequence": int(record.sequence),
-                                        "simulation_time": float(
-                                            record.simulation_time
-                                        ),
-                                        "captured_at": float(record.captured_at),
-                                    })
+                                    accepted = frame_sink(record)
+                                    if accepted is not False:
+                                        self._publish_event({
+                                            "type": "frame",
+                                            "sequence": int(record.sequence),
+                                            "simulation_time": float(
+                                                record.simulation_time
+                                            ),
+                                            "captured_at": float(record.captured_at),
+                                        })
                             last_frame_at = now
                         except Exception:
                             last_frame_at = now

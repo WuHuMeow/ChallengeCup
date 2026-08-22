@@ -97,6 +97,19 @@ def test_realtime_hub_replays_latest_and_delivers_new_messages():
     ]
 
 
+def test_realtime_hub_publishes_status_from_atomic_latest_snapshot():
+    hub = RealtimeHub()
+    hub.publish("run-1", {"type": "terminal", "simulation_time": 5.0})
+
+    hub.publish_status("run-1", "completed", "")
+
+    latest = hub.latest("run-1")
+    assert latest is not None
+    assert latest["type"] == "status"
+    assert latest["status"] == "completed"
+    assert latest["simulation_time"] == 5.0
+
+
 def test_realtime_hub_serializes_cross_thread_publication_order():
     hub = RealtimeHub()
     first_scheduled = threading.Event()
@@ -174,6 +187,22 @@ def test_runner_skips_capture_when_the_frame_slot_is_unread():
 
     assert bridge.capture_calls == 1
     assert publisher.latest("runner").sequence == 1
+
+
+def test_runner_suppresses_frame_event_when_frame_sink_rejects_record():
+    bridge = _FrameBridge()
+    events = []
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        event_sink=events.append,
+        frame_interval_seconds=0.0,
+    )
+
+    runner.run(1, frame_sink=lambda _record: False)
+
+    assert not any(event["type"] == "frame" for event in events)
 
 
 def test_runner_publishes_status_metrics_and_terminal_events():

@@ -23,24 +23,38 @@ class RealtimeHub:
 
     def publish(self, run_id: str, message: Mapping[str, object]) -> None:
         """Store and schedule one message for each current subscriber."""
-        if not isinstance(run_id, str) or not run_id:
-            raise ValueError("run_id must be a non-empty string")
-        payload = {"run_id": run_id, **dict(message)}
-        payload["run_id"] = run_id
-        stale: list[
-            tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]
-        ] = []
+        self._validate_run_id(run_id)
         with self._lock:
-            self._latest[run_id] = payload
-            subscribers = tuple(self._subscribers.get(run_id, ()))
-            for loop, queue in subscribers:
+            stale = self._publish_locked(run_id, message)
+        for loop, queue in stale:
+            self._remove_subscriber(run_id, loop, queue)
+
+    def publish_status(
+        self,
+        run_id: str,
+        status: object,
+        reason: str = "",
+        simulation_time: float | None = None,
+    ) -> None:
+        """Publish a lifecycle status with an atomic latest-time snapshot."""
+        self._validate_run_id(run_id)
+        with self._lock:
+            if simulation_time is None:
+                latest = self._latest.get(run_id) or {}
                 try:
-                    # Keep the callback enqueue in the same critical section
-                    # as latest-state publication so cross-thread messages
-                    # retain their linearized order on each event loop.
-                    loop.call_soon_threadsafe(self._offer, queue, payload)
-                except RuntimeError:
-                    stale.append((loop, queue))
+                    simulation_time = float(latest.get("simulation_time", 0.0))
+                except (TypeError, ValueError):
+                    simulation_time = 0.0
+            status_value = getattr(status, "value", status)
+            stale = self._publish_locked(
+                run_id,
+                {
+                    "type": "status",
+                    "status": status_value,
+                    "reason": reason,
+                    "simulation_time": float(simulation_time),
+                },
+            )
         for loop, queue in stale:
             self._remove_subscriber(run_id, loop, queue)
 
@@ -88,6 +102,33 @@ class RealtimeHub:
             queue.put_nowait(dict(payload))
         except asyncio.QueueFull:
             pass
+
+    @staticmethod
+    def _validate_run_id(run_id: str) -> None:
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("run_id must be a non-empty string")
+
+    def _publish_locked(
+        self,
+        run_id: str,
+        message: Mapping[str, object],
+    ) -> list[tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]]:
+        """Publish while the caller owns the hub lock."""
+        payload = {"run_id": run_id, **dict(message)}
+        payload["run_id"] = run_id
+        self._latest[run_id] = payload
+        stale: list[
+            tuple[asyncio.AbstractEventLoop, asyncio.Queue[dict[str, Any]]]
+        ] = []
+        subscribers = tuple(self._subscribers.get(run_id, ()))
+        for loop, queue in subscribers:
+            try:
+                # Keep callback scheduling in the same critical section as
+                # latest-state publication to preserve cross-thread order.
+                loop.call_soon_threadsafe(self._offer, queue, payload)
+            except RuntimeError:
+                stale.append((loop, queue))
+        return stale
 
     def _remove_subscriber(
         self,

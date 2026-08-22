@@ -1,6 +1,7 @@
 import csv
 import json
 import threading
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -13,7 +14,7 @@ from algorithms.fixed_time import FixedTimeAlgorithm
 from algorithms.base import BaseControlAlgorithm
 from algorithms.registry import AlgorithmRegistry, AlgorithmSpec
 from api.realtime import RealtimeHub
-from core.run_models import RunRequest, RunStatus, VariantSpec
+from core.run_models import RunRequest, RunResult, RunStatus, VariantSpec
 from core.timebase import SimulationWindow, seconds_for_steps
 from core.types import Scene
 from scenes.models import SceneManifest
@@ -57,6 +58,52 @@ class WrongFrameRunner(RecordingRunner):
         if frame_sink is not None:
             frame_sink(FrameRecord("other-run", 1, 1.0, b"wrong", 1.0))
         return super().run(window, stop_event=stop_event, frame_sink=frame_sink)
+
+
+class TerminalEventBeforeReturnRunner(SimulationRunner):
+    terminal_published = threading.Event()
+    release = threading.Event()
+
+    def __init__(self, **kwargs):
+        super().__init__(bridge=MockBridge(), **kwargs)
+        self.evidence_managed = False
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        self._publish_event({
+            "type": "terminal",
+            "status": "completed",
+            "reason": "",
+            "simulation_time": 5.0,
+        })
+        type(self).terminal_published.set()
+        assert type(self).release.wait(timeout=2)
+        now = datetime.now(timezone.utc).isoformat()
+        self.artifacts.write_metadata(
+            "interrupted",
+            "stop requested",
+            [],
+            started_at=now,
+            ended_at=now,
+            sumo_version="test",
+            final_simulation_time=5.0,
+        )
+        return RunResult(
+            self.artifacts.run_id,
+            RunStatus.INTERRUPTED,
+            "stop requested",
+            self.artifacts.run_dir,
+            algorithm=self.artifacts.algorithm,
+        )
+
+
+class RecordingRealtimeHub(RealtimeHub):
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+
+    def publish(self, run_id, message):
+        self.messages.append({"run_id": run_id, **dict(message)})
+        return super().publish(run_id, message)
 
 
 class ValidatedRegistry:
@@ -452,6 +499,50 @@ def test_run_service_rejects_frames_from_another_run(tmp_path):
     )
 
     assert publisher.latest("other-run") is None
+    assert service._publish_frame(
+        "expected-run", FrameRecord("other-run", 1, 1.0, b"wrong", 1.0)
+    ) is False
+    assert service._publish_frame(
+        "expected-run", FrameRecord("expected-run", 1, 1.0, b"right", 1.0)
+    ) is True
+
+
+def test_run_service_stop_after_terminal_event_never_publishes_stopping(tmp_path):
+    TerminalEventBeforeReturnRunner.terminal_published.clear()
+    TerminalEventBeforeReturnRunner.release.clear()
+    hub = RecordingRealtimeHub()
+    service = RunService(
+        output_root=tmp_path / "runs",
+        runner_factory=TerminalEventBeforeReturnRunner,
+        realtime_hub=hub,
+    )
+    queued = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+    assert TerminalEventBeforeReturnRunner.terminal_published.wait(timeout=2)
+
+    stop_results = []
+    stopper = threading.Thread(
+        target=lambda: stop_results.append(service.stop(queued.run_id)),
+    )
+    stopper.start()
+    time.sleep(0.02)
+    TerminalEventBeforeReturnRunner.release.set()
+    stopper.join(timeout=5)
+    service.shutdown()
+
+    assert not stopper.is_alive()
+    assert stop_results == [False]
+    terminal_index = next(
+        index
+        for index, message in enumerate(hub.messages)
+        if message.get("type") == "terminal"
+    )
+    assert not any(
+        message.get("type") == "status"
+        and message.get("status") == "stopping"
+        for message in hub.messages[terminal_index + 1:]
+    )
 
 
 def test_run_service_derives_steps_from_one_second_step_length(tmp_path):
