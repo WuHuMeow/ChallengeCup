@@ -1150,7 +1150,7 @@ def test_cleanup_failure_still_closes_bridge_and_writes_metadata(tmp_path):
 def test_metadata_uses_traci_server_version(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     with patch(
-        "engine.runner.traci.getVersion", return_value=("SUMO 1.27.1", 27)
+        "engine.runner.traci.getVersion", return_value=(22, "SUMO 1.27.1")
     ) as get_version:
         SimulationRunner(
             make_scene(), FixedTimeAlgorithm(), bridge=MockBridge(), artifacts=artifacts

@@ -691,7 +691,13 @@ class SimulationRunner:
         else:
             try:
                 response = traci.getVersion()
-                raw = response[0] if isinstance(response, tuple) else response
+                raw = (
+                    response[1]
+                    if isinstance(response, tuple) and len(response) > 1
+                    else response[0]
+                    if isinstance(response, tuple)
+                    else response
+                )
             except Exception:
                 raw = getattr(traci, "__version__", None) or "unknown"
         match = re.search(r"\d+(?:\.\d+)+", str(raw))
