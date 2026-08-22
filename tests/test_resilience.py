@@ -308,11 +308,13 @@ def test_secondary_variant_program_uses_its_startup_state_through_safety():
 
 def test_close_idempotent():
     bridge = _bridge()
-    with patch.object(traci, "isLoaded", side_effect=[True, False]), \
+    bridge._owns_connection = True
+    with patch.object(traci, "isLoaded", return_value=True), \
          patch.object(traci, "close") as mock_close:
         bridge.close()
         bridge.close()  # 第二次应为 no-op
         assert mock_close.call_count == 1
+        assert bridge._owns_connection is False
 
 
 class _FatalStateBridge(MockBridge):

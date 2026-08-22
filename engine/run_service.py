@@ -127,9 +127,9 @@ class RunService:
     @staticmethod
     def _artifact_status(artifacts: RunArtifacts) -> RunStatus | None:
         try:
-            payload = json.loads(artifacts.status.read_text(encoding="utf-8"))
+            payload = artifacts.read_status()
             return RunStatus(payload["status"])
-        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        except CorruptStatusArtifactError:
             return None
 
     def switch_scene(

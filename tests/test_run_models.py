@@ -47,6 +47,31 @@ def test_replacing_compatibility_request_preserves_declared_warmup():
     assert RunService._window(replaced, 0.1) == SimulationWindow(3600, 600)
 
 
+@pytest.mark.parametrize(
+    ("replacement_steps", "expected_window"),
+    [
+        (100, SimulationWindow(10, 0)),
+        (36000, SimulationWindow(3600, 0)),
+    ],
+    ids=("different-value", "same-value-plain-int"),
+)
+def test_replacing_compatibility_steps_with_plain_int_makes_them_explicit(
+    replacement_steps, expected_window
+):
+    request = RunRequest(
+        intersection_id="1",
+        algorithm="fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=600,
+        step_length_override=0.1,
+    )
+
+    replaced = replace(request, steps=replacement_steps)
+
+    assert request.steps == 36000
+    assert RunService._window(replaced, 0.1) == expected_window
+
+
 def test_run_request_keeps_explicit_steps_for_smoke_compatibility():
     request = RunRequest(intersection_id="1", algorithm="fixed_time", steps=100)
 

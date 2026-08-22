@@ -125,6 +125,10 @@ class VariantBundle:
     network_file: Path | None = None
 
 
+class _CompatibilitySteps(int):
+    """Derived legacy step count whose formal window remains authoritative."""
+
+
 @dataclass(frozen=True)
 class RunRequest:
     """Complete input contract for one isolated simulation run."""
@@ -145,11 +149,8 @@ class RunRequest:
     variant: VariantSpec = field(default_factory=VariantSpec)
     disturbance: DisturbanceSpec | None = None
     algorithm_params: dict[str, float] = field(default_factory=dict)
-    _steps_explicit: bool | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if self._steps_explicit is None:
-            object.__setattr__(self, "_steps_explicit", self.steps is not None)
         if isinstance(self.intersection_id, bool):
             raise ValueError("intersection_id must be an integer in 1..20")
         try:
@@ -185,7 +186,9 @@ class RunRequest:
                 object.__setattr__(
                     self,
                     "steps",
-                    steps_for_seconds(window.duration_seconds, numeric_step_length),
+                    _CompatibilitySteps(
+                        steps_for_seconds(window.duration_seconds, numeric_step_length)
+                    ),
                 )
         object.__setattr__(self, "duration_seconds", window.duration_seconds)
         object.__setattr__(self, "warmup_seconds", window.warmup_seconds)
@@ -233,6 +236,12 @@ class RunRequest:
         object.__setattr__(self, "algorithm_params", parameters)
         if self.output_root is not None:
             object.__setattr__(self, "output_root", Path(self.output_root))
+
+    @property
+    def _steps_explicit(self) -> bool:
+        return self.steps is not None and not isinstance(
+            self.steps, _CompatibilitySteps
+        )
 
 
 @dataclass(frozen=True)

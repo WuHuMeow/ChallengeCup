@@ -144,6 +144,12 @@ class CorruptStatusRunner(RecordingRunner):
         raise RuntimeError("runner failure after status corruption")
 
 
+class MalformedStatusRecordRunner(RecordingRunner):
+    def run(self, window, stop_event=None, frame_sink=None):
+        self.artifacts.status.write_text("[]", encoding="utf-8")
+        raise RuntimeError("runner failure after malformed status record")
+
+
 def test_run_sync_returns_completed_result_with_isolated_artifacts(tmp_path):
     RecordingRunner.calls = []
     RecordingRunner.run_steps = []
@@ -331,6 +337,31 @@ def test_corrupt_status_artifact_still_reaches_terminal_failed_result(tmp_path):
     assert json.loads(
         (result.run_dir / "status.json").read_text(encoding="utf-8")
     )["status"] == "failed"
+    assert service.stop(queued.run_id) is False
+
+
+def test_malformed_status_record_still_completes_future_as_failed(tmp_path):
+    service = RunService(output_root=tmp_path, runner_factory=MalformedStatusRecordRunner)
+    queued = service.submit(
+        RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
+    )
+
+    try:
+        result = service._futures[queued.run_id].result(timeout=2)
+    finally:
+        service.shutdown(wait=True)
+
+    status = json.loads((result.run_dir / "status.json").read_text(encoding="utf-8"))
+    metadata = json.loads(
+        (result.run_dir / "run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert result.status is RunStatus.FAILED
+    assert "status artifact corruption" in result.reason.lower()
+    assert "runner failure after malformed status record" in result.reason
+    assert status["status"] == "failed"
+    assert "corrupt" in status["reason"].lower()
+    assert metadata["status"] == "failed"
+    assert "corrupt" in metadata["reason"].lower()
     assert service.stop(queued.run_id) is False
 
 

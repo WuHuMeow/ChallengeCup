@@ -44,11 +44,35 @@ _STATUS_TRANSITIONS = {
     }),
     "stopping": _TERMINAL_STATUS_VALUES - {"stopped"},
 }
+_STATUS_VALUES = frozenset(_STATUS_TRANSITIONS) | _TERMINAL_STATUS_VALUES
 _ARTIFACT_LOCK = threading.RLock()
 
 
 class CorruptStatusArtifactError(ValueError):
     """Raised when status.json exists but cannot be parsed as a status record."""
+
+
+def _load_status_record(path: Path, expected_run_id: str) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError) as exc:
+        raise CorruptStatusArtifactError(
+            f"status artifact is corrupt: {exc}"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise CorruptStatusArtifactError(
+            "status artifact is corrupt: expected a JSON object"
+        )
+    if payload.get("run_id") != expected_run_id:
+        raise CorruptStatusArtifactError(
+            "status artifact is corrupt: run_id is missing or mismatched"
+        )
+    status = payload.get("status")
+    if not isinstance(status, str) or status not in _STATUS_VALUES:
+        raise CorruptStatusArtifactError(
+            "status artifact is corrupt: status is missing or unknown"
+        )
+    return dict(payload)
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -190,6 +214,11 @@ class RunArtifacts:
             }
             _atomic_json(self.manifest, merged)
 
+    def read_status(self) -> dict[str, object]:
+        """Load and validate this run's status record."""
+        with _ARTIFACT_LOCK:
+            return _load_status_record(self.status, self.run_id)
+
     def write_status(
         self,
         status: str,
@@ -203,7 +232,7 @@ class RunArtifacts:
         with _ARTIFACT_LOCK:
             existing: dict[str, object] = {}
             if self.status.exists():
-                existing = json.loads(self.status.read_text(encoding="utf-8"))
+                existing = self.read_status()
                 current = str(existing.get("status", ""))
                 if current in _TERMINAL_STATUS_VALUES:
                     if current == status:
@@ -234,8 +263,8 @@ class RunArtifacts:
         """Replace only a malformed status artifact with an explicit failure."""
         with _ARTIFACT_LOCK:
             try:
-                json.loads(self.status.read_text(encoding="utf-8"))
-            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                self.read_status()
+            except CorruptStatusArtifactError:
                 now = datetime.now(timezone.utc).isoformat()
                 _atomic_json(
                     self.status,
@@ -297,14 +326,7 @@ class RunArtifacts:
         }
         with _ARTIFACT_LOCK:
             if self.status.exists():
-                try:
-                    status_payload = json.loads(
-                        self.status.read_text(encoding="utf-8")
-                    )
-                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                    raise CorruptStatusArtifactError(
-                        f"status artifact is corrupt: {exc}"
-                    ) from exc
+                status_payload = self.read_status()
                 current_status = str(status_payload.get("status", ""))
                 if current_status in _TERMINAL_STATUS_VALUES and current_status != status:
                     raise ValueError(

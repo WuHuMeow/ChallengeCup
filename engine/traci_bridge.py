@@ -104,6 +104,7 @@ class TraCIBridge:
         self._pending_startup_actions: tuple[ControlAction, ...] = ()
         self._owned_process: subprocess.Popen | None = None
         self._owned_pid: int | None = None
+        self._owns_connection = False
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -215,7 +216,7 @@ class TraCIBridge:
             self._load_conflict_definitions()
             self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
         except BaseException:
-            if self._owned_process is not None:
+            if self._owns_connection or self._owned_process is not None:
                 try:
                     self.close()
                 except Exception:
@@ -230,6 +231,7 @@ class TraCIBridge:
             stdout=None,
         )
         self._record_owned_process(process)
+        self._owns_connection = True
         traci.init(port, proc=process)
 
     def _record_owned_process(self, process: subprocess.Popen | None) -> None:
@@ -800,21 +802,24 @@ class TraCIBridge:
             self._owned_pid = int(process.pid)
         close_error: Exception | None = None
         try:
-            if traci.isLoaded():
+            if self._owns_connection and traci.isLoaded():
                 traci.close(wait=False)
         except Exception as exc:
             close_error = exc
-        if process is not None and process.poll() is None:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.terminate()
+        try:
+            if process is not None and process.poll() is None:
                 try:
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
-        self._owned_process = None
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
+        finally:
+            self._owned_process = None
+            self._owns_connection = False
         if close_error is not None:
             raise close_error
 

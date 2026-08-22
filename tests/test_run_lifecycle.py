@@ -656,13 +656,23 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
         config,
         process_factory=lambda *args, **kwargs: bridge_process,
     )
+    connection_loaded = False
+    close_calls = []
+
+    def fail_after_partial_connection(*args, **kwargs):
+        nonlocal connection_loaded
+        connection_loaded = True
+        raise RuntimeError("connect failed")
+
+    def close_connection(wait=False):
+        nonlocal connection_loaded
+        close_calls.append(wait)
+        connection_loaded = False
+
     monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41005)
-    monkeypatch.setattr(
-        traci,
-        "init",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("connect failed")),
-    )
-    monkeypatch.setattr(traci, "isLoaded", lambda: False)
+    monkeypatch.setattr(traci, "init", fail_after_partial_connection)
+    monkeypatch.setattr(traci, "isLoaded", lambda: connection_loaded)
+    monkeypatch.setattr(traci, "close", close_connection)
 
     with pytest.raises(RuntimeError, match="connect failed"):
         bridge.start()
@@ -672,6 +682,7 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
     assert bridge_process.killed is False
     assert unrelated.terminated is False
     assert unrelated.killed is False
+    assert close_calls == [False]
 
 
 def test_bridge_start_interrupt_reaps_recorded_process(monkeypatch, tmp_path):
@@ -702,6 +713,7 @@ def test_bridge_start_rejects_existing_connection_before_launch(monkeypatch, tmp
     config = tmp_path / "unused.sumocfg"
     config.write_text("<configuration />", encoding="utf-8")
     launches = []
+    close_calls = []
 
     def process_factory(*args, **kwargs):
         launches.append((args, kwargs))
@@ -709,13 +721,22 @@ def test_bridge_start_rejects_existing_connection_before_launch(monkeypatch, tmp
 
     bridge = TraCIBridge(config, process_factory=process_factory)
     monkeypatch.setattr(traci, "isLoaded", lambda: True)
+    monkeypatch.setattr(traci, "close", lambda wait=False: close_calls.append(wait))
     monkeypatch.setattr(
         traci,
         "init",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("connection setup")),
     )
 
+    runner = SimulationRunner(
+        SceneRegistry().get_scene("1"),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+    )
+
     with pytest.raises(RuntimeError, match="TraCI connection already active"):
-        bridge.start()
+        runner.run(1)
 
     assert launches == []
+    assert close_calls == []

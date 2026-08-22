@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from engine.artifacts import RunArtifacts
+from engine.artifacts import CorruptStatusArtifactError, RunArtifacts
 
 
 def test_run_artifacts_create_collision_safe_layout(tmp_path):
@@ -132,3 +132,78 @@ def test_manifest_and_status_are_atomic_and_terminal_status_is_immutable(tmp_pat
             sumo_version="test",
         )
     assert not artifacts.metadata.exists()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        None,
+        7,
+        {"run_id": "CURRENT"},
+        {"run_id": "CURRENT", "status": "unknown"},
+        {"run_id": "CURRENT", "status": 7},
+        {"run_id": "different-run", "status": "running"},
+        {"status": "running"},
+    ],
+    ids=(
+        "list",
+        "null",
+        "scalar",
+        "missing-status",
+        "unknown-status",
+        "non-string-status",
+        "mismatched-run-id",
+        "missing-run-id",
+    ),
+)
+def test_malformed_status_records_are_recoverable_corruption(tmp_path, payload):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        if payload.get("run_id") == "CURRENT":
+            payload["run_id"] = artifacts.run_id
+    artifacts.status.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(CorruptStatusArtifactError, match="status artifact is corrupt"):
+        artifacts.write_metadata(
+            "failed",
+            "runner failed",
+            [],
+            started_at="start",
+            ended_at="end",
+            sumo_version="test",
+        )
+
+    assert not artifacts.metadata.exists()
+    artifacts.recover_corrupt_status("status schema corruption")
+    recovered = json.loads(artifacts.status.read_text(encoding="utf-8"))
+    assert recovered["run_id"] == artifacts.run_id
+    assert recovered["status"] == "failed"
+    assert recovered["reason"] == "status schema corruption"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "queued",
+        "starting",
+        "running",
+        "stopping",
+        "completed",
+        "stopped",
+        "ended_early",
+        "disconnected",
+        "interrupted",
+        "failed",
+    ],
+)
+def test_recovery_refuses_every_valid_status_record(tmp_path, status):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    original = {"run_id": artifacts.run_id, "status": status}
+    artifacts.status.write_text(json.dumps(original), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="status artifact is valid"):
+        artifacts.recover_corrupt_status("must not overwrite")
+
+    assert json.loads(artifacts.status.read_text(encoding="utf-8")) == original
