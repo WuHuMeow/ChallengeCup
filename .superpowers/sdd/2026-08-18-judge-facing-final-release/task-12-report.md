@@ -547,12 +547,12 @@ The Round 4 review findings were closed by the additive e9b2715 code head. The
 review buckets and their RED/GREEN evidence are recorded without rewriting the
 earlier rounds:
 
-- A — TraCI connection ownership and partial-start cleanup. RED reproduced
+- A — `RunRequest` replacement and compatibility-step semantics. RED reproduced
   `2 failed`; GREEN A returned `4 passed`.
 - B — malformed status-artifact validation, recovery, and terminal metadata
   ownership. RED reproduced `9 failed, 10 passed`; GREEN B returned `19 passed`.
-- C — compatibility-step reconstruction and launch-boundary ownership. RED
-  reproduced `1 failed`; GREEN C returned `5 passed`.
+- C — TraCI connection ownership and partial-start cleanup. RED reproduced
+  `1 failed`; GREEN C returned `5 passed`.
 
 The writer's expanded focused verification returned `111 passed in 28.05s`.
 The main agent's independent targeted verification returned `27 passed in
@@ -572,18 +572,19 @@ code-test target.
 The exact eight-file focused command was:
 
 ```text
-.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r4-focused
+.\.venv\Scripts\python.exe -m pytest tests/test_run_service.py tests/test_run_lifecycle.py tests/test_runner_channel.py tests/test_artifacts.py tests/test_run_models.py tests/test_api.py tests/test_api_contract.py tests/test_resilience.py -q -p no:cacheprovider --basetemp D:\Temp\judge-task12-r4-controller-focused
 127 passed in 42.75s
 ```
 
-The first full-suite attempt used an external `D:\Temp` basetemp and returned
-`627 passed` with four fixed-time source-boundary environment failures. Those
+The first full-suite attempt used external basetemp
+`D:\Temp\judge-task12-r4-controller-full` and returned `627 passed` with four
+fixed-time source-boundary environment failures. Those
 four failures were environmental consequences of the external basetemp, not
 the canonical contract result. The required repo-local canonical rerun was
 green:
 
 ```text
-canonical in-repo basetemp full suite
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .superpowers\tmp\task12-r4-controller-full-inrepo
 631 passed in 123.84s
 ```
 
