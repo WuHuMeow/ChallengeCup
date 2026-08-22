@@ -4,7 +4,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from core.run_models import RunResult, RunStatus
+from core.run_models import RunRequest, RunResult, RunStatus
 from experiments.tuning import (
     PARAMETER_GRID,
     calibration_seeds,
@@ -16,6 +16,7 @@ from scripts.run_pdf_matrix import (
     _run_dir,
     build_pdf_matrix,
     is_complete,
+    request_key,
     run_pdf_matrix,
 )
 
@@ -35,6 +36,40 @@ def test_pdf_matrix_has_exact_360_requests():
     assert {request.flow_multiplier for request in requests} == {1.0, 1.5}
     assert {request.seed for request in requests} == {42, 123, 456}
     assert all(request.steps == 36000 for request in requests)
+
+
+def test_request_key_includes_step_origin_and_seconds_window_inputs():
+    formal = RunRequest(
+        "1",
+        "fixed_time",
+        duration_seconds=3600,
+        warmup_seconds=600,
+        step_length_override=0.1,
+    )
+    explicit = RunRequest(
+        "1",
+        "fixed_time",
+        steps=36000,
+        duration_seconds=3600,
+        warmup_seconds=600,
+        step_length_override=0.1,
+    )
+    no_override = RunRequest(
+        "1", "fixed_time", duration_seconds=3600, warmup_seconds=300
+    )
+
+    formal_identity = json.loads(request_key(formal))
+    explicit_identity = json.loads(request_key(explicit))
+    no_override_identity = json.loads(request_key(no_override))
+
+    assert formal_identity != explicit_identity
+    assert formal_identity["steps_origin"] == "compatibility"
+    assert explicit_identity["steps_origin"] == "explicit"
+    assert no_override_identity["steps"] is None
+    assert no_override_identity["steps_origin"] == "none"
+    assert no_override_identity["duration_seconds"] == 3600
+    assert no_override_identity["warmup_seconds"] == 300
+    assert no_override_identity["step_length_override"] is None
 
 
 def test_tuning_grid_and_seed_split_are_exact():

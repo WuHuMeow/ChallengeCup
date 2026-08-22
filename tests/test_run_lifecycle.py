@@ -629,6 +629,14 @@ class _OwnedProcess:
         self.killed = True
 
 
+class _ConnectionHandle:
+    def __init__(self):
+        self.close_calls = []
+
+    def close(self, wait=True):
+        self.close_calls.append(wait)
+
+
 def test_bridge_cleanup_targets_only_its_recorded_process(monkeypatch, tmp_path):
     bridge = TraCIBridge(tmp_path / "unused.sumocfg")
     owned = _OwnedProcess(41001)
@@ -645,6 +653,28 @@ def test_bridge_cleanup_targets_only_its_recorded_process(monkeypatch, tmp_path)
     assert unrelated.killed is False
 
 
+def test_bridge_close_reaps_child_when_connection_close_is_interrupted(tmp_path):
+    bridge = TraCIBridge(tmp_path / "unused.sumocfg")
+    owned = _OwnedProcess(41009)
+
+    class InterruptingConnection:
+        def close(self, wait=True):
+            raise KeyboardInterrupt()
+
+    bridge._owned_process = owned
+    bridge._connection = InterruptingConnection()
+    bridge._connection_label = "owned-label"
+
+    with pytest.raises(KeyboardInterrupt):
+        bridge.close()
+
+    assert owned.terminated is True
+    assert owned.killed is False
+    assert bridge._owned_process is None
+    assert bridge._connection is None
+    assert bridge._connection_label is None
+
+
 def test_bridge_start_failure_reaps_process_created_during_connection_setup(
     monkeypatch, tmp_path
 ):
@@ -656,23 +686,26 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
         config,
         process_factory=lambda *args, **kwargs: bridge_process,
     )
-    connection_loaded = False
-    close_calls = []
+    connection = _ConnectionHandle()
+    connections = {}
+    labels = []
+    global_close_calls = []
 
-    def fail_after_partial_connection(*args, **kwargs):
-        nonlocal connection_loaded
-        connection_loaded = True
+    def fail_after_partial_connection(*args, label="default", **kwargs):
+        labels.append(label)
+        connections[label] = connection
         raise RuntimeError("connect failed")
 
-    def close_connection(wait=False):
-        nonlocal connection_loaded
-        close_calls.append(wait)
-        connection_loaded = False
+    def get_connection(label):
+        return connections[label]
 
     monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41005)
     monkeypatch.setattr(traci, "init", fail_after_partial_connection)
-    monkeypatch.setattr(traci, "isLoaded", lambda: connection_loaded)
-    monkeypatch.setattr(traci, "close", close_connection)
+    monkeypatch.setattr(traci, "getConnection", get_connection)
+    monkeypatch.setattr(traci, "isLoaded", lambda: False)
+    monkeypatch.setattr(
+        traci, "close", lambda wait=False: global_close_calls.append(wait)
+    )
 
     with pytest.raises(RuntimeError, match="connect failed"):
         bridge.start()
@@ -682,7 +715,9 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
     assert bridge_process.killed is False
     assert unrelated.terminated is False
     assert unrelated.killed is False
-    assert close_calls == [False]
+    assert labels[0] != "default"
+    assert connection.close_calls == [False]
+    assert global_close_calls == []
 
 
 def test_bridge_start_interrupt_reaps_recorded_process(monkeypatch, tmp_path):
@@ -693,18 +728,76 @@ def test_bridge_start_interrupt_reaps_recorded_process(monkeypatch, tmp_path):
         config,
         process_factory=lambda *args, **kwargs: bridge_process,
     )
+    connection = _ConnectionHandle()
+    connections = {}
+    global_close_calls = []
+
+    def interrupt_after_partial_connection(*args, label="default", **kwargs):
+        connections[label] = connection
+        raise KeyboardInterrupt()
+
     monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41006)
-    monkeypatch.setattr(
-        traci,
-        "init",
-        lambda *args, **kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
-    )
+    monkeypatch.setattr(traci, "init", interrupt_after_partial_connection)
+    monkeypatch.setattr(traci, "getConnection", lambda label: connections[label])
     monkeypatch.setattr(traci, "isLoaded", lambda: False)
+    monkeypatch.setattr(
+        traci, "close", lambda wait=False: global_close_calls.append(wait)
+    )
 
     with pytest.raises(KeyboardInterrupt):
         bridge.start()
 
     assert bridge.process_id == 41005
+    assert bridge_process.terminated is True
+    assert bridge_process.killed is False
+    assert connection.close_calls == [False]
+    assert global_close_calls == []
+
+
+def test_bridge_init_race_does_not_close_another_owners_connection(
+    monkeypatch, tmp_path
+):
+    bridge_process = _OwnedProcess(41007)
+    other_connection = _ConnectionHandle()
+    global_close_calls = []
+    labels = []
+    connection_loaded = False
+    config = tmp_path / "unused.sumocfg"
+    config.write_text("<configuration />", encoding="utf-8")
+    bridge = TraCIBridge(
+        config,
+        process_factory=lambda *args, **kwargs: bridge_process,
+    )
+
+    def is_loaded():
+        return connection_loaded
+
+    def collide_during_init(*args, label="default", **kwargs):
+        nonlocal connection_loaded
+        labels.append(label)
+        connection_loaded = True
+        raise RuntimeError("another owner connected")
+
+    def close_global(wait=False):
+        global_close_calls.append(wait)
+        other_connection.close(wait=wait)
+
+    def no_owned_connection(label):
+        raise KeyError(label)
+
+    monkeypatch.setattr(traci, "getFreeSocketPort", lambda: 41008)
+    monkeypatch.setattr(traci, "isLoaded", is_loaded)
+    monkeypatch.setattr(traci, "init", collide_during_init)
+    monkeypatch.setattr(traci, "getConnection", no_owned_connection)
+    monkeypatch.setattr(traci, "close", close_global)
+
+    with pytest.raises(RuntimeError, match="another owner connected"):
+        bridge.start()
+
+    assert labels[0] != "default"
+    assert other_connection.close_calls == []
+    assert global_close_calls == []
+    assert bridge.process_id == 41007
     assert bridge_process.terminated is True
     assert bridge_process.killed is False
 

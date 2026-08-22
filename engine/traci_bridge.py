@@ -13,9 +13,11 @@ import os
 import re
 import subprocess
 import sys
+import threading
 from collections import Counter, deque
 from pathlib import Path
 from typing import Callable, List, Optional
+from uuid import uuid4
 
 from defusedxml import ElementTree as ET
 
@@ -35,6 +37,7 @@ from engine.movement_state import MovementStateBuilder
 from engine.safety import ConflictDefinition
 
 logger = logging.getLogger(__name__)
+_TRACI_LIFECYCLE_LOCK = threading.RLock()
 
 # 兼容本地 SUMO 安装：若通过 pip 安装 traci 则无需 SUMO_HOME。
 if "SUMO_HOME" in os.environ:
@@ -104,7 +107,8 @@ class TraCIBridge:
         self._pending_startup_actions: tuple[ControlAction, ...] = ()
         self._owned_process: subprocess.Popen | None = None
         self._owned_pid: int | None = None
-        self._owns_connection = False
+        self._connection: object | None = None
+        self._connection_label: str | None = None
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -186,42 +190,43 @@ class TraCIBridge:
         self._conflict_definitions = ()
         self._pending_startup_actions = ()
 
-        if not self.sumo_cfg.exists():
-            raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
-        if traci.isLoaded():
-            raise RuntimeError("TraCI connection already active")
+        with _TRACI_LIFECYCLE_LOCK:
+            if not self.sumo_cfg.exists():
+                raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
+            if traci.isLoaded():
+                raise RuntimeError("TraCI connection already active")
 
-        cmd = self._build_cmd()
-        logger.info("启动 SUMO: %s", " ".join(cmd))
-        try:
-            self._start_owned_connection(cmd)
-            tls_ids = tuple(traci.trafficlight.getIDList())
-            if not tls_ids:
-                raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
-            self._tls_ids = tls_ids
-            self.tls_id = tls_ids[0]
-            self._pending_startup_actions = self._additional_signal_program_actions(
-                set(tls_ids)
-            )
-            self._controlled_lanes = list(
-                traci.trafficlight.getControlledLanes(self.tls_id)
-            )
-            logger.info(
-                "控制信号灯: %s, 控制车道数: %d",
-                self.tls_id,
-                len(self._controlled_lanes),
-            )
-            self._load_edge_mapping()
-            self._load_turn_ratios()
-            self._load_conflict_definitions()
-            self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
-        except BaseException:
-            if self._owns_connection or self._owned_process is not None:
-                try:
-                    self.close()
-                except Exception:
-                    logger.exception("清理 SUMO 启动失败的子进程时发生错误")
-            raise
+            cmd = self._build_cmd()
+            logger.info("启动 SUMO: %s", " ".join(cmd))
+            try:
+                self._start_owned_connection(cmd)
+                tls_ids = tuple(traci.trafficlight.getIDList())
+                if not tls_ids:
+                    raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+                self._tls_ids = tls_ids
+                self.tls_id = tls_ids[0]
+                self._pending_startup_actions = self._additional_signal_program_actions(
+                    set(tls_ids)
+                )
+                self._controlled_lanes = list(
+                    traci.trafficlight.getControlledLanes(self.tls_id)
+                )
+                logger.info(
+                    "控制信号灯: %s, 控制车道数: %d",
+                    self.tls_id,
+                    len(self._controlled_lanes),
+                )
+                self._load_edge_mapping()
+                self._load_turn_ratios()
+                self._load_conflict_definitions()
+                self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
+            except BaseException:
+                if self._connection is not None or self._owned_process is not None:
+                    try:
+                        self.close()
+                    except Exception:
+                        logger.exception("清理 SUMO 启动失败的子进程时发生错误")
+                raise
 
     def _start_owned_connection(self, cmd: list[str]) -> None:
         """Create, record, and connect the exact SUMO child owned by this bridge."""
@@ -231,8 +236,22 @@ class TraCIBridge:
             stdout=None,
         )
         self._record_owned_process(process)
-        self._owns_connection = True
-        traci.init(port, proc=process)
+        label = f"traffic-control-{uuid4().hex}"
+        self._connection_label = label
+        try:
+            traci.init(
+                port,
+                label=label,
+                proc=process,
+                doSwitch=True,
+            )
+        finally:
+            try:
+                self._connection = traci.getConnection(label)
+            except Exception:
+                self._connection = None
+        if self._connection is None:
+            raise RuntimeError("TraCI initialization did not register owned connection")
 
     def _record_owned_process(self, process: subprocess.Popen | None) -> None:
         self._owned_process = process
@@ -797,31 +816,34 @@ class TraCIBridge:
 
     def close(self) -> None:
         """Close TraCI and reap only this bridge's recorded SUMO child."""
-        process = self._owned_process
-        if process is not None and self._owned_pid is None:
-            self._owned_pid = int(process.pid)
-        close_error: Exception | None = None
-        try:
-            if self._owns_connection and traci.isLoaded():
-                traci.close(wait=False)
-        except Exception as exc:
-            close_error = exc
-        try:
-            if process is not None and process.poll() is None:
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
+        with _TRACI_LIFECYCLE_LOCK:
+            process = self._owned_process
+            connection = self._connection
+            if process is not None and self._owned_pid is None:
+                self._owned_pid = int(process.pid)
+            close_error: BaseException | None = None
+            try:
+                if connection is not None:
+                    connection.close(wait=False)
+            except BaseException as exc:
+                close_error = exc
+            try:
+                if process is not None and process.poll() is None:
                     try:
                         process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=5)
-        finally:
-            self._owned_process = None
-            self._owns_connection = False
-        if close_error is not None:
-            raise close_error
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
+            finally:
+                self._owned_process = None
+                self._connection = None
+                self._connection_label = None
+            if close_error is not None:
+                raise close_error
 
     def step(self) -> Optional[float]:
         """推进一个仿真步。

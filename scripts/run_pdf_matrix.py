@@ -84,7 +84,15 @@ def request_key(request: RunRequest) -> str:
         "algorithm": str(request.algorithm),
         "flow_multiplier": float(request.flow_multiplier),
         "seed": int(request.seed),
-        "steps": int(request.steps),
+        "steps": int(request.steps) if request.steps is not None else None,
+        "steps_origin": request.steps_origin,
+        "duration_seconds": float(request.duration_seconds),
+        "warmup_seconds": float(request.warmup_seconds),
+        "step_length_override": (
+            float(request.step_length_override)
+            if request.step_length_override is not None
+            else None
+        ),
         "algorithm_params": parameters,
         "algorithm_params_fingerprint": hashlib.sha256(
             encoded_parameters

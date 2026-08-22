@@ -188,6 +188,7 @@ class RunService:
             "requested_seconds": request.duration_seconds,
             "warmup_seconds": request.warmup_seconds,
             "requested_steps": request.steps,
+            "steps_origin": request.steps_origin,
             "step_length_override": request.step_length_override,
             "edge_delay_steps": request.edge_delay_steps,
             "edge_directions": list(request.edge_directions),

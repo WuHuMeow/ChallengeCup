@@ -40,6 +40,10 @@ def test_step_restarts_when_allowed():
         ),
     )
     calls = {"n": 0}
+    connection_close_calls = []
+    bridge._connection = SimpleNamespace(
+        close=lambda wait=True: connection_close_calls.append(wait)
+    )
 
     def flaky_step():
         calls["n"] += 1
@@ -55,6 +59,7 @@ def test_step_restarts_when_allowed():
             "reconnect_started",
             "reconnect_succeeded",
         ]
+        assert connection_close_calls == [False]
         assert mock_start.call_count == 1  # 触发了一次重连
 
 
@@ -308,13 +313,16 @@ def test_secondary_variant_program_uses_its_startup_state_through_safety():
 
 def test_close_idempotent():
     bridge = _bridge()
-    bridge._owns_connection = True
-    with patch.object(traci, "isLoaded", return_value=True), \
-         patch.object(traci, "close") as mock_close:
+    close_calls = []
+    bridge._connection = SimpleNamespace(
+        close=lambda wait=True: close_calls.append(wait)
+    )
+    with patch.object(traci, "close") as global_close:
         bridge.close()
         bridge.close()  # 第二次应为 no-op
-        assert mock_close.call_count == 1
-        assert bridge._owns_connection is False
+        assert close_calls == [False]
+        global_close.assert_not_called()
+        assert bridge._connection is None
 
 
 class _FatalStateBridge(MockBridge):

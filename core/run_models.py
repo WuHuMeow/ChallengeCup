@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 import math
 from pathlib import Path
@@ -129,6 +130,14 @@ class _CompatibilitySteps(int):
     """Derived legacy step count whose formal window remains authoritative."""
 
 
+def _disturbance_from_payload(value: object) -> DisturbanceSpec | None:
+    if value is None or isinstance(value, DisturbanceSpec):
+        return value
+    if not isinstance(value, Mapping):
+        raise ValueError("disturbance must be a mapping or null")
+    return DisturbanceSpec(**dict(value))
+
+
 @dataclass(frozen=True)
 class RunRequest:
     """Complete input contract for one isolated simulation run."""
@@ -149,6 +158,9 @@ class RunRequest:
     variant: VariantSpec = field(default_factory=VariantSpec)
     disturbance: DisturbanceSpec | None = None
     algorithm_params: dict[str, float] = field(default_factory=dict)
+    steps_origin: Literal["none", "compatibility", "explicit"] = field(
+        init=False
+    )
 
     def __post_init__(self) -> None:
         if isinstance(self.intersection_id, bool):
@@ -182,7 +194,7 @@ class RunRequest:
             if not math.isfinite(numeric_step_length) or numeric_step_length <= 0:
                 raise ValueError("step_length_override must be finite and > 0")
             object.__setattr__(self, "step_length_override", numeric_step_length)
-            if self.steps is None:
+            if self.steps is None or isinstance(self.steps, _CompatibilitySteps):
                 object.__setattr__(
                     self,
                     "steps",
@@ -190,6 +202,16 @@ class RunRequest:
                         steps_for_seconds(window.duration_seconds, numeric_step_length)
                     ),
                 )
+        elif isinstance(self.steps, _CompatibilitySteps):
+            object.__setattr__(self, "steps", None)
+        steps_origin = (
+            "none"
+            if self.steps is None
+            else "compatibility"
+            if isinstance(self.steps, _CompatibilitySteps)
+            else "explicit"
+        )
+        object.__setattr__(self, "steps_origin", steps_origin)
         object.__setattr__(self, "duration_seconds", window.duration_seconds)
         object.__setattr__(self, "warmup_seconds", window.warmup_seconds)
         flow_multiplier = _finite_number(
@@ -239,9 +261,95 @@ class RunRequest:
 
     @property
     def _steps_explicit(self) -> bool:
-        return self.steps is not None and not isinstance(
-            self.steps, _CompatibilitySteps
+        return self.steps_origin == "explicit"
+
+    def to_payload(self) -> dict[str, object]:
+        """Return a complete JSON-safe request payload with step provenance."""
+        payload = asdict(self)
+        payload["schema_version"] = 1
+        payload["steps"] = int(self.steps) if self.steps is not None else None
+        payload["output_root"] = (
+            str(self.output_root) if self.output_root is not None else None
         )
+        return payload
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> "RunRequest":
+        """Rebuild a request while validating persisted step provenance."""
+        if not isinstance(payload, Mapping):
+            raise ValueError("RunRequest payload must be a mapping")
+        values = dict(payload)
+        missing = object()
+        schema_version = values.pop("schema_version", missing)
+        if schema_version is not missing and (
+            type(schema_version) is not int or schema_version != 1
+        ):
+            raise ValueError(f"unknown schema_version: {schema_version!r}")
+        origin = values.pop("steps_origin", missing)
+        if schema_version is not missing and origin is missing:
+            raise ValueError("schema_version 1 requires steps_origin")
+        steps = values.get("steps")
+        if origin is missing:
+            if steps is not None:
+                origin = "explicit"
+            elif values.get("step_length_override") is not None:
+                origin = "compatibility"
+                steps = steps_for_seconds(
+                    values.get("duration_seconds", 3600.0),
+                    values["step_length_override"],
+                )
+                values["steps"] = _CompatibilitySteps(steps)
+            else:
+                origin = "none"
+        if origin not in {"none", "compatibility", "explicit"}:
+            raise ValueError(f"unknown steps_origin: {origin!r}")
+        if origin == "none" and steps is not None:
+            raise ValueError("steps_origin 'none' requires steps=None")
+        if origin == "none" and values.get("step_length_override") is not None:
+            raise ValueError(
+                "steps_origin 'none' is inconsistent with step_length_override"
+            )
+        if origin == "explicit" and steps is None:
+            raise ValueError("steps_origin 'explicit' requires steps")
+        if origin == "compatibility":
+            override = values.get("step_length_override")
+            if override is None:
+                raise ValueError(
+                    "steps_origin 'compatibility' requires step_length_override"
+                )
+            if isinstance(steps, bool) or not isinstance(steps, int):
+                raise ValueError(
+                    "steps_origin 'compatibility' requires integer steps"
+                )
+            try:
+                expected_steps = steps_for_seconds(
+                    values.get("duration_seconds", 3600.0),
+                    override,
+                )
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "steps_origin 'compatibility' requires valid duration and override"
+                ) from exc
+            if steps != expected_steps:
+                raise ValueError(
+                    "steps_origin 'compatibility' does not match duration and override"
+                )
+            values["steps"] = _CompatibilitySteps(steps)
+
+        disturbance = _disturbance_from_payload(values.get("disturbance"))
+        values["disturbance"] = disturbance
+        variant = values.get("variant")
+        if isinstance(variant, Mapping):
+            variant_values = dict(variant)
+            variant_values["disturbance"] = _disturbance_from_payload(
+                variant_values.get("disturbance")
+            )
+            values["variant"] = VariantSpec(**variant_values)
+        elif variant is not None and not isinstance(variant, VariantSpec):
+            raise ValueError("variant must be a mapping or VariantSpec")
+        if "edge_directions" in values:
+            values["edge_directions"] = tuple(values["edge_directions"])
+        return cls(**values)
 
 
 @dataclass(frozen=True)

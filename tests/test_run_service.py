@@ -293,6 +293,30 @@ def test_formal_override_retains_declared_warmup(tmp_path):
     assert RecordingRunner.run_steps[-1] == SimulationWindow(3600, 600)
 
 
+@pytest.mark.parametrize(
+    ("steps", "expected_origin"),
+    [(None, "compatibility"), (36000, "explicit")],
+)
+def test_run_manifest_records_request_steps_origin(
+    tmp_path, steps, expected_origin
+):
+    service = RunService(output_root=tmp_path, runner_factory=RecordingRunner)
+
+    result = service.run_sync(
+        RunRequest(
+            "1",
+            "fixed_time",
+            steps=steps,
+            duration_seconds=3600,
+            warmup_seconds=600,
+            step_length_override=0.1,
+        )
+    )
+
+    manifest = json.loads((result.run_dir / "manifest.json").read_text())
+    assert manifest["steps_origin"] == expected_origin
+
+
 def test_manifest_runtime_scene_identity_mismatch_fails_closed(tmp_path):
     base_scene = SceneRegistry().get_scene("1")
     raw_cfg = tmp_path / "runtime.sumocfg"
