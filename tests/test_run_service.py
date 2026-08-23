@@ -106,6 +106,13 @@ class RecordingRealtimeHub(RealtimeHub):
         return super().publish(run_id, message)
 
 
+class FailingTerminalHub(RealtimeHub):
+    def publish(self, run_id, message):
+        if message.get("type") == "terminal":
+            raise RuntimeError("terminal sink unavailable")
+        return super().publish(run_id, message)
+
+
 class ValidatedRegistry:
     def __init__(self, scene, manifest):
         self.scene = scene
@@ -505,6 +512,54 @@ def test_run_service_rejects_frames_from_another_run(tmp_path):
     assert service._publish_frame(
         "expected-run", FrameRecord("expected-run", 1, 1.0, b"right", 1.0)
     ) is True
+    assert service._publish_frame(
+        "expected-run", FrameRecord("expected-run", 0, 0.0, b"stale", 0.0)
+    ) is False
+
+
+def test_stop_propagates_unexpected_transition_error(tmp_path, monkeypatch):
+    BlockingRunner.release.clear()
+    BlockingRunner.started.clear()
+    service = RunService(output_root=tmp_path, runner_factory=BlockingRunner)
+    queued = service.submit(RunRequest("1", "fixed_time", steps=10))
+    assert BlockingRunner.started.wait(timeout=2)
+
+    original_transition = service._states.transition
+    transition_calls = 0
+
+    def unexpected_transition(*args, **kwargs):
+        nonlocal transition_calls
+        transition_calls += 1
+        if transition_calls == 1:
+            raise ValueError("unexpected transition failure")
+        return original_transition(*args, **kwargs)
+
+    monkeypatch.setattr(service._states, "transition", unexpected_transition)
+    try:
+        with pytest.raises(ValueError, match="unexpected transition failure"):
+            service.stop(queued.run_id)
+    finally:
+        monkeypatch.setattr(service._states, "transition", original_transition)
+        BlockingRunner.release.set()
+        service.shutdown(wait=True)
+
+
+def test_terminal_publish_failure_does_not_mark_event_seen(tmp_path):
+    service = RunService(output_root=tmp_path, realtime_hub=FailingTerminalHub())
+
+    with pytest.raises(RuntimeError, match="terminal sink unavailable"):
+        service._publish_runtime_event(
+            "run-1",
+            {
+                "type": "terminal",
+                "status": "completed",
+                "reason": "",
+                "simulation_time": 1.0,
+            },
+        )
+
+    assert "run-1" not in service._terminal_events
+    service.shutdown()
 
 
 def test_run_service_stop_after_terminal_event_never_publishes_stopping(tmp_path):

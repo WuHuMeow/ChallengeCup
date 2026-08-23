@@ -53,9 +53,9 @@ class _FrameBridge(MockBridge):
 
 def test_frame_publisher_keeps_one_newest_frame_per_run():
     publisher = FramePublisher()
-    publisher.publish(FrameRecord("run-1", 1, 1.0, b"old", 1.0))
-    publisher.publish(FrameRecord("run-1", 2, 2.0, b"new", 2.0))
-    publisher.publish(FrameRecord("run-1", 1, 1.0, b"stale", 3.0))
+    assert publisher.publish(FrameRecord("run-1", 1, 1.0, b"old", 1.0)) is True
+    assert publisher.publish(FrameRecord("run-1", 2, 2.0, b"new", 2.0)) is True
+    assert publisher.publish(FrameRecord("run-1", 1, 1.0, b"stale", 3.0)) is False
 
     latest = publisher.latest("run-1")
 

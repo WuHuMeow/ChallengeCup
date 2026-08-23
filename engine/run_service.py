@@ -117,7 +117,7 @@ class RunService:
             if self._artifact_status(artifacts) in TERMINAL_STATUSES:
                 self._wait_until_done(run_id)
                 return False
-                raise
+            raise
         if terminal_event_seen:
             self._wait_until_done(run_id)
             return False
@@ -201,18 +201,19 @@ class RunService:
     def _publish_frame(self, run_id: str, record: object) -> bool:
         if not isinstance(record, FrameRecord) or record.run_id != run_id:
             return False
-        self.frame_publisher.publish(record)
-        return True
+        return self.frame_publisher.publish(record)
 
     def _publish_runtime_event(
         self,
         run_id: str,
         message: dict[str, object],
     ) -> None:
-        if message.get("type") == "terminal":
-            with self._lock:
-                self._terminal_events.add(run_id)
-        self.realtime_hub.publish(run_id, message)
+        if message.get("type") != "terminal":
+            self.realtime_hub.publish(run_id, message)
+            return
+        with self._lock:
+            self.realtime_hub.publish(run_id, message)
+            self._terminal_events.add(run_id)
 
     @staticmethod
     def _runner_accepts_argument(runner: object, name: str) -> bool:

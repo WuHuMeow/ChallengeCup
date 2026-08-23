@@ -22,11 +22,13 @@ class FramePublisher:
         self._frames: dict[str, FrameRecord] = {}
         self._lock = threading.RLock()
 
-    def publish(self, record: FrameRecord) -> None:
+    def publish(self, record: FrameRecord) -> bool:
         with self._lock:
             previous = self._frames.get(record.run_id)
-            if previous is None or record.sequence > previous.sequence:
-                self._frames[record.run_id] = record
+            if previous is not None and record.sequence <= previous.sequence:
+                return False
+            self._frames[record.run_id] = record
+            return True
 
     def latest(self, run_id: str) -> FrameRecord | None:
         with self._lock:
