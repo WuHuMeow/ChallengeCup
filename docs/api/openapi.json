@@ -353,11 +353,6 @@
       },
       "NativeGuiResponseModel": {
         "properties": {
-          "reason": {
-            "default": "",
-            "title": "Reason",
-            "type": "string"
-          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -789,6 +784,135 @@
         "title": "RunStatus",
         "type": "string"
       },
+      "SafetyModel": {
+        "properties": {
+          "collision": {
+            "minimum": 0.0,
+            "title": "Collision",
+            "type": "integer"
+          },
+          "harsh_braking": {
+            "minimum": 0.0,
+            "title": "Harsh Braking",
+            "type": "integer"
+          },
+          "illegal_transition": {
+            "minimum": 0.0,
+            "title": "Illegal Transition",
+            "type": "integer"
+          },
+          "potential_conflict": {
+            "minimum": 0.0,
+            "title": "Potential Conflict",
+            "type": "integer"
+          },
+          "red_light": {
+            "minimum": 0.0,
+            "title": "Red Light",
+            "type": "integer"
+          },
+          "teleport": {
+            "minimum": 0.0,
+            "title": "Teleport",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collision",
+          "red_light",
+          "illegal_transition",
+          "harsh_braking",
+          "teleport",
+          "potential_conflict"
+        ],
+        "title": "SafetyModel",
+        "type": "object"
+      },
+      "SceneManifestModel": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "intersection_id": {
+            "title": "Intersection Id",
+            "type": "string"
+          },
+          "lane_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lane Ids",
+            "type": "array"
+          },
+          "movement_count": {
+            "minimum": 0.0,
+            "title": "Movement Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scene_id": {
+            "title": "Scene Id",
+            "type": "string"
+          },
+          "sha256": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Sha256",
+            "type": "object"
+          },
+          "source_files": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Files",
+            "type": "object"
+          },
+          "step_length": {
+            "exclusiveMinimum": 0.0,
+            "title": "Step Length",
+            "type": "number"
+          },
+          "tls_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tls Ids",
+            "type": "array"
+          },
+          "validation_status": {
+            "title": "Validation Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scene_id",
+          "intersection_id",
+          "name",
+          "description",
+          "source_files",
+          "sha256",
+          "step_length",
+          "tls_ids",
+          "lane_ids",
+          "movement_count",
+          "validation_status",
+          "warnings"
+        ],
+        "title": "SceneManifestModel",
+        "type": "object"
+      },
       "StateRequestModel": {
         "properties": {
           "state": {
@@ -1078,6 +1202,9 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "description": "validated result unavailable"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1312,6 +1439,9 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "description": "unknown run_id"
+          },
           "409": {
             "description": "native SUMO-GUI unavailable"
           },
@@ -1327,6 +1457,48 @@
           }
         },
         "summary": "Show Native Gui"
+      }
+    },
+    "/api/runs/{run_id}/safety": {
+      "get": {
+        "operationId": "get_safety_api_runs__run_id__safety_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafetyModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "validated safety unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Safety"
       }
     },
     "/api/runs/{run_id}/stop": {
@@ -1377,10 +1549,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
+                    "$ref": "#/components/schemas/SceneManifestModel"
                   },
                   "title": "Response List Scenes Api Scenes Get",
                   "type": "array"
@@ -1542,10 +1711,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
+                    "$ref": "#/components/schemas/SceneManifestModel"
                   },
                   "title": "Response Legacy Scenes Scenes Get",
                   "type": "array"

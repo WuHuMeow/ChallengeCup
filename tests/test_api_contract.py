@@ -30,6 +30,7 @@ def test_openapi_contains_judge_workflow_routes_and_responses():
     assert "/api/results" in paths
     assert "/api/results/{run_id}" in paths
     assert "/api/runs/{run_id}/frame" in paths
+    assert "/api/runs/{run_id}/safety" in paths
     assert "/api/runs/{run_id}/native-gui" in paths
     assert "ResultListModel" in create_app().openapi()["components"]["schemas"]
 
@@ -38,7 +39,13 @@ def test_openapi_contains_judge_workflow_routes_and_responses():
     assert {"X-Run-Id", "X-Frame-Sequence", "X-Simulation-Time"} <= set(
         frame["headers"]
     )
-    assert "409" in paths["/api/runs/{run_id}/native-gui"]["post"]["responses"]
+    assert "404" in paths["/api/results/{run_id}"]["get"]["responses"]
+    assert "404" in paths["/api/runs/{run_id}/safety"]["get"]["responses"]
+    native_gui_responses = paths["/api/runs/{run_id}/native-gui"]["post"][
+        "responses"
+    ]
+    assert "404" in native_gui_responses
+    assert "409" in native_gui_responses
 
 
 def test_runtime_run_status_matches_checked_in_openapi_contract():
@@ -82,6 +89,15 @@ def test_exported_openapi_and_postman_are_parseable(tmp_path):
     )
     names = {item["name"] for item in postman["item"]}
     assert {"Health", "Scenes", "Submit Run", "Run Status", "Run Metrics"} <= names
+
+
+def test_checked_in_contracts_match_fresh_export(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    fresh_paths = export_contracts(tmp_path)
+
+    for fresh_path in fresh_paths:
+        checked_in = root / "docs" / "api" / fresh_path.name
+        assert fresh_path.read_bytes() == checked_in.read_bytes()
 
 
 def test_export_script_runs_directly_from_repository_root(tmp_path):

@@ -75,6 +75,17 @@ def test_frame_publisher_clear_removes_run_frame():
     assert publisher.size("run-1") == 0
 
 
+def test_frame_publisher_only_consumes_a_frame_newer_than_client_sequence():
+    publisher = FramePublisher()
+    record = FrameRecord("run-1", 2, 2.0, b"frame", 1.0)
+    publisher.publish(record)
+
+    assert publisher.consume("run-1", after_sequence=2) is None
+    assert publisher.latest("run-1") is record
+    assert publisher.consume("run-1", after_sequence=1) is record
+    assert publisher.latest("run-1") is None
+
+
 def test_realtime_hub_replays_latest_and_delivers_new_messages():
     hub = RealtimeHub()
     hub.publish("run-1", {"type": "status", "status": "running"})

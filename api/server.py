@@ -22,6 +22,8 @@ from api.models import (
     ResultListModel,
     RunRequestModel,
     RunResultModel,
+    SafetyModel,
+    SceneManifestModel,
     StateRequestModel,
 )
 from api.static import install_static_routes
@@ -49,8 +51,16 @@ def _result_or_404(run_service: RunService, run_id: str):
     return _validated_result(result)
 
 
-def _validated_evidence_result(result):
+def _validated_evidence_result(service, result):
     if result.status not in TERMINAL_STATUSES:
+        return None
+    try:
+        output_root = Path(service.output_root).resolve()
+        run_dir = Path(result.run_dir).resolve()
+        relative = run_dir.relative_to(output_root)
+    except (AttributeError, OSError, RuntimeError, ValueError):
+        return None
+    if not relative.parts:
         return None
     summary = EvidenceReader.load_summary(result.run_dir)
     if summary is None:
@@ -87,15 +97,24 @@ def create_app(
         service = application.state.run_service
         return {"status": "ok", "run_workers": getattr(service, "max_workers", 1)}
 
-    @application.get("/api/scenes")
-    def list_scenes() -> list[dict[str, str]]:
+    @application.get("/api/scenes", response_model=list[SceneManifestModel])
+    def list_scenes() -> list[SceneManifestModel]:
         service = application.state.run_service
         return [
-            {
-                "intersection_id": meta.intersection_id,
-                "name": meta.name,
-                "description": meta.description,
-            }
+            SceneManifestModel(
+                scene_id=meta.scene_id,
+                intersection_id=meta.intersection_id,
+                name=meta.name,
+                description=meta.description,
+                source_files=dict(meta.source_files),
+                sha256=dict(meta.sha256),
+                step_length=meta.step_length,
+                tls_ids=list(meta.tls_ids),
+                lane_ids=list(meta.lane_ids),
+                movement_count=meta.movement_count,
+                validation_status=meta.validation_status,
+                warnings=list(meta.warnings),
+            )
             for meta in service.registry.list_scenes()
         ]
 
@@ -173,8 +192,8 @@ def create_app(
         service = application.state.run_service
         if service.get(run_id) is None:
             raise HTTPException(status_code=404, detail="unknown run_id")
-        frame = service.frame_publisher.latest(run_id)
-        if frame is None or (sequence is not None and frame.sequence < sequence):
+        frame = service.frame_publisher.consume(run_id, after_sequence=sequence)
+        if frame is None:
             raise HTTPException(status_code=404, detail="frame unavailable")
         return Response(
             content=frame.png,
@@ -191,20 +210,58 @@ def create_app(
         service = application.state.run_service
         results = []
         for result in service.list_results():
-            validated = _validated_evidence_result(result)
+            validated = _validated_evidence_result(service, result)
             if validated is not None:
                 results.append(ResultListItemModel.from_domain(validated))
         return ResultListModel(items=results, count=len(results))
 
-    @application.get("/api/results/{run_id}", response_model=ResultDetailModel)
+    @application.get(
+        "/api/results/{run_id}",
+        response_model=ResultDetailModel,
+        responses={404: {"description": "validated result unavailable"}},
+    )
     def get_result(run_id: str) -> ResultDetailModel:
         result = application.state.run_service.get(run_id)
         if result is None:
             raise HTTPException(status_code=404, detail="unknown run_id")
-        validated = _validated_evidence_result(result)
+        validated = _validated_evidence_result(application.state.run_service, result)
         if validated is None:
             raise HTTPException(status_code=404, detail="validated evidence unavailable")
         return ResultDetailModel.from_domain(validated)
+
+    @application.get(
+        "/api/runs/{run_id}/safety",
+        response_model=SafetyModel,
+        responses={404: {"description": "validated safety unavailable"}},
+    )
+    def get_safety(run_id: str) -> SafetyModel:
+        service = application.state.run_service
+        result = service.get(run_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="unknown run_id")
+        validated = _validated_evidence_result(service, result)
+        if validated is None or validated.summary is None:
+            raise HTTPException(status_code=404, detail="validated safety unavailable")
+        metrics = validated.summary.get("metrics")
+        if not isinstance(metrics, dict):
+            raise HTTPException(status_code=404, detail="validated safety unavailable")
+        keys = (
+            "collision",
+            "red_light",
+            "illegal_transition",
+            "harsh_braking",
+            "teleport",
+            "potential_conflict",
+        )
+        try:
+            return SafetyModel(
+                **{key: metrics[f"{key}_count"] for key in keys}
+            )
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(
+                status_code=404,
+                detail="validated safety unavailable",
+            ) from None
 
     @application.post("/api/runs/{run_id}/stop", response_model=RunResultModel)
     def stop_run(run_id: str) -> RunResultModel:
@@ -217,7 +274,10 @@ def create_app(
     @application.post(
         "/api/runs/{run_id}/native-gui",
         response_model=NativeGuiResponseModel,
-        responses={409: {"description": "native SUMO-GUI unavailable"}},
+        responses={
+            404: {"description": "unknown run_id"},
+            409: {"description": "native SUMO-GUI unavailable"},
+        },
     )
     def show_native_gui(run_id: str) -> NativeGuiResponseModel:
         service = application.state.run_service
@@ -277,7 +337,7 @@ def create_app(
         return health()
 
     @application.get("/scenes", deprecated=True)
-    def legacy_scenes() -> list[dict[str, str]]:
+    def legacy_scenes() -> list[SceneManifestModel]:
         return list_scenes()
 
     @application.post("/run", deprecated=True, status_code=202)

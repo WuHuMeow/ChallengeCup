@@ -783,6 +783,7 @@ def test_corrupt_status_artifact_still_reaches_terminal_failed_result(tmp_path):
     queued = service.submit(
         RunRequest("1", "fixed_time", duration_seconds=1, warmup_seconds=0)
     )
+    service._futures[queued.run_id].result(timeout=2)
     service.shutdown(wait=True)
     result = service.get(queued.run_id)
 
@@ -1426,6 +1427,45 @@ class BlockingRunner(RecordingRunner):
             if stop_event is not None and stop_event.is_set():
                 break
         return super().run(window, stop_event=stop_event)
+
+
+def test_shutdown_stops_active_run_and_cancels_queued_run(tmp_path):
+    BlockingRunner.release.clear()
+    BlockingRunner.started.clear()
+    BlockingRunner.calls = []
+    service = RunService(output_root=tmp_path, runner_factory=BlockingRunner)
+    active = service.submit(RunRequest("1", "fixed_time", steps=10))
+    assert BlockingRunner.started.wait(timeout=2)
+    queued = service.submit(RunRequest("1", "fixed_time", steps=10))
+    shutdown_done = threading.Event()
+    shutdown_errors = []
+
+    def request_shutdown():
+        try:
+            service.shutdown(wait=True)
+        except Exception as exc:  # captured to assert public shutdown behavior
+            shutdown_errors.append(exc)
+        finally:
+            shutdown_done.set()
+
+    shutdown_thread = threading.Thread(
+        target=request_shutdown,
+        name="run-service-shutdown",
+    )
+    shutdown_thread.start()
+    try:
+        assert shutdown_done.wait(timeout=2)
+    finally:
+        if not shutdown_done.is_set():
+            BlockingRunner.release.set()
+        shutdown_thread.join(timeout=5)
+
+    assert not shutdown_thread.is_alive()
+    assert shutdown_errors == []
+    assert service.get(active.run_id).status is RunStatus.INTERRUPTED
+    assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
+    assert len(BlockingRunner.calls) == 1
+    service.shutdown(wait=True)
 
 
 def test_concurrent_submissions_are_queued_with_unique_run_ids(tmp_path):

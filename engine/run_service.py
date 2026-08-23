@@ -184,9 +184,64 @@ class RunService:
         return old, new
 
     def shutdown(self, wait: bool = True) -> None:
-        self._executor.shutdown(wait=wait)
+        with self._lock:
+            run_ids = tuple(self._stops)
+        for run_id in run_ids:
+            self._stop_for_shutdown(run_id)
+        self._executor.shutdown(wait=wait, cancel_futures=True)
         self.realtime_hub.close()
         self.frame_publisher.clear_all()
+
+    def _stop_for_shutdown(self, run_id: str) -> None:
+        current = self._states.get(run_id)
+        if current is None or current.status in TERMINAL_STATUSES:
+            return
+        with self._lock:
+            stop_event = self._stops.get(run_id)
+            done_event = self._done.get(run_id)
+            future = self._futures.get(run_id)
+            artifacts = self._artifacts.get(run_id)
+        if stop_event is None or done_event is None or artifacts is None:
+            return
+
+        stop_event.set()
+        if current.status is not RunStatus.STOPPING:
+            try:
+                self._states.transition(
+                    run_id,
+                    RunStatus.STOPPING,
+                    "stop requested",
+                )
+                self._publish_status(
+                    run_id,
+                    RunStatus.STOPPING,
+                    "stop requested",
+                )
+            except ValueError:
+                raced = self._states.get(run_id)
+                if raced is None or (
+                    raced.status is not RunStatus.STOPPING
+                    and raced.status not in TERMINAL_STATUSES
+                ):
+                    raise
+
+        if future is None or not future.cancel():
+            return
+        try:
+            status, reason = self._terminalize_partial_evidence(
+                artifacts,
+                RunStatus.INTERRUPTED,
+                "stop requested before start",
+            )
+            self._states.transition(
+                run_id,
+                status,
+                reason,
+                persist_artifact=False,
+            )
+            self._publish_status(run_id, status, reason)
+        finally:
+            done_event.set()
 
     def _publish_status(
         self,

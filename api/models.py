@@ -150,7 +150,30 @@ class ResultDetailModel(ResultListItemModel):
 
 class NativeGuiResponseModel(BaseModel):
     status: str
-    reason: str = ""
+
+
+class SafetyModel(BaseModel):
+    collision: int = Field(ge=0)
+    red_light: int = Field(ge=0)
+    illegal_transition: int = Field(ge=0)
+    harsh_braking: int = Field(ge=0)
+    teleport: int = Field(ge=0)
+    potential_conflict: int = Field(ge=0)
+
+
+class SceneManifestModel(BaseModel):
+    scene_id: str
+    intersection_id: str
+    name: str
+    description: str
+    source_files: dict[str, str]
+    sha256: dict[str, str]
+    step_length: float = Field(gt=0)
+    tls_ids: list[str]
+    lane_ids: list[str]
+    movement_count: int = Field(ge=0)
+    validation_status: str
+    warnings: list[str]
 
 
 class QueueStateModel(BaseModel):

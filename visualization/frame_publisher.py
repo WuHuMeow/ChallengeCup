@@ -39,9 +39,18 @@ class FramePublisher:
         with self._lock:
             return run_id not in self._frames
 
-    def consume(self, run_id: str) -> FrameRecord | None:
-        """Remove and return the latest frame after a client reads it."""
+    def consume(
+        self,
+        run_id: str,
+        after_sequence: int | None = None,
+    ) -> FrameRecord | None:
+        """Remove and return a frame only when it is newer than the client copy."""
         with self._lock:
+            record = self._frames.get(run_id)
+            if record is None:
+                return None
+            if after_sequence is not None and record.sequence <= after_sequence:
+                return None
             return self._frames.pop(run_id, None)
 
     def size(self, run_id: str) -> int:
