@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-23-judge-web-console-design.md`
 
+**Parent plan task:** Global Task 17, “Build the Web console and one-click judge demo”. The numbered tasks below are Task 17 implementation subtasks, not the global Tasks 1-6.
+
 ## Global Constraints
 
 - The production build must be emitted to `api/static/dist` and contain no external CDN dependency.
@@ -22,7 +24,7 @@
 
 ---
 
-### Task 1: Scaffold the frontend and write the browser RED test
+### Task 17.1: Scaffold the frontend and write the browser RED test
 
 **Files:**
 - Create: `web/package.json`
@@ -71,7 +73,7 @@ git add web/package.json web/package-lock.json web/tsconfig.json web/vite.config
 git commit -m "test: define judge console browser flow"
 ```
 
-### Task 2: Implement the typed API client and run store
+### Task 17.2: Implement the typed API client and run store
 
 **Files:**
 - Create: `web/src/api/client.ts`
@@ -109,7 +111,7 @@ git add web/src/api/client.ts web/src/state/runStore.ts web/src/main.tsx web/src
 git commit -m "feat: add typed judge API client and run store"
 ```
 
-### Task 3: Build the real-time Simulation view
+### Task 17.3: Build the real-time Simulation view
 
 **Files:**
 - Create: `web/src/components/SimulationView.tsx`
@@ -147,7 +149,7 @@ git add web/src/components/SimulationView.tsx web/src/components/SumoFrame.tsx w
 git commit -m "feat: add real-time judge simulation view"
 ```
 
-### Task 4: Build Comparison, History, and Scene views
+### Task 17.4: Build Comparison, History, and Scene views
 
 **Files:**
 - Create: `web/src/components/ComparisonView.tsx`
@@ -184,7 +186,7 @@ git add web/src/components/ComparisonView.tsx web/src/components/HistoryView.tsx
 git commit -m "feat: add evidence comparison history and scene views"
 ```
 
-### Task 5: Integrate responsive layout, accessibility, and build output
+### Task 17.5: Integrate responsive layout, accessibility, and build output
 
 **Files:**
 - Modify: `web/src/App.tsx`
@@ -220,7 +222,7 @@ git add web api/static.py web/src
 git commit -m "feat: publish judge-facing Web console"
 ```
 
-### Task 6: Run repository regression and independent review
+### Task 17.6: Run repository regression and independent review
 
 **Files:**
 - Test: `tests/test_judge_api.py`
