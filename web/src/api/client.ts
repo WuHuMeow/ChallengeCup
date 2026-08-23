@@ -43,9 +43,12 @@ export interface RunResult {
   run_id: string;
   status: RunStatus;
   reason: string;
-  run_dir?: string;
   summary: Record<string, unknown> | null;
   algorithm: string;
+}
+
+interface RawRunResult extends RunResult {
+  run_dir?: string;
 }
 
 export interface RunRequest {
@@ -89,6 +92,7 @@ export interface RunEvent {
 }
 
 export interface ResultListItem extends RunResult {
+  scene_id: string;
   summary: Record<string, unknown>;
   run_dir?: never;
 }
@@ -126,7 +130,13 @@ export interface JudgeApiClient {
     runId: string,
     onMessage: (event: RunEvent) => void,
     onClose: () => void,
+    onOpen?: () => void,
   ): () => void;
+}
+
+function sanitizeResultItem(result: ResultListItem & { run_dir?: string }): ResultListItem {
+  const { run_dir: _runDir, ...safe } = result;
+  return safe;
 }
 
 async function parseError(response: Response): Promise<string> {
@@ -137,6 +147,11 @@ async function parseError(response: Response): Promise<string> {
     // A non-JSON error still gets a stable message below.
   }
   return `${response.status} ${response.statusText || "request failed"}`;
+}
+
+function sanitizeRunResult(result: RawRunResult): RunResult {
+  const { run_dir: _runDir, ...safe } = result;
+  return safe;
 }
 
 function websocketUrl(baseUrl: string, runId: string): string {
@@ -168,15 +183,16 @@ export function createApiClient(baseUrl = ""): JudgeApiClient {
     listScenes: () => request<SceneManifest[]>("/api/scenes"),
     listAlgorithms: () =>
       request<{ formal: AlgorithmSpec[]; optional: AlgorithmSpec[] }>("/api/algorithms"),
-    startRun: (payload) =>
-      request<RunResult>("/api/runs", {
+    startRun: async (payload) => {
+      const result = await request<RawRunResult>("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }),
-    getRun: (runId) => request<RunResult>(`/api/runs/${encodeURIComponent(runId)}`),
-    stopRun: (runId) =>
-      request<RunResult>(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: "POST" }),
+      });
+      return sanitizeRunResult(result);
+    },
+    getRun: async (runId) => sanitizeRunResult(await request<RawRunResult>(`/api/runs/${encodeURIComponent(runId)}`)),
+    stopRun: async (runId) => sanitizeRunResult(await request<RawRunResult>(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: "POST" })),
     getMetrics: (runId) => request<Record<string, unknown>>(`/api/runs/${encodeURIComponent(runId)}/metrics`),
     getFrame: async (runId, afterSequence) => {
       const query = afterSequence === null ? "" : `?sequence=${afterSequence}`;
@@ -197,13 +213,17 @@ export function createApiClient(baseUrl = ""): JudgeApiClient {
         throw new ApiError(error instanceof Error ? error.message : "frame request failed", 0, "network");
       }
     },
-    listResults: () => request<ResultList>("/api/results"),
-    getResult: (runId) => request<ResultListItem>(`/api/results/${encodeURIComponent(runId)}`),
+    listResults: async () => {
+      const result = await request<ResultList & { items: Array<ResultListItem & { run_dir?: string }> }>("/api/results");
+      return { ...result, items: result.items.map(sanitizeResultItem) };
+    },
+    getResult: async (runId) => sanitizeResultItem(await request<ResultListItem & { run_dir?: string }>(`/api/results/${encodeURIComponent(runId)}`)),
     getSafety: (runId) => request<SafetyCounters>(`/api/runs/${encodeURIComponent(runId)}/safety`),
     openNativeGui: (runId) =>
       request<{ status: "shown" }>(`/api/runs/${encodeURIComponent(runId)}/native-gui`, { method: "POST" }),
-    subscribeEvents: (runId, onMessage, onClose) => {
+    subscribeEvents: (runId, onMessage, onClose, onOpen) => {
       const socket = new WebSocket(websocketUrl(baseUrl, runId));
+      socket.addEventListener("open", () => onOpen?.());
       socket.addEventListener("message", (message) => {
         try {
           onMessage(JSON.parse(String(message.data)) as RunEvent);

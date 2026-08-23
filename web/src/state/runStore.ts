@@ -18,7 +18,10 @@ export interface RunStoreSnapshot {
   selectedScene: string;
   selectedAlgorithm: AlgorithmKey;
   selectedLoad: number;
-  selectedDisturbance: Record<string, unknown> | null;
+  selectedSeed: number;
+  selectedDuration: number;
+  selectedWarmup: number;
+  selectedDisturbance: "none" | "construction" | "event_demand" | "vehicle_failure";
   activeRun: RunResult | null;
   metrics: Record<string, unknown>;
   events: RunEvent[];
@@ -34,7 +37,7 @@ export interface RunStoreSnapshot {
 export interface RunStore {
   getSnapshot(): RunStoreSnapshot;
   subscribe(listener: () => void): () => void;
-  setSelection(selection: Partial<Pick<RunStoreSnapshot, "selectedScene" | "selectedAlgorithm" | "selectedLoad" | "selectedDisturbance">>): void;
+  setSelection(selection: Partial<Pick<RunStoreSnapshot, "selectedScene" | "selectedAlgorithm" | "selectedLoad" | "selectedSeed" | "selectedDuration" | "selectedWarmup" | "selectedDisturbance">>): void;
   setActiveRun(run: RunResult): void;
   setRunStatus(status: RunStatus): void;
   setMetrics(metrics: Record<string, unknown>): void;
@@ -51,7 +54,10 @@ const initialSnapshot: RunStoreSnapshot = {
   selectedScene: "1",
   selectedAlgorithm: "fixed_time",
   selectedLoad: 1,
-  selectedDisturbance: null,
+  selectedSeed: 42,
+  selectedDuration: 30,
+  selectedWarmup: 0,
+  selectedDisturbance: "none",
   activeRun: null,
   metrics: {},
   events: [],
@@ -92,7 +98,10 @@ export function createRunStore(): RunStore {
       connection: ["completed", "stopped", "ended_early", "disconnected", "interrupted", "failed"].includes(activeRun.status) ? "idle" : "connecting",
     }),
     setRunStatus: (status) => {
-      if (snapshot.activeRun) update({ activeRun: { ...snapshot.activeRun, status } });
+      if (snapshot.activeRun) {
+        const terminal = ["completed", "stopped", "ended_early", "disconnected", "interrupted", "failed"].includes(status);
+        update({ activeRun: { ...snapshot.activeRun, status }, ...(terminal ? { connection: "idle" } : {}) });
+      }
     },
     setMetrics: (metrics) => update({ metrics }),
     setSafety: (safety) => update({ safety }),

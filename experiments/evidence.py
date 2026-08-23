@@ -468,42 +468,56 @@ class EvidenceWriter:
 
 class EvidenceReader:
     @staticmethod
-    def load_summary(run_dir: Path) -> dict[str, object] | None:
-        """Load only summary bytes that remain bound to valid sealed evidence."""
+    def load_result_evidence(
+        run_dir: Path,
+    ) -> tuple[dict[str, object], dict[str, object]] | None:
+        """Load an exact validated summary/manifest byte pair from sealed evidence."""
         run_dir = Path(run_dir)
         summary_path = run_dir / "summary.json"
+        manifest_path = run_dir / "manifest.json"
         try:
-            raw = summary_path.read_bytes()
+            summary_raw = summary_path.read_bytes()
+            manifest_raw = manifest_path.read_bytes()
             hashes = _load_json(run_dir / "hashes.json")
             files = hashes.get("files")
             if not isinstance(files, Mapping):
                 return None
-            expected = files.get("summary.json")
-            digest = hashlib.sha256(raw).hexdigest()
-            if not isinstance(expected, str) or digest != expected:
+            summary_digest = hashlib.sha256(summary_raw).hexdigest()
+            manifest_digest = hashlib.sha256(manifest_raw).hexdigest()
+            if files.get("summary.json") != summary_digest:
                 return None
-            payload = json.loads(raw)
-            if not isinstance(payload, dict):
+            if files.get("manifest.json") != manifest_digest:
                 return None
-            # Bind validation to the exact summary byte snapshot we return.
-            # A concurrent switch to another internally-valid summary cannot
-            # make validation bless different bytes than the consumer sees.
+            summary = json.loads(summary_raw)
+            manifest = json.loads(manifest_raw)
+            if not isinstance(summary, dict) or not isinstance(manifest, dict):
+                return None
             if EvidenceReader.validate(
                 run_dir,
-                expected_summary_sha256=digest,
+                expected_summary_sha256=summary_digest,
+                expected_manifest_sha256=manifest_digest,
             ):
                 return None
-            if _stable_sha256_file(summary_path) != digest:
+            if _stable_sha256_file(summary_path) != summary_digest:
                 return None
-            return payload
+            if _stable_sha256_file(manifest_path) != manifest_digest:
+                return None
+            return summary, manifest
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             return None
+
+    @staticmethod
+    def load_summary(run_dir: Path) -> dict[str, object] | None:
+        """Load only summary bytes that remain bound to valid sealed evidence."""
+        evidence = EvidenceReader.load_result_evidence(run_dir)
+        return evidence[0] if evidence is not None else None
 
     @staticmethod
     def validate(
         run_dir: Path,
         *,
         expected_summary_sha256: str | None = None,
+        expected_manifest_sha256: str | None = None,
     ) -> list[EvidenceIssue]:
         run_dir = Path(run_dir)
         issues: list[EvidenceIssue] = []
@@ -549,6 +563,7 @@ class EvidenceReader:
             issue("temporary_file", "atomic temporary file remains", temporary.name)
 
         payloads: dict[str, dict[str, object]] = {}
+        payload_digests: dict[str, str] = {}
         for name in (*_PARTIAL_REQUIRED, "hashes.json"):
             path = run_dir / name
             if unsafe_link(path, name):
@@ -562,7 +577,12 @@ class EvidenceReader:
                 issue("missing_file", f"missing non-empty {name}", name)
                 continue
             try:
-                payloads[name] = _load_json(path)
+                raw = path.read_bytes()
+                payload = json.loads(raw)
+                if not isinstance(payload, dict):
+                    raise TypeError(f"{path} must contain a JSON object")
+                payloads[name] = payload
+                payload_digests[name] = hashlib.sha256(raw).hexdigest()
             except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                 issue("invalid_json", str(exc), name)
 
@@ -574,6 +594,15 @@ class EvidenceReader:
         status = payloads["status.json"]
         metadata = payloads["run_metadata.json"]
         hashes = payloads["hashes.json"]
+        if (
+            expected_manifest_sha256 is not None
+            and payload_digests.get("manifest.json") != expected_manifest_sha256
+        ):
+            issue(
+                "manifest_snapshot_mismatch",
+                "manifest.json changed before validation",
+                "manifest.json",
+            )
         for name, payload in payloads.items():
             non_finite = _json_non_finite_paths(payload)
             if non_finite:

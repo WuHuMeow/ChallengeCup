@@ -123,17 +123,24 @@ class ResultListItemModel(BaseModel):
     run_id: str
     status: RunStatus
     reason: str
+    scene_id: str
     summary: dict[str, Any]
     algorithm: str = ""
 
     @classmethod
-    def from_domain(cls, result: RunResult) -> "ResultListItemModel":
+    def from_domain(
+        cls,
+        result: RunResult,
+        *,
+        scene_id: str,
+    ) -> "ResultListItemModel":
         if result.summary is None:
             raise ValueError("validated result requires a summary")
         return cls(
             run_id=result.run_id,
             status=result.status,
             reason=result.reason,
+            scene_id=scene_id,
             summary=result.summary,
             algorithm=result.algorithm,
         )

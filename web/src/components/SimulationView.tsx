@@ -10,11 +10,15 @@ interface SimulationViewProps {
   snapshot: RunStoreSnapshot;
   scenes: SceneManifest[];
   algorithms: AlgorithmSpec[];
+  startPending: boolean;
   onStart: () => void;
+  onSequence: () => void;
   onStop: () => void;
   onNativeGui: () => void;
   onSceneChange: (sceneId: string) => void;
   onAlgorithmChange: (algorithm: string) => void;
+  onSelectionChange: (selection: Partial<Pick<RunStoreSnapshot, "selectedLoad" | "selectedSeed" | "selectedDuration" | "selectedWarmup" | "selectedDisturbance">>) => void;
+  onReconnect: () => void;
   onDismissError: () => void;
 }
 
@@ -22,11 +26,15 @@ export function SimulationView({
   snapshot,
   scenes,
   algorithms,
+  startPending,
   onStart,
+  onSequence,
   onStop,
   onNativeGui,
   onSceneChange,
   onAlgorithmChange,
+  onSelectionChange,
+  onReconnect,
   onDismissError,
 }: SimulationViewProps) {
   const active = Boolean(snapshot.activeRun);
@@ -40,7 +48,7 @@ export function SimulationView({
         <span className="demo-badge">Quick demo output</span>
       </div>
       <p className="evidence-note">Formal evidence is shown only for sealed results from the evidence API.</p>
-      <ErrorBanner error={snapshot.error} onDismiss={onDismissError} />
+      <ErrorBanner error={snapshot.error} onDismiss={onDismissError} onReconnect={onReconnect} />
       <section className="control-panel" aria-label="Simulation controls">
         <label>
           Scene
@@ -58,9 +66,37 @@ export function SimulationView({
             ))}
           </select>
         </label>
+        <label>
+          Flow multiplier
+          <input type="number" min="0.5" max="2" step="0.25" value={snapshot.selectedLoad} onChange={(event) => onSelectionChange({ selectedLoad: Number(event.target.value) })} />
+        </label>
+        <label>
+          Seed
+          <input type="number" min="0" step="1" value={snapshot.selectedSeed} onChange={(event) => onSelectionChange({ selectedSeed: Number(event.target.value) })} />
+        </label>
+        <label>
+          Duration (s)
+          <input type="number" min="5" max="3600" step="5" value={snapshot.selectedDuration} onChange={(event) => onSelectionChange({ selectedDuration: Number(event.target.value) })} />
+        </label>
+        <label>
+          Warmup (s)
+          <input type="number" min="0" max={Math.max(0, snapshot.selectedDuration - 1)} step="5" value={snapshot.selectedWarmup} onChange={(event) => onSelectionChange({ selectedWarmup: Number(event.target.value) })} />
+        </label>
+        <label>
+          Disturbance
+          <select value={snapshot.selectedDisturbance} onChange={(event) => onSelectionChange({ selectedDisturbance: event.target.value as RunStoreSnapshot["selectedDisturbance"] })}>
+            <option value="none">None</option>
+            <option value="construction">Construction closure</option>
+            <option value="event_demand">Event demand</option>
+            <option value="vehicle_failure">Vehicle failure</option>
+          </select>
+        </label>
         <div className="button-row">
-          <button type="button" onClick={onStart} disabled={active && snapshot.connection !== "idle"}>
+          <button type="button" onClick={onStart} disabled={startPending || (active && snapshot.connection !== "idle")}>
             <Play size={16} aria-hidden="true" /> Start quick demo
+          </button>
+          <button type="button" onClick={onSequence} disabled={startPending || (active && snapshot.connection !== "idle")}>
+            <Play size={16} aria-hidden="true" /> Run judge sequence
           </button>
           <button type="button" onClick={onStop} disabled={!active}>
             <Square size={16} aria-hidden="true" /> Stop run
@@ -77,7 +113,25 @@ export function SimulationView({
       </div>
       <section className="simulation-grid">
         <SumoFrame src={snapshot.frameUrl} sequence={snapshot.frameSequence} simulationTime={snapshot.simulationTime} />
-        <MetricPanel metrics={snapshot.metrics} />
+        <div className="simulation-side-panel">
+          <MetricPanel metrics={snapshot.metrics} />
+          <section className="safety-panel" aria-label="Safety counters">
+            <h2>Safety counters</h2>
+            {snapshot.safety ? (
+              <dl>
+                <div><dt>Collision</dt><dd>{snapshot.safety.collision}</dd></div>
+                <div><dt>Red light</dt><dd>{snapshot.safety.red_light}</dd></div>
+                <div><dt>Illegal transition</dt><dd>{snapshot.safety.illegal_transition}</dd></div>
+                <div><dt>Harsh braking</dt><dd>{snapshot.safety.harsh_braking}</dd></div>
+                <div><dt>Teleport</dt><dd>{snapshot.safety.teleport}</dd></div>
+                <div><dt>Potential conflict</dt><dd>{snapshot.safety.potential_conflict}</dd></div>
+              </dl>
+            ) : <p>No safety observations received</p>}
+          </section>
+          {typeof snapshot.metrics.current_phase_name === "string" && (
+            <p className="phase-status">Phase: {snapshot.metrics.current_phase_name} · {typeof snapshot.metrics.elapsed_phase_time === "number" ? snapshot.metrics.elapsed_phase_time : 0} s</p>
+          )}
+        </div>
       </section>
     </main>
   );

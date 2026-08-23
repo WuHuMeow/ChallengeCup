@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -160,7 +161,8 @@ def service(tmp_path):
 
 @pytest.fixture
 def client(service):
-    return TestClient(create_app(service))
+    with TestClient(create_app(service)) as test_client:
+        yield test_client
 
 
 def test_results_endpoint_excludes_unsealed_and_unknown_runs(client, service):
@@ -181,7 +183,11 @@ def test_results_endpoint_excludes_unsealed_and_unknown_runs(client, service):
     payload = response.json()
     assert payload["count"] == 1
     assert [item["run_id"] for item in payload["items"]] == ["run-1"]
+    assert payload["items"][0]["scene_id"] == "1"
     assert "run_dir" not in payload["items"][0]
+    detail = client.get("/api/results/run-1").json()
+    assert detail["scene_id"] == "1"
+    assert "run_dir" not in detail
     assert client.get("/api/results/missing").status_code == 404
 
 
@@ -283,6 +289,17 @@ def test_static_serving_is_contained_and_lifespan_shuts_down_service(tmp_path):
         assert isolated_client.get("/../pyproject.toml").status_code != 200
 
     assert service.shutdown_calls == 1
+
+
+def test_default_static_root_serves_committed_judge_build(tmp_path):
+    service = FakeJudgeService(tmp_path / "runs")
+
+    with TestClient(create_app(service)) as isolated_client:
+        response = isolated_client.get("/")
+        assert response.status_code == 200
+        assert "Judge Simulation Console" in response.text
+        for asset_path in re.findall(r'(?:src|href)="(/assets/[^\"]+)"', response.text):
+            assert isolated_client.get(asset_path).status_code == 200
 
 
 def test_events_websocket_replays_latest_and_receives_live_message(client, service):

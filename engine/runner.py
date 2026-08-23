@@ -750,6 +750,9 @@ class SimulationRunner:
                     "max_queue_length": metrics.max_queue_length,
                     "avg_delay": metrics.avg_delay,
                     "total_throughput": metrics.total_throughput,
+                    "current_phase": raw_state.current_phase,
+                    "current_phase_name": raw_state.current_phase_name,
+                    "elapsed_phase_time": raw_state.elapsed_phase_time,
                 },
             })
             self.metrics_history.append(

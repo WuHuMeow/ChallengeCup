@@ -62,10 +62,14 @@ def _validated_evidence_result(service, result):
         return None
     if not relative.parts:
         return None
-    summary = EvidenceReader.load_summary(result.run_dir)
-    if summary is None:
+    evidence = EvidenceReader.load_result_evidence(result.run_dir)
+    if evidence is None:
         return None
-    return replace(result, summary=summary)
+    summary, manifest = evidence
+    scene_id = manifest.get("scene_id")
+    if not isinstance(scene_id, str) or not scene_id:
+        return None
+    return replace(result, summary=summary), scene_id
 
 
 def create_app(
@@ -212,7 +216,13 @@ def create_app(
         for result in service.list_results():
             validated = _validated_evidence_result(service, result)
             if validated is not None:
-                results.append(ResultListItemModel.from_domain(validated))
+                evidence_result, scene_id = validated
+                results.append(
+                    ResultListItemModel.from_domain(
+                        evidence_result,
+                        scene_id=scene_id,
+                    )
+                )
         return ResultListModel(items=results, count=len(results))
 
     @application.get(
@@ -227,7 +237,8 @@ def create_app(
         validated = _validated_evidence_result(application.state.run_service, result)
         if validated is None:
             raise HTTPException(status_code=404, detail="validated evidence unavailable")
-        return ResultDetailModel.from_domain(validated)
+        evidence_result, scene_id = validated
+        return ResultDetailModel.from_domain(evidence_result, scene_id=scene_id)
 
     @application.get(
         "/api/runs/{run_id}/safety",
@@ -240,9 +251,12 @@ def create_app(
         if result is None:
             raise HTTPException(status_code=404, detail="unknown run_id")
         validated = _validated_evidence_result(service, result)
-        if validated is None or validated.summary is None:
+        if validated is None:
             raise HTTPException(status_code=404, detail="validated safety unavailable")
-        metrics = validated.summary.get("metrics")
+        evidence_result, _scene_id = validated
+        if evidence_result.summary is None:
+            raise HTTPException(status_code=404, detail="validated safety unavailable")
+        metrics = evidence_result.summary.get("metrics")
         if not isinstance(metrics, dict):
             raise HTTPException(status_code=404, detail="validated safety unavailable")
         keys = (
@@ -358,7 +372,7 @@ def create_app(
 
     install_static_routes(
         application,
-        web_dist or Path(__file__).resolve().parents[1] / "web" / "dist",
+        web_dist or Path(__file__).resolve().parent / "static" / "dist",
     )
 
     return application

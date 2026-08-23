@@ -1244,3 +1244,20 @@ def test_terminal_event_uses_final_status_after_cleanup_failure():
     terminal = [event for event in events if event["type"] == "terminal"]
     assert terminal[-1]["status"] == "failed"
     assert terminal[-1]["reason"] == "terminal event log failed"
+
+
+def test_runtime_metrics_event_exposes_actual_signal_phase():
+    events = []
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        event_sink=events.append,
+    )
+
+    runner.run(1)
+
+    metrics = next(event for event in events if event["type"] == "metrics")
+    assert metrics["metrics"]["current_phase"] == 0
+    assert metrics["metrics"]["current_phase_name"] == "phase_0"
+    assert metrics["metrics"]["elapsed_phase_time"] == 0.0
