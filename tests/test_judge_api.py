@@ -11,7 +11,7 @@ from api.server import create_app
 from core.run_models import RunRequest, RunResult, RunStatus
 from scenes.registry import SceneRegistry
 from test_api import _strict_completed_result
-from visualization.frame_publisher import FramePublisher
+from visualization.frame_publisher import FramePublisher, FrameRecord
 
 
 class FakeJudgeService:
@@ -98,3 +98,47 @@ def test_result_endpoint_reads_summary_from_sealed_disk(client, service):
 
     assert response.status_code == 200
     assert response.json()["summary"]["metrics"]["throughput"] == 1
+
+
+def test_frame_endpoint_returns_latest_png_and_metadata(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.RUNNING, "", service.root / "run-1", algorithm="fixed_time"
+    )
+    service.frame_publisher.publish(
+        FrameRecord("run-1", 2, 12.5, b"png", 3.0)
+    )
+
+    response = client.get("/api/runs/run-1/frame")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["x-run-id"] == "run-1"
+    assert response.headers["x-frame-sequence"] == "2"
+    assert response.headers["x-simulation-time"] == "12.5"
+    assert response.content == b"png"
+
+
+def test_frame_endpoint_rejects_unknown_and_unavailable_sequence(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.RUNNING, "", service.root / "run-1", algorithm="fixed_time"
+    )
+    service.frame_publisher.publish(
+        FrameRecord("run-1", 2, 12.5, b"png", 3.0)
+    )
+
+    assert client.get("/api/runs/missing/frame").status_code == 404
+    assert client.get("/api/runs/run-1/frame?sequence=3").status_code == 404
+    assert client.get("/api/runs/run-1/frame?sequence=1").status_code == 200
+
+
+def test_static_serving_is_contained_and_lifespan_shuts_down_service(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("judge", encoding="utf-8")
+    service = FakeJudgeService(tmp_path / "runs")
+
+    with TestClient(create_app(service, web_dist=dist)) as isolated_client:
+        assert isolated_client.get("/").text == "judge"
+        assert isolated_client.get("/../pyproject.toml").status_code != 200
+
+    assert service.shutdown_calls == 1

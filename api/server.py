@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
 
 from algorithms.registry import get_algorithm_registry
 from api.models import (
@@ -20,6 +23,7 @@ from api.models import (
     RunResultModel,
     StateRequestModel,
 )
+from api.static import install_static_routes
 from cloud.cloud_policy import CloudPolicy
 from engine.run_service import RunService
 from engine.run_state import TERMINAL_STATUSES
@@ -52,13 +56,29 @@ def _validated_evidence_result(result):
     return replace(result, summary=summary)
 
 
-def create_app(run_service: RunService | None = None) -> FastAPI:
+def create_app(
+    run_service: RunService | None = None,
+    *,
+    web_dist: Path | None = None,
+) -> FastAPI:
     """Create an application whose run lifecycle is backed by RunService."""
+    service = run_service or RunService()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        try:
+            yield
+        finally:
+            shutdown = getattr(application.state.run_service, "shutdown", None)
+            if callable(shutdown):
+                shutdown(wait=True)
+
     application = FastAPI(
         title="雄安车路云协同管控平台",
         version="1.0.0",
+        lifespan=lifespan,
     )
-    application.state.run_service = run_service or RunService()
+    application.state.run_service = service
 
     @application.get("/api/health")
     def health() -> dict[str, Any]:
@@ -123,6 +143,27 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
         if not isinstance(metrics, dict):
             raise HTTPException(status_code=500, detail="invalid metrics summary")
         return metrics
+
+    @application.get("/api/runs/{run_id}/frame")
+    def get_frame(
+        run_id: str,
+        sequence: int | None = Query(default=None, ge=0),
+    ) -> Response:
+        service = application.state.run_service
+        if service.get(run_id) is None:
+            raise HTTPException(status_code=404, detail="unknown run_id")
+        frame = service.frame_publisher.latest(run_id)
+        if frame is None or (sequence is not None and frame.sequence < sequence):
+            raise HTTPException(status_code=404, detail="frame unavailable")
+        return Response(
+            content=frame.png,
+            media_type="image/png",
+            headers={
+                "X-Run-Id": frame.run_id,
+                "X-Frame-Sequence": str(frame.sequence),
+                "X-Simulation-Time": str(frame.simulation_time),
+            },
+        )
 
     @application.get("/api/results", response_model=ResultListModel)
     def list_results() -> ResultListModel:
@@ -196,6 +237,11 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
     @application.post("/api/simulation/stop", deprecated=True)
     def legacy_simulation_stop(run_id: str) -> RunResultModel:
         return stop_run(run_id)
+
+    install_static_routes(
+        application,
+        web_dist or Path(__file__).resolve().parents[1] / "web" / "dist",
+    )
 
     return application
 
