@@ -24,6 +24,23 @@ def test_openapi_contains_canonical_pdf_endpoints():
         assert path in paths
 
 
+def test_openapi_contains_judge_workflow_routes_and_responses():
+    paths = create_app().openapi()["paths"]
+
+    assert "/api/results" in paths
+    assert "/api/results/{run_id}" in paths
+    assert "/api/runs/{run_id}/frame" in paths
+    assert "/api/runs/{run_id}/native-gui" in paths
+    assert "ResultListModel" in create_app().openapi()["components"]["schemas"]
+
+    frame = paths["/api/runs/{run_id}/frame"]["get"]["responses"]["200"]
+    assert "image/png" in frame["content"]
+    assert {"X-Run-Id", "X-Frame-Sequence", "X-Simulation-Time"} <= set(
+        frame["headers"]
+    )
+    assert "409" in paths["/api/runs/{run_id}/native-gui"]["post"]["responses"]
+
+
 def test_runtime_run_status_matches_checked_in_openapi_contract():
     runtime = create_app().openapi()["components"]["schemas"]["RunStatus"]["enum"]
     checked_in = json.loads(
@@ -36,6 +53,22 @@ def test_runtime_run_status_matches_checked_in_openapi_contract():
     assert runtime == [item.value for item in RunStatus]
     assert "interrupted" in runtime
     assert "stopped" in runtime
+
+
+def test_checked_in_contract_documents_judge_websocket():
+    checked_in = json.loads(
+        (Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert checked_in["x-websocket-paths"]["/api/runs/{run_id}/events"]["messages"] == [
+        "status",
+        "metrics",
+        "action",
+        "safety",
+        "frame",
+        "terminal",
+    ]
 
 
 def test_exported_openapi_and_postman_are_parseable(tmp_path):

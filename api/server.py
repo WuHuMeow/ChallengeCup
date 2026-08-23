@@ -146,7 +146,26 @@ def create_app(
             raise HTTPException(status_code=500, detail="invalid metrics summary")
         return metrics
 
-    @application.get("/api/runs/{run_id}/frame")
+    @application.get(
+        "/api/runs/{run_id}/frame",
+        response_class=Response,
+        response_model=None,
+        responses={
+            200: {
+                "content": {
+                    "image/png": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                },
+                "headers": {
+                    "X-Run-Id": {"schema": {"type": "string"}},
+                    "X-Frame-Sequence": {"schema": {"type": "integer"}},
+                    "X-Simulation-Time": {"schema": {"type": "number"}},
+                },
+            },
+            404: {"description": "run or frame unavailable"},
+        },
+    )
     def get_frame(
         run_id: str,
         sequence: int | None = Query(default=None, ge=0),
@@ -198,6 +217,7 @@ def create_app(
     @application.post(
         "/api/runs/{run_id}/native-gui",
         response_model=NativeGuiResponseModel,
+        responses={409: {"description": "native SUMO-GUI unavailable"}},
     )
     def show_native_gui(run_id: str) -> NativeGuiResponseModel:
         service = application.state.run_service

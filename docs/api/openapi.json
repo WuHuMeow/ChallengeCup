@@ -44,6 +44,48 @@
         "title": "ControlActionsModel",
         "type": "object"
       },
+      "DisturbanceSpecModel": {
+        "properties": {
+          "begin_seconds": {
+            "minimum": 0.0,
+            "title": "Begin Seconds",
+            "type": "number"
+          },
+          "end_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "End Seconds",
+            "type": "number"
+          },
+          "intensity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Intensity",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "construction",
+              "event_demand",
+              "vehicle_failure"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "target": {
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "begin_seconds",
+          "end_seconds",
+          "target",
+          "intensity"
+        ],
+        "title": "DisturbanceSpecModel",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -93,6 +135,13 @@
             },
             "title": "Flows",
             "type": "object"
+          },
+          "phase_movements": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseMovementStateModel"
+            },
+            "title": "Phase Movements",
+            "type": "array"
           },
           "phase_states": {
             "items": {
@@ -154,6 +203,22 @@
             "title": "Algorithm Params",
             "type": "object"
           },
+          "disturbance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisturbanceSpecModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_seconds": {
+            "default": 3600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
           "edge_delay_steps": {
             "default": 0,
             "minimum": 0.0,
@@ -184,14 +249,38 @@
             "title": "Seed",
             "type": "integer"
           },
+          "step_length_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Length Override"
+          },
           "steps": {
-            "default": 36000,
-            "exclusiveMinimum": 0.0,
-            "title": "Steps",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           },
           "variant": {
             "$ref": "#/components/schemas/VariantSpecModel"
+          },
+          "warmup_seconds": {
+            "default": 600.0,
+            "minimum": 0.0,
+            "title": "Warmup Seconds",
+            "type": "number"
           }
         },
         "required": [
@@ -199,6 +288,117 @@
           "algorithm"
         ],
         "title": "LegacyRunRequestModel",
+        "type": "object"
+      },
+      "MovementStateModel": {
+        "properties": {
+          "downstream_capacity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Downstream Capacity",
+            "type": "number"
+          },
+          "downstream_occupancy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Downstream Occupancy",
+            "type": "number"
+          },
+          "downstream_queue_vehicles": {
+            "minimum": 0.0,
+            "title": "Downstream Queue Vehicles",
+            "type": "number"
+          },
+          "incoming_capacity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Incoming Capacity",
+            "type": "number"
+          },
+          "incoming_lane": {
+            "title": "Incoming Lane",
+            "type": "string"
+          },
+          "outgoing_lane": {
+            "title": "Outgoing Lane",
+            "type": "string"
+          },
+          "queue_vehicles": {
+            "minimum": 0.0,
+            "title": "Queue Vehicles",
+            "type": "number"
+          },
+          "saturation_rate": {
+            "minimum": 0.0,
+            "title": "Saturation Rate",
+            "type": "number"
+          },
+          "turn_ratio": {
+            "minimum": 0.0,
+            "title": "Turn Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "incoming_lane",
+          "outgoing_lane",
+          "queue_vehicles",
+          "downstream_queue_vehicles",
+          "incoming_capacity",
+          "downstream_capacity",
+          "downstream_occupancy",
+          "saturation_rate",
+          "turn_ratio"
+        ],
+        "title": "MovementStateModel",
+        "type": "object"
+      },
+      "NativeGuiResponseModel": {
+        "properties": {
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "NativeGuiResponseModel",
+        "type": "object"
+      },
+      "PhaseMovementStateModel": {
+        "properties": {
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/MovementStateModel"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "nominal_duration": {
+            "exclusiveMinimum": 0.0,
+            "title": "Nominal Duration",
+            "type": "number"
+          },
+          "phase_index": {
+            "minimum": 0.0,
+            "title": "Phase Index",
+            "type": "integer"
+          },
+          "signal_state": {
+            "title": "Signal State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase_index",
+          "signal_state",
+          "nominal_duration"
+        ],
+        "title": "PhaseMovementStateModel",
         "type": "object"
       },
       "PhaseTrafficStateModel": {
@@ -334,6 +534,94 @@
         "title": "QueueStateModel",
         "type": "object"
       },
+      "ResultDetailModel": {
+        "description": "Validated result payload that never exposes a filesystem path.",
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason",
+          "summary"
+        ],
+        "title": "ResultDetailModel",
+        "type": "object"
+      },
+      "ResultListItemModel": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason",
+          "summary"
+        ],
+        "title": "ResultListItemModel",
+        "type": "object"
+      },
+      "ResultListModel": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResultListItemModel"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "ResultListModel",
+        "type": "object"
+      },
       "RunRequestModel": {
         "properties": {
           "algorithm": {
@@ -352,6 +640,22 @@
             },
             "title": "Algorithm Params",
             "type": "object"
+          },
+          "disturbance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisturbanceSpecModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_seconds": {
+            "default": 3600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
           },
           "edge_delay_steps": {
             "default": 0,
@@ -383,14 +687,38 @@
             "title": "Seed",
             "type": "integer"
           },
+          "step_length_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Length Override"
+          },
           "steps": {
-            "default": 36000,
-            "exclusiveMinimum": 0.0,
-            "title": "Steps",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           },
           "variant": {
             "$ref": "#/components/schemas/VariantSpecModel"
+          },
+          "warmup_seconds": {
+            "default": 600.0,
+            "minimum": 0.0,
+            "title": "Warmup Seconds",
+            "type": "number"
           }
         },
         "required": [
@@ -707,6 +1035,63 @@
         "summary": "Health"
       }
     },
+    "/api/results": {
+      "get": {
+        "operationId": "list_results_api_results_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultListModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Results"
+      }
+    },
+    "/api/results/{run_id}": {
+      "get": {
+        "operationId": "get_result_api_results__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultDetailModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result"
+      }
+    },
     "/api/runs": {
       "post": {
         "operationId": "submit_run_api_runs_post",
@@ -784,6 +1169,83 @@
         "summary": "Get Run"
       }
     },
+    "/api/runs/{run_id}/frame": {
+      "get": {
+        "operationId": "get_frame_api_runs__run_id__frame_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sequence"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-Frame-Sequence": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Run-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Simulation-Time": {
+                "schema": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "run or frame unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Frame"
+      }
+    },
     "/api/runs/{run_id}/metrics": {
       "get": {
         "operationId": "get_run_metrics_api_runs__run_id__metrics_get",
@@ -823,6 +1285,48 @@
           }
         },
         "summary": "Get Run Metrics"
+      }
+    },
+    "/api/runs/{run_id}/native-gui": {
+      "post": {
+        "operationId": "show_native_gui_api_runs__run_id__native_gui_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeGuiResponseModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "native SUMO-GUI unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Show Native Gui"
       }
     },
     "/api/runs/{run_id}/stop": {
@@ -1093,6 +1597,19 @@
         },
         "summary": "Legacy Status"
       }
+    }
+  },
+  "x-websocket-paths": {
+    "/api/runs/{run_id}/events": {
+      "description": "Run-scoped bounded realtime event stream",
+      "messages": [
+        "status",
+        "metrics",
+        "action",
+        "safety",
+        "frame",
+        "terminal"
+      ]
     }
   }
 }
