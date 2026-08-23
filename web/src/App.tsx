@@ -70,7 +70,7 @@ export default function App() {
       setResultsError(null);
     } catch (error: unknown) {
       if (!mounted.current || requestId !== resultsRequest.current) return;
-      setResultsError(error instanceof Error ? error.message : "Unable to load formal results");
+      setResultsError(error instanceof Error ? error.message : "Unable to load sealed run results");
     } finally {
       if (mounted.current && requestId === resultsRequest.current) setResultsLoading(false);
     }

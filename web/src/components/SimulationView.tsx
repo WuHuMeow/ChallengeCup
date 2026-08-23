@@ -47,7 +47,7 @@ export function SimulationView({
         </div>
         <span className="demo-badge">Quick demo output</span>
       </div>
-      <p className="evidence-note">Formal evidence is shown only for sealed results from the evidence API.</p>
+      <p className="evidence-note">Sealed individual-run evidence is shown only for verified results from the evidence API; formal matrix conclusions await Task 22.</p>
       <ErrorBanner error={snapshot.error} onDismiss={onDismissError} onReconnect={onReconnect} />
       <section className="control-panel" aria-label="Simulation controls">
         <label>

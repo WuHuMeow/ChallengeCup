@@ -144,7 +144,7 @@ test("judge can navigate the demo and see a real frame placeholder", async ({ pa
   );
   await expect.poll(() => page.getByRole("img", { name: "SUMO simulation frame" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByText("Quick demo output")).toBeVisible();
-  await expect(page.getByText("Formal evidence")).toBeVisible();
+  await expect(page.getByText("Sealed individual-run evidence is shown only for verified results from the evidence API; formal matrix conclusions await Task 22.")).toBeVisible();
   await expect(page.getByRole("region", { name: "Safety counters" })).toContainText(/Collision\s*0/);
   expect(startPayloads[0]).toMatchObject({
     intersection_id: "1",
@@ -511,13 +511,14 @@ test("simulation exposes stop, frame metadata, and native GUI errors", async ({ 
   await expect(page.getByText("interrupted")).toBeVisible();
 });
 
-test("judge can inspect formal comparison, history, and scene provenance", async ({ page }) => {
+test("judge can inspect sealed run comparison, history, and scene provenance", async ({ page }) => {
   await mockJudgeApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Comparison" }).click();
   await expect(page.getByRole("heading", { name: "Comparison" })).toBeVisible();
   await expect(page.getByLabel("Comparison scene")).toHaveValue("1");
   await expect(page.getByTestId("comparison-chart")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sealed run result comparison" })).toBeVisible();
   await expect(page.locator(".recharts-wrapper").first()).toBeVisible();
   await expect(page.getByText("Unavailable")).toBeVisible();
   await expect(page.getByText("formal-1")).toBeVisible();

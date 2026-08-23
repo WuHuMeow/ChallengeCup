@@ -80,7 +80,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
           {sceneIds.map((sceneId) => <option key={sceneId} value={sceneId}>{sceneId}</option>)}
         </select>
       </label>}
-      {loading && <p role="status">Loading formal results...</p>}
+      {loading && <p role="status">Loading sealed run results...</p>}
       {error && <p className="inline-error" role="alert">{error}</p>}
       {!loading && !error && results.length === 0 && <p className="empty-state">No validated results available.</p>}
       {!loading && !error && visibleResults.length > 0 && (
@@ -91,7 +91,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
           </div>
           <p>Hard safety gates: collisions, red-light violations, and illegal transitions.</p>
           <p>Observational safety: harsh braking, teleports, and potential conflicts.</p>
-          <div className="comparison-chart" data-testid="comparison-chart" role="region" aria-label="Formal result comparison">
+          <div className="comparison-chart" data-testid="comparison-chart" role="region" aria-label="Sealed run result comparison">
             <div className="chart-grid">
               {series.map((metric) => (
                 <section className="metric-chart" key={metric.key} aria-label={`${metric.label} chart`}>
