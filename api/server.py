@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket
 from fastapi.responses import Response
 
 from algorithms.registry import get_algorithm_registry
@@ -15,6 +15,7 @@ from api.models import (
     ControlActionModel,
     ControlActionsModel,
     LegacyRunRequestModel,
+    NativeGuiResponseModel,
     PredictionResultModel,
     ResultDetailModel,
     ResultListItemModel,
@@ -24,6 +25,7 @@ from api.models import (
     StateRequestModel,
 )
 from api.static import install_static_routes
+from api.websocket import stream_run_events
 from cloud.cloud_policy import CloudPolicy
 from engine.run_service import RunService
 from engine.run_state import TERMINAL_STATUSES
@@ -192,6 +194,42 @@ def create_app(
         if not service.stop(run_id):
             raise HTTPException(status_code=409, detail="run cannot be stopped")
         return RunResultModel.from_domain(_result_or_404(service, run_id))
+
+    @application.post(
+        "/api/runs/{run_id}/native-gui",
+        response_model=NativeGuiResponseModel,
+    )
+    def show_native_gui(run_id: str) -> NativeGuiResponseModel:
+        service = application.state.run_service
+        if service.get(run_id) is None:
+            raise HTTPException(status_code=404, detail="unknown run_id")
+        launcher = getattr(service, "native_gui", None)
+        if not callable(launcher):
+            raise HTTPException(
+                status_code=409,
+                detail="native SUMO-GUI is unavailable: native launcher unavailable",
+            )
+        try:
+            outcome = launcher(run_id)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=f"native SUMO-GUI is unavailable: {exc}",
+            ) from exc
+        if isinstance(outcome, tuple):
+            shown, reason = outcome
+        else:
+            shown, reason = bool(outcome), "native launcher unavailable"
+        if not shown:
+            raise HTTPException(
+                status_code=409,
+                detail=f"native SUMO-GUI is unavailable: {reason}",
+            )
+        return NativeGuiResponseModel(status="shown")
+
+    @application.websocket("/api/runs/{run_id}/events")
+    async def run_events(websocket: WebSocket, run_id: str) -> None:
+        await stream_run_events(websocket, application.state.run_service, run_id)
 
     @application.post(
         "/api/cloud/predict",

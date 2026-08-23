@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from api.realtime import RealtimeHub
 from api.server import create_app
@@ -142,3 +143,38 @@ def test_static_serving_is_contained_and_lifespan_shuts_down_service(tmp_path):
         assert isolated_client.get("/../pyproject.toml").status_code != 200
 
     assert service.shutdown_calls == 1
+
+
+def test_events_websocket_replays_latest_and_receives_live_message(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.RUNNING, "", service.root / "run-1", algorithm="fixed_time"
+    )
+    service.realtime_hub.publish(
+        "run-1", {"type": "status", "status": "queued"}
+    )
+
+    with client.websocket_connect("/api/runs/run-1/events") as socket:
+        assert socket.receive_json()["status"] == "queued"
+        service.realtime_hub.publish(
+            "run-1", {"type": "metrics", "simulation_time": 1.0}
+        )
+        assert socket.receive_json()["type"] == "metrics"
+
+
+def test_events_websocket_rejects_unknown_run(client):
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/api/runs/missing/events"):
+            pass
+    assert caught.value.code == 4404
+
+
+def test_native_gui_returns_409_when_launcher_unavailable(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.RUNNING, "", service.root / "run-1", algorithm="fixed_time"
+    )
+    service.native_gui = lambda _run_id: (False, "display unavailable")
+
+    response = client.post("/api/runs/run-1/native-gui")
+
+    assert response.status_code == 409
+    assert "display unavailable" in response.json()["detail"]

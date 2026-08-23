@@ -148,6 +148,11 @@ class ResultDetailModel(ResultListItemModel):
     """Validated result payload that never exposes a filesystem path."""
 
 
+class NativeGuiResponseModel(BaseModel):
+    status: str
+    reason: str = ""
+
+
 class QueueStateModel(BaseModel):
     direction: str
     queue_length: float = Field(ge=0)
