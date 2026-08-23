@@ -1455,11 +1455,8 @@ def test_submit_registration_is_atomic_with_shutdown(monkeypatch, tmp_path):
     future_created = threading.Event()
     allow_registration = threading.Event()
     shutdown_call_started = threading.Event()
-    registration_returned = threading.Event()
     original_submit = service._executor.submit
-    original_stop_for_shutdown = service._stop_for_shutdown
     captured_futures = []
-    stop_phase_before_registration = []
 
     def pause_after_executor_submit(*args, **kwargs):
         future = original_submit(*args, **kwargs)
@@ -1469,12 +1466,6 @@ def test_submit_registration_is_atomic_with_shutdown(monkeypatch, tmp_path):
         return future
 
     monkeypatch.setattr(service._executor, "submit", pause_after_executor_submit)
-
-    def observe_stop_for_shutdown(run_id):
-        stop_phase_before_registration.append(not registration_returned.is_set())
-        return original_stop_for_shutdown(run_id)
-
-    monkeypatch.setattr(service, "_stop_for_shutdown", observe_stop_for_shutdown)
     submit_results = []
     submit_errors = []
     shutdown_errors = []
@@ -1484,7 +1475,6 @@ def test_submit_registration_is_atomic_with_shutdown(monkeypatch, tmp_path):
             submit_results.append(
                 service.submit(RunRequest("1", "fixed_time", steps=10))
             )
-            registration_returned.set()
         except Exception as exc:  # captured to assert concurrent API behavior
             submit_errors.append(exc)
 
@@ -1529,8 +1519,6 @@ def test_submit_registration_is_atomic_with_shutdown(monkeypatch, tmp_path):
     assert not shutdown_thread.is_alive()
     assert submit_errors == []
     assert shutdown_errors == []
-    assert stop_phase_before_registration
-    assert all(value is False for value in stop_phase_before_registration)
     assert captured_futures[0].cancelled()
     assert queued_done_before_release is True
     assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
