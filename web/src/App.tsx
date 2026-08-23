@@ -1,14 +1,21 @@
-import { useEffect, useState } from "react";
-import { createApiClient, type AlgorithmSpec, type SceneManifest } from "./api/client";
+import { useEffect, useRef, useState } from "react";
+import { createApiClient, type AlgorithmSpec, type RunEvent, type RunStatus, type SafetyCounters, type SceneManifest } from "./api/client";
+import { SimulationView } from "./components/SimulationView";
 import { runStore, type RunStoreSnapshot } from "./state/runStore";
 
 const api = createApiClient();
-const EMPTY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mNk+M/wHwAF/gL+e7QeVQAAAABJRU5ErkJggg==";
 
 function useRunSnapshot(): RunStoreSnapshot {
   const [snapshot, setSnapshot] = useState(runStore.getSnapshot());
-  useEffect(() => runStore.subscribe(() => setSnapshot(runStore.getSnapshot())), []);
+  useEffect(() => {
+    const unsubscribe = runStore.subscribe(() => setSnapshot(runStore.getSnapshot()));
+    return () => unsubscribe();
+  }, []);
   return snapshot;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export default function App() {
@@ -16,7 +23,7 @@ export default function App() {
   const [view, setView] = useState("simulation");
   const [scenes, setScenes] = useState<SceneManifest[]>([]);
   const [algorithms, setAlgorithms] = useState<AlgorithmSpec[]>([]);
-  const [pollToken, setPollToken] = useState(0);
+  const unsubscribeEvents = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     void Promise.all([api.listScenes(), api.listAlgorithms()])
@@ -27,18 +34,18 @@ export default function App() {
       .catch((error: unknown) => runStore.setError({ kind: "network", message: error instanceof Error ? error.message : "Unable to load judge metadata" }));
   }, []);
 
+  useEffect(() => () => unsubscribeEvents.current?.(), []);
+
   useEffect(() => {
     const runId = snapshot.activeRun?.run_id;
-    if (!runId) return;
+    if (!runId || snapshot.connection === "idle") return;
     let cancelled = false;
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled || runStore.getSnapshot().connection === "idle") return;
       try {
         const frame = await api.getFrame(runId, runStore.getSnapshot().frameSequence);
         runStore.acceptFrame(frame);
-        if (!cancelled && runStore.getSnapshot().frameSequence !== null) {
-          window.setTimeout(poll, 80);
-        }
+        if (!cancelled && runStore.getSnapshot().connection !== "idle") window.setTimeout(poll, 80);
       } catch (error: unknown) {
         if (!cancelled && (error as { status?: number }).status !== 404) {
           runStore.setError({ kind: "frame", message: error instanceof Error ? error.message : "Frame unavailable" });
@@ -49,9 +56,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [snapshot.activeRun?.run_id, pollToken]);
+  }, [snapshot.activeRun?.run_id, snapshot.connection]);
+
+  const onEvent = (event: RunEvent) => {
+    runStore.addEvent(event);
+    if (event.type === "metrics" && isRecord(event.metrics)) runStore.setMetrics(event.metrics);
+    if (event.type === "safety" && isRecord(event.safety)) runStore.setSafety(event.safety as unknown as SafetyCounters);
+    if (event.type === "status" && typeof event.status === "string") runStore.setRunStatus(event.status as RunStatus);
+  };
 
   const startQuickDemo = async () => {
+    unsubscribeEvents.current?.();
     runStore.resetRun();
     const selection = runStore.getSnapshot();
     try {
@@ -64,16 +79,43 @@ export default function App() {
         warmup_seconds: 0,
       });
       runStore.setActiveRun(run);
-      setPollToken((token) => token + 1);
+      unsubscribeEvents.current = api.subscribeEvents(run.run_id, onEvent, () => runStore.setConnection("disconnected"));
     } catch (error: unknown) {
       runStore.setError({ kind: "network", message: error instanceof Error ? error.message : "Unable to start demo" });
     }
   };
 
+  const stopRun = async () => {
+    const runId = runStore.getSnapshot().activeRun?.run_id;
+    if (!runId) return;
+    try {
+      const result = await api.stopRun(runId);
+      unsubscribeEvents.current?.();
+      runStore.setActiveRun(result);
+      runStore.setConnection("idle");
+    } catch (error: unknown) {
+      runStore.setError({ kind: "http", message: error instanceof Error ? error.message : "Unable to stop run" });
+    }
+  };
+
+  const showNativeGui = async () => {
+    const runId = runStore.getSnapshot().activeRun?.run_id;
+    if (!runId) return;
+    try {
+      await api.openNativeGui(runId);
+    } catch (error: unknown) {
+      const typed = error as { message?: string; status?: number };
+      runStore.setError({ kind: "http", message: typed.message ?? "Native SUMO GUI unavailable", status: typed.status });
+    }
+  };
+
   return (
-    <div>
-      <header>
-        <h1>Judge Simulation Console</h1>
+    <div className="app-shell">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">XH-202613 · Judge release</p>
+          <h1>Judge Simulation Console</h1>
+        </div>
         <nav aria-label="Primary">
           {["simulation", "comparison", "history", "scene"].map((key) => (
             <button key={key} type="button" onClick={() => setView(key)} aria-current={view === key ? "page" : undefined}>
@@ -83,30 +125,19 @@ export default function App() {
         </nav>
       </header>
       {view === "simulation" ? (
-        <main>
-          <p>Quick demo output</p>
-          <p>Formal evidence: sealed results only</p>
-          <label>
-            Scene
-            <select aria-label="Scene" value={snapshot.selectedScene} onChange={(event) => runStore.setSelection({ selectedScene: event.target.value })}>
-              {(scenes.length ? scenes : [{ scene_id: "1", intersection_id: "1", name: "Intersection 1" } as SceneManifest]).map((scene) => <option key={scene.scene_id} value={scene.intersection_id}>{scene.name}</option>)}
-            </select>
-          </label>
-          <label>
-            Algorithm
-            <select aria-label="Algorithm" value={snapshot.selectedAlgorithm} onChange={(event) => runStore.setSelection({ selectedAlgorithm: event.target.value as typeof snapshot.selectedAlgorithm })}>
-              {(algorithms.length ? algorithms : [{ key: "fixed_time", display_name: "Fixed Time" } as AlgorithmSpec]).map((algorithm) => <option key={algorithm.key} value={algorithm.key}>{algorithm.display_name}</option>)}
-            </select>
-          </label>
-          <button type="button" onClick={() => void startQuickDemo()}>Start quick demo</button>
-          <div aria-live="polite">{snapshot.error?.message}</div>
-          <div>
-            <img src={snapshot.frameUrl ?? EMPTY_PNG} alt="SUMO simulation frame" data-testid="sumo-frame" />
-            <span data-testid="frame-sequence">{snapshot.frameSequence ?? "-"}</span>
-            <span data-testid="simulation-time">{snapshot.simulationTime ?? "-"}</span>
-          </div>
-        </main>
-      ) : <main><h2>{view[0].toUpperCase() + view.slice(1)}</h2></main>}
+        <SimulationView
+          api={api}
+          snapshot={snapshot}
+          scenes={scenes}
+          algorithms={algorithms}
+          onStart={() => void startQuickDemo()}
+          onStop={() => void stopRun()}
+          onNativeGui={() => void showNativeGui()}
+          onSceneChange={(selectedScene) => runStore.setSelection({ selectedScene })}
+          onAlgorithmChange={(selectedAlgorithm) => runStore.setSelection({ selectedAlgorithm: selectedAlgorithm as RunStoreSnapshot["selectedAlgorithm"] })}
+          onDismissError={() => runStore.setError(null)}
+        />
+      ) : <main className="placeholder-view"><h2>{view[0].toUpperCase() + view.slice(1)}</h2></main>}
     </div>
   );
 }

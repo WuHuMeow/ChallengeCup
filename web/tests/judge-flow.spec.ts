@@ -101,6 +101,38 @@ test("stale frame responses never replace the accepted sequence", async ({ page 
   await mockJudgeApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByTestId("frame-sequence")).toHaveText("2");
-  await expect(page.getByTestId("frame-sequence")).not.toHaveText("1");
+  await expect(page.getByTestId("frame-sequence")).toContainText("2");
+  await expect(page.getByTestId("frame-sequence")).not.toContainText("1");
+});
+
+test("simulation exposes stop, frame metadata, and native GUI errors", async ({ page }) => {
+  await mockJudgeApi(page);
+  let stopCalled = false;
+  await page.route("**/api/runs/run-quick/stop", async (route) => {
+    stopCalled = true;
+    await route.fulfill({
+      status: 200,
+      json: {
+        run_id: "run-quick",
+        status: "interrupted",
+        reason: "judge requested stop",
+        run_dir: "hidden",
+        summary: null,
+        algorithm: "fixed_time",
+      },
+    });
+  });
+  await page.route("**/api/runs/run-quick/native-gui", (route) =>
+    route.fulfill({ status: 409, json: { detail: "display unavailable" } }),
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Start quick demo" }).click();
+  await expect(page.getByTestId("frame-sequence")).toContainText("Sequence 2");
+  await expect(page.getByTestId("simulation-time")).toContainText("Simulation time 2 s");
+  await page.getByRole("button", { name: "Show native SUMO GUI" }).click();
+  await expect(page.getByRole("alert")).toContainText("display unavailable");
+  await page.getByRole("button", { name: "Stop run" }).click();
+  await expect.poll(() => stopCalled).toBe(true);
+  await expect(page.getByText("interrupted")).toBeVisible();
 });

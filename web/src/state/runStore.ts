@@ -4,6 +4,7 @@ import type {
   ResultListItem,
   RunEvent,
   RunResult,
+  RunStatus,
   SafetyCounters,
 } from "../api/client";
 
@@ -35,6 +36,7 @@ export interface RunStore {
   subscribe(listener: () => void): () => void;
   setSelection(selection: Partial<Pick<RunStoreSnapshot, "selectedScene" | "selectedAlgorithm" | "selectedLoad" | "selectedDisturbance">>): void;
   setActiveRun(run: RunResult): void;
+  setRunStatus(status: RunStatus): void;
   setMetrics(metrics: Record<string, unknown>): void;
   setSafety(safety: SafetyCounters): void;
   addEvent(event: RunEvent): void;
@@ -84,7 +86,14 @@ export function createRunStore(): RunStore {
       return () => listeners.delete(listener);
     },
     setSelection: (selection) => update(selection),
-    setActiveRun: (activeRun) => update({ activeRun, error: null, connection: "connecting" }),
+    setActiveRun: (activeRun) => update({
+      activeRun,
+      error: null,
+      connection: ["completed", "stopped", "ended_early", "disconnected", "interrupted", "failed"].includes(activeRun.status) ? "idle" : "connecting",
+    }),
+    setRunStatus: (status) => {
+      if (snapshot.activeRun) update({ activeRun: { ...snapshot.activeRun, status } });
+    },
     setMetrics: (metrics) => update({ metrics }),
     setSafety: (safety) => update({ safety }),
     addEvent: (event) => update({ events: [...snapshot.events.slice(-99), event] }),
