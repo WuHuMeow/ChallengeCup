@@ -32,7 +32,11 @@ def test_openapi_contains_judge_workflow_routes_and_responses():
     assert "/api/runs/{run_id}/frame" in paths
     assert "/api/runs/{run_id}/safety" in paths
     assert "/api/runs/{run_id}/native-gui" in paths
-    assert "ResultListModel" in create_app().openapi()["components"]["schemas"]
+    schemas = create_app().openapi()["components"]["schemas"]
+    assert "ResultListModel" in schemas
+    assert schemas["NativeGuiResponseModel"]["properties"]["status"][
+        "const"
+    ] == "shown"
 
     frame = paths["/api/runs/{run_id}/frame"]["get"]["responses"]["200"]
     assert "image/png" in frame["content"]
@@ -88,7 +92,14 @@ def test_exported_openapi_and_postman_are_parseable(tmp_path):
         "collection.json"
     )
     names = {item["name"] for item in postman["item"]}
-    assert {"Health", "Scenes", "Submit Run", "Run Status", "Run Metrics"} <= names
+    assert {
+        "Health",
+        "Scenes",
+        "Submit Run",
+        "Run Status",
+        "Run Metrics",
+        "Run Safety",
+    } <= names
 
 
 def test_checked_in_contracts_match_fresh_export(tmp_path):

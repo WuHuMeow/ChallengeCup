@@ -1429,6 +1429,111 @@ class BlockingRunner(RecordingRunner):
         return super().run(window, stop_event=stop_event)
 
 
+class ShutdownRaceRunner(RecordingRunner):
+    release = threading.Event()
+    started = threading.Event()
+    stop_observed = threading.Event()
+
+    def run(self, window, stop_event=None, frame_sink=None):
+        type(self).started.set()
+        assert stop_event is not None
+        assert stop_event.wait(timeout=5)
+        type(self).stop_observed.set()
+        assert type(self).release.wait(timeout=5)
+        return super().run(window, stop_event=stop_event)
+
+
+def test_submit_registration_is_atomic_with_shutdown(monkeypatch, tmp_path):
+    ShutdownRaceRunner.release.clear()
+    ShutdownRaceRunner.started.clear()
+    ShutdownRaceRunner.stop_observed.clear()
+    ShutdownRaceRunner.calls = []
+    service = RunService(output_root=tmp_path, runner_factory=ShutdownRaceRunner)
+    service.submit(RunRequest("1", "fixed_time", steps=10))
+    assert ShutdownRaceRunner.started.wait(timeout=2)
+
+    future_created = threading.Event()
+    allow_registration = threading.Event()
+    shutdown_call_started = threading.Event()
+    original_submit = service._executor.submit
+    captured_futures = []
+
+    def pause_after_executor_submit(*args, **kwargs):
+        future = original_submit(*args, **kwargs)
+        captured_futures.append(future)
+        future_created.set()
+        assert allow_registration.wait(timeout=5)
+        return future
+
+    monkeypatch.setattr(service._executor, "submit", pause_after_executor_submit)
+    submit_results = []
+    submit_errors = []
+    shutdown_errors = []
+
+    def submit_request():
+        try:
+            submit_results.append(
+                service.submit(RunRequest("1", "fixed_time", steps=10))
+            )
+        except Exception as exc:  # captured to assert concurrent API behavior
+            submit_errors.append(exc)
+
+    def request_shutdown():
+        shutdown_call_started.set()
+        try:
+            service.shutdown(wait=True)
+        except Exception as exc:  # captured to assert concurrent API behavior
+            shutdown_errors.append(exc)
+
+    submit_thread = threading.Thread(
+        target=submit_request,
+        name="submit-registration-race",
+    )
+    shutdown_thread = threading.Thread(
+        target=request_shutdown,
+        name="shutdown-registration-race",
+    )
+
+    submit_thread.start()
+    assert future_created.wait(timeout=2)
+    lifecycle_lock_was_available = service._lock.acquire(blocking=False)
+    if lifecycle_lock_was_available:
+        service._lock.release()
+    shutdown_thread.start()
+    assert shutdown_call_started.wait(timeout=2)
+    try:
+        allow_registration.set()
+        submit_thread.join(timeout=5)
+        assert submit_results
+        queued = submit_results[0]
+        queued_done_before_release = service._done[queued.run_id].wait(timeout=2)
+        assert ShutdownRaceRunner.stop_observed.wait(timeout=2)
+    finally:
+        allow_registration.set()
+        ShutdownRaceRunner.release.set()
+        submit_thread.join(timeout=5)
+        shutdown_thread.join(timeout=5)
+
+    assert lifecycle_lock_was_available is False
+    assert not submit_thread.is_alive()
+    assert not shutdown_thread.is_alive()
+    assert submit_errors == []
+    assert shutdown_errors == []
+    assert captured_futures[0].cancelled()
+    assert queued_done_before_release is True
+    assert service.get(queued.run_id).status is RunStatus.INTERRUPTED
+
+
+def test_submit_after_shutdown_is_rejected_before_run_registration(tmp_path):
+    service = RunService(output_root=tmp_path)
+    service.shutdown(wait=True)
+
+    with pytest.raises(RuntimeError, match="run service is shutting down"):
+        service.submit(RunRequest("1", "fixed_time", steps=1))
+
+    assert service.list_results() == ()
+
+
 def test_shutdown_stops_active_run_and_cancels_queued_run(tmp_path):
     BlockingRunner.release.clear()
     BlockingRunner.started.clear()

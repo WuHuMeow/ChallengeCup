@@ -44,14 +44,14 @@ class FramePublisher:
         run_id: str,
         after_sequence: int | None = None,
     ) -> FrameRecord | None:
-        """Remove and return a frame only when it is newer than the client copy."""
+        """Release the capture slot and return only a client-newer frame."""
         with self._lock:
-            record = self._frames.get(run_id)
+            record = self._frames.pop(run_id, None)
             if record is None:
                 return None
             if after_sequence is not None and record.sequence <= after_sequence:
                 return None
-            return self._frames.pop(run_id, None)
+            return record
 
     def size(self, run_id: str) -> int:
         with self._lock:

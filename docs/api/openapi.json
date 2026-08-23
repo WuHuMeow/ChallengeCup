@@ -354,6 +354,7 @@
       "NativeGuiResponseModel": {
         "properties": {
           "status": {
+            "const": "shown",
             "title": "Status",
             "type": "string"
           }

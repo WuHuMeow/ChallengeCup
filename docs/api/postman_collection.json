@@ -205,6 +205,43 @@
           }
         }
       ],
+      "name": "Run Safety",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "runs",
+            "{{runId}}",
+            "safety"
+          ],
+          "raw": "{{baseUrl}}/api/runs/{{runId}}/safety"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
       "name": "Run Frame",
       "request": {
         "header": [

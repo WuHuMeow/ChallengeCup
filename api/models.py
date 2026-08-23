@@ -149,7 +149,7 @@ class ResultDetailModel(ResultListItemModel):
 
 
 class NativeGuiResponseModel(BaseModel):
-    status: str
+    status: Literal["shown"]
 
 
 class SafetyModel(BaseModel):

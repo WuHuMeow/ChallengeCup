@@ -93,6 +93,7 @@ def _postman_collection() -> dict[str, Any]:
             _request("Submit Run", "POST", "/api/runs", run_body),
             _request("Run Status", "GET", "/api/runs/{{runId}}"),
             _request("Run Metrics", "GET", "/api/runs/{{runId}}/metrics"),
+            _request("Run Safety", "GET", "/api/runs/{{runId}}/safety"),
             _request("Run Frame", "GET", "/api/runs/{{runId}}/frame"),
             _request("Stop Run", "POST", "/api/runs/{{runId}}/stop"),
             _request("Run Result", "GET", "/api/results/{{runId}}"),

@@ -59,14 +59,22 @@ class RunService:
         self._artifacts: dict[str, RunArtifacts] = {}
         self._terminal_events: set[str] = set()
         self._lock = threading.RLock()
+        self._shutting_down = False
         self.frame_publisher = frame_publisher or FramePublisher()
         self.realtime_hub = realtime_hub or RealtimeHub()
 
     def submit(self, request: RunRequest) -> RunResult:
         """Queue a validated request and return its isolated run identity."""
-        request, artifacts, stop_event, queued = self._prepare(request)
-        future = self._executor.submit(self._execute, request, artifacts, stop_event)
         with self._lock:
+            if self._shutting_down:
+                raise RuntimeError("run service is shutting down")
+            request, artifacts, stop_event, queued = self._prepare(request)
+            future = self._executor.submit(
+                self._execute,
+                request,
+                artifacts,
+                stop_event,
+            )
             self._futures[queued.run_id] = future
         return queued
 
@@ -185,6 +193,7 @@ class RunService:
 
     def shutdown(self, wait: bool = True) -> None:
         with self._lock:
+            self._shutting_down = True
             run_ids = tuple(self._stops)
         for run_id in run_ids:
             self._stop_for_shutdown(run_id)

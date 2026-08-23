@@ -265,7 +265,11 @@ def test_frame_endpoint_rejects_unknown_and_unavailable_sequence(client, service
 
     assert client.get("/api/runs/missing/frame").status_code == 404
     assert client.get("/api/runs/run-1/frame?sequence=3").status_code == 404
-    assert client.get("/api/runs/run-1/frame?sequence=1").status_code == 200
+    assert service.frame_publisher.can_capture("run-1") is True
+    assert service.frame_publisher.publish(
+        FrameRecord("run-1", 4, 14.0, b"new-png", 4.0)
+    ) is True
+    assert client.get("/api/runs/run-1/frame?sequence=3").status_code == 200
 
 
 def test_static_serving_is_contained_and_lifespan_shuts_down_service(tmp_path):
