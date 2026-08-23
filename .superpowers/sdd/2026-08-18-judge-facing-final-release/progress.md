@@ -797,3 +797,176 @@
   progress、scratch、保护归档和官方数据未进入提交，index 随后为空。
 - Task 13: complete (commits `ea8b1a9..db51125`, review clean；权威代码证据 head
   `d1edd109`，报告 `4b6e0ea` + `db51125`，最新 771/full 与真实 SUMO/PID 门禁已记录)。
+- Task 14: in progress；BASE `f87adcf4b0d6516f11d9786def7d64cb7985ef84`。已生成
+  `task-14-brief.md`，两路只读 preflight 冻结 540=360 normal+180 disturbance、seconds-first
+  正式时窗、strict sealed-evidence resume、paired statistics、CLI/profile 与 direct-consumer
+  回归地图；writer 必须按 TDD RED→GREEN 实现并提交，progress/保护输入不得进入其 index。
+- Task 14 Ruling: disturbance 180 项固定 `flow_multiplier=1.0`；每 scene 从已验证 source
+  manifest/network 确定性选择首个可达正式 lane/edge target，并把 kind/begin/end/target/
+  intensity 全部写入 run key 与 matrix manifest — 规格的 180 计数没有负载维度，动态但可哈希
+  绑定的 source-derived target 比伪造跨场景常量安全 — if wrong，正式扰动可能不代表预实验后
+  人工冻结的业务位置，Task 22/24 冻结材料前需用 manifest target 表复核。
+- Task 14 Ruling: paired 主差固定为 candidate-baseline（负 travel 差为改善），relative 为
+  配对 `(C-B)/B` 的均值，effect size 为 paired Cohen's dz，95% 双侧 t-CI；baseline<=0、
+  缺配对、重复、non-finite 一律 fail closed，零方差 CI 可退化而 dz 以 JSON-safe null+flag
+  表达 — 这些定义补足计划未指定的统计细节 — if wrong，效应量/相对变化会与评委采用的另一
+  公式不一致，但原始配对差与全部 source run IDs 仍可重算。
+- Task 14 Ruling: improved unit 是 40 个 scene/load 单元各自三 seed travel 均值差 `<0`，
+  `>=21` 才过门；worst unit 取 signed travel difference 最大者并以 numeric scene/load 稳定
+  tie-break。candidate safety 读取该算法全部 formal normal+disturbance 行的 collision/red-light/
+  illegal-transition 三硬门，final release 另要求全 540 行均安全为零；观察型 harsh/teleport/
+  conflict 不作硬门 — if wrong，候选资格的安全作用域需在 Task 24 final gate 收紧。
+- Task 14 Ruling: failed retry 的 parent reference 存在 matrix manifest attempt chain，不改写
+  已 seal 的单次 run manifest；corrupt completed evidence 作为 integrity error 停止而非当 failed
+  静默重跑。formal profile 只接受冻结 3600/600 和 seeds 42/43/44，`--seed` 仅覆盖
+  smoke/quick；并发同一 output root 必须 fail closed 或由独占锁串行 — if wrong，CLI override
+  或并发恢复可能制造冒充 formal 的缩水矩阵或丢失 attempt lineage。
+- Task 14 initial TDD/commit：9 组 RED→GREEN 覆盖 matrix cardinality/target/statistics、resume/
+  lock、CLI/analyzer、direct audit、seconds-first 与 quick seeds；final affected `218 passed`，
+  compileall/diff-check 通过。提交 `f68b3dc` (`feat: freeze the 540-run formal experiment matrix`)；
+  主代理 strict flake 捕获 `experiments/runner.py:129 E131` 后由原 writer 追加 `670083d`
+  (`style: align formal runner continuation`)，主代理 fresh focused `65 passed`、strict flake exit 0。
+- Task 14 首轮 review（exact package `f87adcf..670083d`）：Spec/Quality NOT CLEAN、Mutation
+  FAIL、Integration NOT CLEAN。Critical：manifest 已记 completed 的 attempt 若 status 缺失或被
+  篡改为 non-completed，可被当 failed/missing 静默重跑；analyzer 只信 CSV key set/status/metrics，
+  未绑定 exact RunSpec 与 sealed disk summary。Important：IA/IB 同样缺 key-row/metric binding；
+  normal 与 disturbance 描述统计混合；retry run_id/parent/旧 bytes 唯一性不足；disturbance safety
+  coverage 未锁 flow=1.0、seed42 和完整 identity。
+- Task 14 minor (deferred)：release-facing README/scripts guide 仍使用已移除的 `--quick`/`--steps`
+  和旧 360/state-file 口径；Task 20 已有专门 public-doc boundary/checker，移交其统一修订。
+- Task 14 minor (deferred)：IA/IB relative `run_dir` 当前相对 repository root，而非 matrix CSV
+  parent；fix round 1 的 sealed-summary input containment 若自然覆盖则由 re-review确认，否则移交
+  Task 22 portable evidence audit，不单独延长本轮。
+- Task 14 fix round 1/5：已恢复原 Sol writer，以 TDD 修复 completed-corruption、exact key/spec +
+  sealed-summary analysis/audit、disturbance 独立 strata、retry lineage 与完整 disturbance safety
+  identity；新 commit/report/scoped re-review 前 Task 14 保持 open。
+- Task 14 fix round 1/5 已实现：追加代码/测试/报告提交 `160c230`
+  (`fix: bind formal analysis to sealed evidence`)；completed attempt corruption、全局 retry
+  lineage、exact RunSpec/manifest/request、canonical sealed summary、normal/disturbance 分层和
+  disturbance safety 完整 identity 均已逐项 RED→GREEN。最终 covering `118 passed`，提交后
+  whole suite `838 passed in 299.65s`，Python 3.12/3.14 compileall、strict changed-file flake、
+  `git diff --check f87adcf..160c230` 与保护输入门禁均通过。
+- Task 14 fix round 1 scoped 复审（exact package `670083d..160c230`）：Formal Spec/Quality、
+  Mutation、Integration 三域均 CLEAN；首轮 Critical/Important 全部 ADDRESSED，无新增
+  Critical/Important。首轮 IA/IB relative `run_dir` minor 已由 matrix-root containment 自然关闭，
+  不再移交；旧 public docs 口径仍按原决定移交 Task 20。
+- Task 14 latest-head real-smoke RED（historical exact head `160c230`）：真实 scene 1 的 validated
+  `step_length=1.0`；`--profile smoke` run `738880afb5a2` 虽 completed、Reader issues=[]、SUMO
+  `1.27.1`、PID `25072` 精确退出且无残留，但 manifest `derived_steps=10`、requested seconds
+  `10.0`，只执行 10 个实际仿真步，违反 brief 的 smoke=100 actual simulation steps。此前把
+  scene 1 假设为 0.1 秒步长的预案作废；该 run 只作为 RED 证据，不得充当 Task 14 最终 smoke。
+- Task 14 fix round 2/5：Sol 唯一 writer 以 TDD 把 smoke 请求改为跨 scene timebase 均严格
+  explicit 100 steps，同时保持 formal seconds-first、quick 600 秒、sealed evidence、resume 和
+  analysis/IAIB 契约；Terra/Luna 并行做跨层 contract 与 counterexample 只读审计。新追加提交、
+  scoped 多域复审、latest-head full/static/protected 和真实 100-step + immutable-resume 门禁完成前，
+  Task 14 保持 open。
+- Task 14/15 latest-head pre-commit gate（2026-08-22，HEAD `78cc0c3`）：受影响回归为
+  `247 passed, 1 warning`，完整套件为 `862 passed, 1 warning`，两者均 exit 0；警告只有
+  pytest 无法写根目录缓存的 WinError 5，不是行为失败。venv Python 3.12.13 与系统 Python
+  3.14.7 compileall 均 exit 0；targeted flake8 采用项目既有 `--ignore=E501,W503` 口径 exit 0；
+  `git diff --check` exit 0。
+- Task 14 latest real smoke（exact head `78cc0c3`）：命令
+  `.venv\\Scripts\\python.exe scripts\\run_pdf_matrix.py --profile smoke --output-root
+  D:\\Temp\\t14-15-real-smoke-78cc0c3` 产生 run `e6170417424e`；manifest 为 explicit
+  `derived_steps=100`、`requested_seconds=100.0`、`step_length=1.0`，metadata 为
+  `status=completed`、`final_simulation_time=100.0`，simulation log 为 100 rows，SUMO
+  `1.27.1`，`EvidenceReader.validate()` 为 `[]`，记录 PID `23088` 已退出且无 SUMO 残留。
+  command-line SUMO 的 GUI screenshot unsupported warning 被 frame capture fail-soft 处理，
+  不影响 headless evidence。
+- Task 15 terminal-event correction（exact head `78cc0c3`）：realtime `terminal` event 在
+  runner cleanup、metadata 写入和 evidence seal 完成后发布；terminal cleanup/log failure
+  通过 `tests/test_runner_channel.py::test_terminal_event_uses_final_status_after_cleanup_failure`
+  锁定最终 `failed` 状态与原因。FramePublisher 仍按 run 只保留最新一帧，RealtimeHub 为
+  bounded non-blocking fan-out，事件 sink/frame sink failure 不改变仿真主流程。
+- Task 14/15 manual final review：逐项复核 RunSpec/profile 的 100-tick smoke 与 formal
+  seconds-first 边界、RunService/SimulationRunner 的 sink 注入和终端状态优先级、TraCI
+  run-scoped 临时 frame 清理、EvidenceReader seal 门禁及测试直接消费者；未发现未处理的
+  Critical/Important 行为缺口。Luna 子代理此前因其隔离环境无法读取源码，未提供可采信的
+  独立 CLEAN 结论，本条只记录主代理人工复核与 fresh command evidence，不冒充子代理复审。
+- Task 14/15：pre-commit gate complete；下一步为显式暂存目标代码/测试、排除 progress、
+  scratch、archive 与 official scene data，提交后重跑 post-commit verification，再分别写入
+  `Task 14: complete` 与 `Task 15: complete`。
+- Task 14/15 implementation commit：`1b5f9ed` (`feat: publish formal matrix runtime events and
+  frames`)；index 只包含上述 14 个目标代码/测试文件，progress、scratch、archive 与 official
+  scene data 均未进入提交。
+- Task 14/15 post-commit gate（exact HEAD `1b5f9ed`）：完整套件重新执行为 `862 passed,
+  1 warning`，exit 0；双 Python 3.12/3.14 compileall、targeted flake8（`--ignore=E501,W503`）、
+  `git diff --check` 均 exit 0。保护输入 hash 仍为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`，official scene data
+  仍为 `163 tracked / 232 disk`，保护路径 worktree/index diff 均为空。
+- Task 14/15 post-commit real smoke：run `0d1f93786ee0`，目录
+  `D:\\Temp\\t14-15-real-smoke-1b5f9ed\\runs\\i1\\fixed_time\\x1\\s42\\0d1f93786ee0`；
+  manifest `code_commit=1b5f9edab46cb12dae5c94dc527a24fe40beb9be`，explicit `derived_steps=100`、
+  `requested_seconds=100.0`、`step_length=1.0`，metadata `completed`/`final_simulation_time=100.0`，
+  100 simulation rows，SUMO `1.27.1`，`EvidenceReader.validate()` 为 `[]`，PID `26736` 已退出且
+  无 SUMO 残留。GUI 不可用 warning 仍由 capture fail-soft 处理。
+
+## Detailed continuation todo
+
+- [ ] Task 14（实现/门禁完成，review pending）：冻结 540-run matrix；已完成 formal 360 + disturbance 180、seconds-first
+  profile、strict sealed-evidence resume、paired statistics、100-step smoke、full/static/protected
+  gates；commit `1b5f9ed`，独立 reviewer 回报仍待收取。
+- [ ] Task 15（实现/门禁完成，review pending）：完成 bounded FramePublisher、run-scoped TraCI frame capture、RealtimeHub、status/
+  metrics/action/safety/frame/terminal events、sink failure isolation 与 final terminal ordering；
+  commit `1b5f9ed`，独立 reviewer 回报仍待收取。
+- [ ] Task 16：新增 judge API；实现 run submit/status/stop、scene/algorithm/results/metrics/safety
+  只读端点、run-scoped frame endpoint、WebSocket realtime stream、OpenAPI contract 和 `web/dist`
+  static serving；用 FastAPI contract tests 覆盖 404、terminal evidence、stream backpressure 与
+  无效请求，并完成 focused/affected/full/static/protected gates。
+- [ ] Task 17：创建 React/Vite console 与 typed API client；实现 scene/algorithm/duration/warmup/
+  disturbance 选择、run controls、latest frame、realtime metrics/events、comparison/history；
+  配置离线 build 到 `web/dist`，以 Playwright judge-flow 覆盖 health -> run -> frame -> metrics ->
+  stop/history，保存浏览器证据并完成 build/test gates。
+- [ ] Task 18：实现项目解释器原生 launcher 与 diagnostics；启动同一 FastAPI app，先 health-check
+  再打开浏览器，记录 Python/SUMO/TraCI/assets/output status，统一拥有 shutdown/child process
+  cleanup；补 launcher unit/integration tests 和 native smoke evidence。
+- [ ] Task 19：实现 Docker headless/optional GUI profiles；复用 `scripts/run_judge.py` 与同一
+  `/health` 入口，构建 Node assets、声明 volumes/ports、验证 container lifecycle；Docker 不可用
+  时明确记录 `not_run`，可用时保存 build/run/health evidence。
+- [ ] Task 20：替换评委向 root README 与 release docs；统一 exact commands、formal 540 matrix/
+  seconds-first/outputs/limitations/GUI-headless wording，添加 stale-claim checker 和公开引用
+  边界测试，消除旧 `--quick`/`--steps`/360 口径。
+- [ ] Task 21：实现 recoverable cleanup、quarantine 和 allowlisted release copy；只处理 stale
+  internal artifacts，严禁删除/移动/覆盖 `赛题资料.7z` 与 `data/intersection_data`；用 dry-run,
+  failure-recovery、allowlist、protected hash/count tests 验证。
+- [ ] Task 22：按 staged real verification 先 quick/preflight，再执行并冻结 540 valid formal
+  outputs；每次 run 写 sealed evidence、source/provenance/safety/attempt lineage，失败保留 evidence
+  并生成新 retry id；运行 analyzer/IA/IB 与 exact cardinality/safety gates，记录真实 SUMO/PID。
+- [ ] Task 23：从 clean release copy 验证 native launcher、browser workflow、package allowlist、
+  static assets、Docker（若环境可用）和第二 Python/SUMO 环境；所有 unavailable 外部检查写
+  `not_run`，不把模拟结果冒充 pass。
+- [ ] Task 24：只从 frozen Task 22/23 evidence 生成 report/PPT/video 与 figures；每个数字回链到
+  run/matrix/source artifact，标注 assumptions/limitations，完成最终 deliverables integrity、
+  stale-claim、package 和 whole-branch review。
+
+## Task 17 closeout (2026-08-23)
+
+- Task 17 主实现提交：`933fd42` (`feat: publish verified judge Web console`)。该提交以精确
+  22 文件 allowlist 发布 Web console、sealed manifest-derived 顶层 `scene_id`、同场景结果比较、
+  六项安全指标、WebSocket 重连竞态防护、真实 phase metrics、browser client `run_dir` 剥离、
+  OpenAPI/静态产物和覆盖测试；未暂存 progress、scratch、保护归档或官方场景数据。
+- Task 17 `run_dir` Ruling：保留既有 `RunResultModel.run_dir` 生命周期响应字段。Task 16 明确
+  冻结 canonical/deprecated routes 及 response models，且只要求新增 result list items 不序列化
+  `run_dir`；Task 17 的 “REST client must not expose run_dir” 边界由 start/get/stop/result typed
+  client 在进入 store/UI 前统一剥离满足。直接删除服务端字段会破坏 Task 16 契约。Sol 复审据此
+  撤回原 Important，该项 CLEAN。
+- Task 17 最终措辞收口提交：`6241182` (`fix: clarify sealed judge evidence labels`)。按 TDD 先令
+  2 个 Playwright 用例因旧 Simulation 文案和旧 Comparison aria-label 失败，再把当前单次结果
+  统一标为 sealed individual-run / sealed run results；保留 “Formal 95% CI awaits Task 22” 作为
+  尚未生成的 540-run 矩阵级结论，并同步 hashed production asset。
+- Task 17 最新代码门禁（exact HEAD `6241182`）：typecheck exit 0；Vite build exit 0、2,388 modules；
+  Playwright `15 passed`；受影响 Python/API/evidence contract `77 passed in 19.64s`；venv compileall
+  exit 0；旧误导文案在 `web/src` 与 `api/static/dist` 为零命中；`git diff --cached --check` 通过。
+  主实现 exact HEAD `933fd42` 的完整 Python 基线为 `902 passed in 480.49s`。
+- Task 17 内置浏览器验收：Codex in-app browser 保持打开 `http://127.0.0.1:8000/`；Simulation
+  显示新的 sealed individual-run 分级，Comparison/History 在真实服务无 sealed results 时正确
+  空态，Scene 展示 20 个场景且总状态为 `All manifests pass`。
+- Task 17 scoped 双复审（staged closeout diff）：Terra Standards 与 Sol Spec 均为 CLEAN，
+  Critical/Important/Minor 全部为零；未发现新增可访问性、数据流、路径泄漏、静态资产引用或
+  证据过度宣称问题。
+- Task 17 保护门禁：`赛题资料.7z` SHA-256 仍为
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；官方场景数据仍为
+  163 tracked / 232 disk；保护路径 worktree/index diff 均为 0。
+- Task 17: complete (implementation `933fd42`, closeout fix `6241182`, dual review CLEAN)。
+- Global Task 18-24: not started by this closeout；下一项只能在 Task 17 ledger 提交与 post-commit
+  核验完成后切换为 Task 18。
