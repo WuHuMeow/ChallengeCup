@@ -13,12 +13,16 @@ from api.models import (
     ControlActionsModel,
     LegacyRunRequestModel,
     PredictionResultModel,
+    ResultDetailModel,
+    ResultListItemModel,
+    ResultListModel,
     RunRequestModel,
     RunResultModel,
     StateRequestModel,
 )
 from cloud.cloud_policy import CloudPolicy
 from engine.run_service import RunService
+from engine.run_state import TERMINAL_STATUSES
 from experiments.evidence import EvidenceReader
 
 
@@ -37,6 +41,15 @@ def _result_or_404(run_service: RunService, run_id: str):
     if result is None:
         raise HTTPException(status_code=404, detail="unknown run_id")
     return _validated_result(result)
+
+
+def _validated_evidence_result(result):
+    if result.status not in TERMINAL_STATUSES:
+        return None
+    summary = EvidenceReader.load_summary(result.run_dir)
+    if summary is None:
+        return None
+    return replace(result, summary=summary)
 
 
 def create_app(run_service: RunService | None = None) -> FastAPI:
@@ -110,6 +123,26 @@ def create_app(run_service: RunService | None = None) -> FastAPI:
         if not isinstance(metrics, dict):
             raise HTTPException(status_code=500, detail="invalid metrics summary")
         return metrics
+
+    @application.get("/api/results", response_model=ResultListModel)
+    def list_results() -> ResultListModel:
+        service = application.state.run_service
+        results = []
+        for result in service.list_results():
+            validated = _validated_evidence_result(result)
+            if validated is not None:
+                results.append(ResultListItemModel.from_domain(validated))
+        return ResultListModel(items=results, count=len(results))
+
+    @application.get("/api/results/{run_id}", response_model=ResultDetailModel)
+    def get_result(run_id: str) -> ResultDetailModel:
+        result = application.state.run_service.get(run_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="unknown run_id")
+        validated = _validated_evidence_result(result)
+        if validated is None:
+            raise HTTPException(status_code=404, detail="validated evidence unavailable")
+        return ResultDetailModel.from_domain(validated)
 
     @application.post("/api/runs/{run_id}/stop", response_model=RunResultModel)
     def stop_run(run_id: str) -> RunResultModel:

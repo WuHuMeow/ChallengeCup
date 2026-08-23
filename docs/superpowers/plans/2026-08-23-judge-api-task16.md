@@ -52,7 +52,7 @@ def test_result_endpoint_reads_summary_from_sealed_disk(client, service):
     service.records["run-1"] = replace(canonical, summary={"metrics": {"throughput": 999}})
     response = client.get("/api/results/run-1")
     assert response.status_code == 200
-    assert response.json()["summary"]["throughput"] == 1
+    assert response.json()["summary"]["metrics"]["throughput"] == 1
 
 
 def test_safety_endpoint_is_run_scoped_and_fail_closed(client, service):

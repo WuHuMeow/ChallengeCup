@@ -78,6 +78,10 @@ class RunService:
     def get(self, run_id: str) -> RunResult | None:
         return self._states.get(run_id)
 
+    def list_results(self) -> tuple[RunResult, ...]:
+        """Return a snapshot for read-only judge result listings."""
+        return self._states.list()
+
     def stop(self, run_id: str) -> bool:
         """Request one run to stop and wait for that run's owned work to finish."""
         current = self._states.get(run_id)

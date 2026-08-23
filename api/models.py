@@ -119,6 +119,35 @@ class RunResultModel(BaseModel):
         )
 
 
+class ResultListItemModel(BaseModel):
+    run_id: str
+    status: RunStatus
+    reason: str
+    summary: dict[str, Any]
+    algorithm: str = ""
+
+    @classmethod
+    def from_domain(cls, result: RunResult) -> "ResultListItemModel":
+        if result.summary is None:
+            raise ValueError("validated result requires a summary")
+        return cls(
+            run_id=result.run_id,
+            status=result.status,
+            reason=result.reason,
+            summary=result.summary,
+            algorithm=result.algorithm,
+        )
+
+
+class ResultListModel(BaseModel):
+    items: list[ResultListItemModel]
+    count: int
+
+
+class ResultDetailModel(ResultListItemModel):
+    """Validated result payload that never exposes a filesystem path."""
+
+
 class QueueStateModel(BaseModel):
     direction: str
     queue_length: float = Field(ge=0)

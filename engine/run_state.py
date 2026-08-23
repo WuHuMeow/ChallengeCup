@@ -74,6 +74,11 @@ class RunStateMachine:
         with self._lock:
             return self._records.get(run_id)
 
+    def list(self) -> tuple[RunResult, ...]:
+        """Return a stable snapshot of all known run states."""
+        with self._lock:
+            return tuple(self._records.values())
+
     def transition(
         self,
         run_id: str,
