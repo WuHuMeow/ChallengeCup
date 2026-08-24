@@ -153,15 +153,17 @@ or a non-empty final owned inventory forces overall `fail` and never broadens de
 
 ## Single-writer execution route
 
-- 19.A launcher: Luna writes; Terra reviews.
+- 19.A launcher: Terra writes; a distinct Terra agent reviews.
 - 19.B detector/schema: Terra writes; Sol reviews.
 - 19.C live verifier: Sol writes; Terra reviews.
 - 19.D lock/headless/Compose: Terra writes; Sol reviews.
-- 19.E GUI/context/docs: Luna writes; Terra and Sol review.
+- 19.E GUI/context/docs: Terra writes; distinct Terra and Sol agents review.
 - 19.F verification/closeout: controller writes; Terra and Sol review.
 
-Only one implementation writer is active at a time. The controller owns exact staging, protected
-checks, and commits. Review agents are read-only unless reassigned a bounded test-first fix.
+Only Terra and Sol are available; do not route work to any other model. Only one implementation writer is
+active at a time. The controller owns exact staging, protected checks, and commits. Writer and
+reviewer are distinct agents even when both use Terra. Review agents are read-only unless
+reassigned a bounded test-first fix.
 
 ## Required commits and stop conditions
 

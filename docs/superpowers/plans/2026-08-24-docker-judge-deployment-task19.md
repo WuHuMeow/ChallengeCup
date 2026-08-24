@@ -35,14 +35,17 @@
 
 | Implementation unit | Single writer | Independent review | Commit boundary |
 |---|---|---|---|
-| 19.A launcher `container-gui` | Luna | Terra standards | launcher source + launcher tests |
+| 19.A launcher `container-gui` | Terra | independent Terra standards reviewer | launcher source + launcher tests |
 | 19.B detector/schema | Terra | Sol specification | detector source + detector tests |
 | 19.C live verifier safety | Sol | Terra security/maintainability | verifier source + verifier tests |
 | 19.D locks/headless/Compose | Terra | Sol specification | Docker configuration + static tests |
-| 19.E GUI/ignore/docs | Luna | Terra standards and Sol specification | GUI/config/docs + static tests |
+| 19.E GUI/ignore/docs | Terra | independent Terra standards and Sol specification reviewers | GUI/config/docs + static tests |
 | 19.F closeout | controller | Terra and Sol read-only final reviews | report/progress only after implementation commit |
 
-The named model is a preferred routing choice, not permission for concurrent writes. If an agent is unavailable, the controller may choose another capable model without changing interfaces, acceptance criteria, or review independence.
+Only Terra and Sol are available for this project. The named model is a preferred routing choice,
+not permission for concurrent writes. Writer and reviewer must be distinct agents even when both
+use Terra. If a named route is temporarily unavailable, the controller may choose the other
+available model without changing interfaces, acceptance criteria, or review independence.
 
 ---
 
