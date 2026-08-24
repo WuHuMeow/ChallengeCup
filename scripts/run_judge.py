@@ -136,7 +136,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.set_defaults(open_browser=True)
     parser.add_argument(
         "--gui-mode",
-        choices=("auto", "native", "headless"),
+        choices=("auto", "native", "headless", "container-gui"),
         default="auto",
     )
     parser.add_argument("--health-timeout", type=_positive_finite, default=30.0)
@@ -265,12 +265,22 @@ def select_runtime(
     gui_mode: str,
     *,
     platform_name: str = sys.platform,
+    environ: Mapping[str, str] | None = None,
     sumo: Path | None,
     sumo_gui: Path | None,
 ) -> RuntimeSelection:
     """Apply the explicit auto/native/headless SUMO selection policy."""
-    if gui_mode not in {"auto", "native", "headless"}:
+    if gui_mode not in {"auto", "native", "headless", "container-gui"}:
         raise LauncherError(f"unknown gui mode: {gui_mode}")
+    if gui_mode == "container-gui":
+        if platform_name == "win32":
+            raise LauncherError("container GUI requires a non-Windows platform")
+        environment = os.environ if environ is None else environ
+        if not environment.get("DISPLAY", "").strip():
+            raise LauncherError("container GUI requires DISPLAY")
+        if sumo_gui is None:
+            raise LauncherError("container GUI requires sumo-gui")
+        return RuntimeSelection("container-gui", Path(sumo_gui), False)
     if gui_mode == "native":
         if platform_name != "win32":
             raise LauncherError("native GUI requires Windows")
@@ -489,12 +499,17 @@ def collect_preflight(
 
     sumo = resolve_sumo_executable("sumo.exe" if sys.platform == "win32" else "sumo")
     sumo_gui = (
-        resolve_sumo_executable("sumo-gui.exe") if sys.platform == "win32" else None
+        resolve_sumo_executable(
+            "sumo-gui.exe" if sys.platform == "win32" else "sumo-gui"
+        )
+        if sys.platform == "win32" or args.gui_mode == "container-gui"
+        else None
     )
     try:
         runtime = select_runtime(
             args.gui_mode,
             platform_name=sys.platform,
+            environ=os.environ,
             sumo=sumo,
             sumo_gui=sumo_gui,
         )
@@ -507,7 +522,9 @@ def collect_preflight(
                 "version": _executable_version(sumo),
             },
             "gui": {
-                "status": "fail" if args.gui_mode == "native" and sumo_gui is None else "not_run",
+                "status": "fail"
+                if args.gui_mode in {"native", "container-gui"} and sumo_gui is None
+                else "not_run",
                 "version": _executable_version(sumo_gui),
             },
             "selected": None,

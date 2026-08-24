@@ -351,6 +351,151 @@ def test_native_mode_fails_outside_windows(tmp_path: Path) -> None:
         )
 
 
+def test_parse_args_accepts_container_gui() -> None:
+    args = run_judge.parse_args(["--gui-mode", "container-gui", "--no-browser"])
+
+    assert args.gui_mode == "container-gui"
+
+
+def test_container_gui_selects_sumo_gui_without_native_focus(tmp_path: Path) -> None:
+    selection = run_judge.select_runtime(
+        "container-gui",
+        platform_name="linux",
+        environ={"DISPLAY": ":99"},
+        sumo=None,
+        sumo_gui=tmp_path / "sumo-gui",
+    )
+
+    assert selection == run_judge.RuntimeSelection(
+        "container-gui", tmp_path / "sumo-gui", False
+    )
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "environ", "sumo_gui", "message"),
+    [
+        ("win32", {"DISPLAY": ":99"}, Path("sumo-gui"), "non-Windows"),
+        ("linux", {}, Path("sumo-gui"), "DISPLAY"),
+        ("linux", {"DISPLAY": " \t"}, Path("sumo-gui"), "DISPLAY"),
+        ("linux", {"DISPLAY": ":99"}, None, "sumo-gui"),
+    ],
+)
+def test_container_gui_rejects_invalid_runtime(
+    platform_name: str,
+    environ: dict[str, str],
+    sumo_gui: Path | None,
+    message: str,
+) -> None:
+    with pytest.raises(run_judge.LauncherError, match=message):
+        run_judge.select_runtime(
+            "container-gui",
+            platform_name=platform_name,
+            environ=environ,
+            sumo=None,
+            sumo_gui=sumo_gui,
+        )
+
+
+def test_container_gui_runtime_diagnostics_and_native_focus_are_disabled(
+    tmp_path: Path,
+) -> None:
+    runtime = run_judge.select_runtime(
+        "container-gui",
+        platform_name="linux",
+        environ={"DISPLAY": ":99"},
+        sumo=None,
+        sumo_gui=tmp_path / "sumo-gui",
+    )
+    registry = run_judge.RunnerRegistry(runtime, runner_type=object)
+
+    assert runtime.mode == "container-gui"
+    assert runtime.native_gui is False
+    assert registry.show_native_gui("missing-run") == (
+        False,
+        "native GUI disabled by launcher mode",
+    )
+
+
+def test_collect_preflight_windows_headless_keeps_gui_diagnostics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "api" / "static" / "dist").mkdir(parents=True)
+    (tmp_path / "api" / "static" / "dist" / "index.html").write_text(
+        "<html></html>", encoding="utf-8"
+    )
+    (tmp_path / "output").mkdir()
+    args = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        port_attempts=1,
+        diagnostics=tmp_path / "launcher.json",
+        gui_mode="headless",
+    )
+    resolved: list[str] = []
+    sumo = tmp_path / "sumo.exe"
+    sumo_gui = tmp_path / "sumo-gui.exe"
+
+    def resolve(name: str) -> Path:
+        resolved.append(name)
+        return {"sumo.exe": sumo, "sumo-gui.exe": sumo_gui}[name]
+
+    monkeypatch.setattr(run_judge.sys, "platform", "win32")
+    monkeypatch.setattr(run_judge, "resolve_sumo_executable", resolve)
+    monkeypatch.setattr(run_judge, "_executable_version", lambda _path: "1.27.1")
+    monkeypatch.setattr(run_judge, "_package_version", lambda _package: "1.0")
+    monkeypatch.setattr(run_judge, "_package_import_error", lambda _module: None)
+
+    checks, runtime, _selection = run_judge.collect_preflight(
+        tmp_path, args, "project_venv"
+    )
+
+    assert resolved == ["sumo.exe", "sumo-gui.exe"]
+    assert runtime == run_judge.RuntimeSelection("headless", sumo, False)
+    assert checks["sumo"]["mode"] == "headless"
+    assert checks["sumo"]["gui"] == {"status": "pass", "version": "1.27.1"}
+
+
+def test_collect_preflight_linux_container_gui_resolves_gui_runtime(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "api" / "static" / "dist").mkdir(parents=True)
+    (tmp_path / "api" / "static" / "dist" / "index.html").write_text(
+        "<html></html>", encoding="utf-8"
+    )
+    (tmp_path / "output").mkdir()
+    args = SimpleNamespace(
+        host="127.0.0.1",
+        port=8000,
+        port_attempts=1,
+        diagnostics=tmp_path / "launcher.json",
+        gui_mode="container-gui",
+    )
+    resolved: list[str] = []
+    sumo = tmp_path / "sumo"
+    sumo_gui = tmp_path / "sumo-gui"
+
+    def resolve(name: str) -> Path:
+        resolved.append(name)
+        return {"sumo": sumo, "sumo-gui": sumo_gui}[name]
+
+    monkeypatch.setattr(run_judge.sys, "platform", "linux")
+    monkeypatch.setenv("DISPLAY", ":99")
+    monkeypatch.setattr(run_judge, "resolve_sumo_executable", resolve)
+    monkeypatch.setattr(run_judge, "_executable_version", lambda _path: "1.27.1")
+    monkeypatch.setattr(run_judge, "_package_version", lambda _package: "1.0")
+    monkeypatch.setattr(run_judge, "_package_import_error", lambda _module: None)
+
+    checks, runtime, _selection = run_judge.collect_preflight(
+        tmp_path, args, "project_venv"
+    )
+
+    assert resolved == ["sumo", "sumo-gui"]
+    assert runtime == run_judge.RuntimeSelection("container-gui", sumo_gui, False)
+    assert checks["sumo"]["mode"] == "container-gui"
+    assert checks["sumo"]["native_gui"] is False
+    assert checks["sumo"]["gui"] == {"status": "pass", "version": "1.27.1"}
+
+
 def test_preflight_fails_when_production_assets_are_missing(tmp_path: Path) -> None:
     (tmp_path / "api" / "static" / "dist").mkdir(parents=True)
     (tmp_path / "output").mkdir()
@@ -1019,6 +1164,65 @@ def test_run_server_publishes_stable_preflight_sections_at_top_level(
     assert payload["network"]["selected_port"] == 8002
     assert payload["network"]["scan_count"] == 3
     assert payload["output"]["diagnostics_dir"] == "."
+
+
+def test_run_server_writes_container_gui_runtime_diagnostics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = run_judge.RuntimeSelection("container-gui", tmp_path / "sumo-gui", False)
+    selection = run_judge.PortSelection(8000, 8000, ())
+    checks = {
+        "sumo": {
+            "status": "pass",
+            "mode": "container-gui",
+            "native_gui": False,
+        },
+        "output": {"status": "pass", "run_dir": "output/runs"},
+    }
+
+    class _FakeService:
+        def shutdown(self, wait: bool = True) -> None:
+            del wait
+
+    monkeypatch.setattr(
+        run_judge,
+        "collect_preflight",
+        lambda *_args: (checks, runtime, selection),
+    )
+    monkeypatch.setattr(
+        run_judge,
+        "build_application",
+        lambda *_args, **_kwargs: (SimpleNamespace(), _FakeService(), SimpleNamespace()),
+    )
+
+    class _FakeServer:
+        should_exit = False
+
+        def run(self) -> None:
+            self.should_exit = True
+
+    code = run_judge.run_server(
+        SimpleNamespace(
+            host="127.0.0.1",
+            port=8000,
+            port_attempts=1,
+            open_browser=False,
+            gui_mode="container-gui",
+            health_timeout=1.0,
+            diagnostics=tmp_path / "launcher.json",
+        ),
+        repo_root=tmp_path,
+        server_factory=lambda _config: _FakeServer(),
+        health_opener=lambda *_args, **_kwargs: _FakeResponse(200, {"status": "ok"}),
+    )
+
+    payload = json.loads((tmp_path / "launcher.json").read_text(encoding="utf-8"))
+    assert code == 0
+    assert payload["runtime"] == {
+        "mode": "container-gui",
+        "native_gui": False,
+        "sumo_binary": "sumo-gui",
+    }
 
 
 def test_main_forwards_interpreter_source_to_server(
