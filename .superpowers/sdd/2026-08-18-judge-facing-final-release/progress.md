@@ -917,9 +917,16 @@
   disturbance 选择、run controls、latest frame、realtime metrics/events、comparison/history；
   配置离线 build 到 `web/dist`，以 Playwright judge-flow 覆盖 health -> run -> frame -> metrics ->
   stop/history，保存浏览器证据并完成 build/test gates。
-- [ ] Task 18：实现项目解释器原生 launcher 与 diagnostics；启动同一 FastAPI app，先 health-check
+- [x] Task 18（complete）：实现项目解释器原生 launcher 与 diagnostics；启动同一 FastAPI app，先 health-check
   再打开浏览器，记录 Python/SUMO/TraCI/assets/output status，统一拥有 shutdown/child process
-  cleanup；补 launcher unit/integration tests 和 native smoke evidence。
+  cleanup；补 launcher unit/integration tests 和 native smoke evidence。2026-08-23/24 当前证据：
+  affected 140 passed、full 940 passed、frontend typecheck/build、compileall、diff-check 均通过；
+  headless 与 native GUI 真实 smoke、Codex 内置浏览器四视图验收、保护输入核验完成；详见
+  `task-18-report.md` 与 `output/evidence/judge-launch/native-smoke.json`。最终 Sol 复审发现的
+  diagnostics 保护路径 Critical 与 pre-start cleanup Important 已 TDD 修复，launcher fresh
+  `47 passed`、affected `151 passed`、full `951 passed`、Playwright `15 passed`，Terra/Sol scoped
+  fix re-review 均 CLEAN；实现 commit `6a149ef` 的 post-commit focused `90 passed`、真实端口
+  8785 health/stop/cleanup、frontend build、static 与 protected gates 均通过。
 - [ ] Task 19：实现 Docker headless/optional GUI profiles；复用 `scripts/run_judge.py` 与同一
   `/health` 入口，构建 Node assets、声明 volumes/ports、验证 container lifecycle；Docker 不可用
   时明确记录 `not_run`，可用时保存 build/run/health evidence。
@@ -968,5 +975,8 @@
   `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`；官方场景数据仍为
   163 tracked / 232 disk；保护路径 worktree/index diff 均为 0。
 - Task 17: complete (implementation `933fd42`, closeout fix `6241182`, dual review CLEAN)。
-- Global Task 18-24: not started by this closeout；下一项只能在 Task 17 ledger 提交与 post-commit
-  核验完成后切换为 Task 18。
+- Global Task 18: complete；实现 commit `6a149ef`，review-fix affected `151 passed`、full
+  `951 passed`、Playwright `15 passed`，Terra/Sol scoped re-review CLEAN；exact HEAD post-commit
+  focused `90 passed`、PowerShell health/stop/cleanup、frontend build、static/protected gates 通过。
+- Global Task 19-24: not started by this closeout；Docker live/second-machine、540-run formal
+  matrix、release packaging and final materials remain deferred to their respective global tasks。
