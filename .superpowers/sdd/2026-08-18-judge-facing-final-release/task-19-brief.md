@@ -118,8 +118,11 @@ Task 23 second-environment verification, and Task 24 materials remain out of sco
 ## TDD and evidence rules
 
 - Use the repository `.venv\Scripts\python.exe`; do not use a global Python command.
-- Use a named pytest base directory under the system temporary directory. Repository
-  `output/tmp` has an inherited ACL that can produce invalid `WinError 5` fixture failures.
+- Use a named pytest base directory under `<repository-drive>:\Temp`. It stays outside the
+  worktree but must share the drive with official scene inputs because `scenes.variant` emits
+  relative SUMO paths; C-drive system TEMP would fail against this D-drive checkout. Repository
+  `output/tmp` is also forbidden because inherited ACLs can produce invalid `WinError 5` fixture
+  failures.
 - Every RED record names the failing test node ID, the new assertion reached, the observed missing
   behavior, and confirms collection/import/syntax/fixture setup succeeded. An unrelated failure
   is not RED evidence.

@@ -89,9 +89,11 @@ distribution/runtime is installed.
 
 The interpreter must be the repository `.venv` CPython 3.12.13 and `uv` must be available with
 its version recorded. Every later PowerShell command block resolves `$Py` again instead of using
-a global `python`. Every pytest invocation creates a specifically named base directory below
-`[System.IO.Path]::GetTempPath()`; never use repository `output/tmp`, whose inherited ACL is known
-to produce invalid `WinError 5` fixture failures. If `uv` is unavailable, dependency locking is a
+a global `python`. Every pytest invocation uses a specifically named external base directory under
+`<repository-drive>:\Temp`: it stays outside the worktree but on the same drive as official scene
+inputs, because `scenes.variant` must generate relative SUMO paths. Never use C-drive system TEMP
+for this D-drive worktree, and never use repository `output/tmp`, whose inherited ACL is known to
+produce invalid `WinError 5` fixture failures. If `uv` is unavailable, dependency locking is a
 recorded blocker and hashes must not be written manually.
 
 - [ ] **Step 3: Confirm the implementation allowlist**
@@ -176,7 +178,7 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-launcher-red"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-launcher-red"
 & $Py -m pytest tests/test_judge_launcher.py -q --basetemp=$BaseTemp
 ```
 
@@ -214,10 +216,10 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-launcher-green"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-launcher-green"
 & $Py -m pytest tests/test_judge_launcher.py -q --basetemp=$BaseTemp
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-launcher-adjacent"
-& $Py -m pytest tests/test_api.py tests/test_run_service.py tests/test_runner.py -q --basetemp=$BaseTemp
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-launcher-adjacent"
+& $Py -m pytest tests/test_api.py tests/test_run_service.py tests/test_runner_channel.py -q --basetemp=$BaseTemp
 & $Py scripts/run_judge.py --help
 ```
 
@@ -284,7 +286,7 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-status-red"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-status-red"
 & $Py -m pytest tests/test_docker_release.py -q --basetemp=$BaseTemp
 ```
 
@@ -346,7 +348,7 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-status-green"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-status-green"
 & $Py -m pytest tests/test_docker_release.py tests/test_release_preflight.py tests/test_validation_scripts.py -q --basetemp=$BaseTemp
 & $Py scripts/release/docker_status.py --repo-root . --output output/evidence/docker/docker-status.json
 ```
@@ -410,7 +412,7 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-verifier-red"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-verifier-red"
 & $Py -m pytest tests/test_docker_release.py -q -k "invocation or collision or cleanup or execute_live or evidence_root" --basetemp=$BaseTemp
 ```
 
@@ -478,7 +480,7 @@ Run:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-verifier-green"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-verifier-green"
 & $Py -m pytest tests/test_docker_release.py -q --basetemp=$BaseTemp
 rg -n "system prune|volume prune|down.*-v|shell=True" scripts/release/docker_verify.py tests/test_docker_release.py
 & $Py scripts/release/docker_verify.py --repo-root .
@@ -533,7 +535,7 @@ Tests must parse Compose with `yaml.safe_load()` and inspect Dockerfile stages. 
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-headless-red"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-headless-red"
 & $Py -m pytest tests/test_docker_static.py tests/test_docker_release.py -q -k "dockerfile or compose or lock or headless" --basetemp=$BaseTemp
 ```
 
@@ -586,7 +588,7 @@ must use the Dockerfile launcher defaults rather than reintroducing `experiments
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-headless-green"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-headless-green"
 & $Py -m pytest tests/test_docker_static.py tests/test_docker_release.py -q -k "dockerfile or compose or lock or headless" --basetemp=$BaseTemp
 & $Py -m pip install --dry-run --ignore-installed --require-hashes --only-binary :all: --platform manylinux_2_28_x86_64 --python-version 3.12 --implementation cp --abi cp312 -r docker/requirements.lock
 ```
@@ -641,7 +643,7 @@ Require:
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-gui-red"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-gui-red"
 & $Py -m pytest tests/test_docker_static.py tests/test_docker_release.py -q -k "gui or dockerignore or build_context or documentation" --basetemp=$BaseTemp
 ```
 
@@ -711,7 +713,7 @@ Do not rewrite Task 20 release-document cleanup or Task 23 second-machine claims
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-gui-green"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-gui-green"
 & $Py -m pytest tests/test_docker_static.py tests/test_docker_release.py tests/test_judge_launcher.py -q --basetemp=$BaseTemp
 $Docs = @("docker/README.md", "docs/deployment.md")
 $Required = @("docker_cli_unavailable", "not_run", "--execute-live", "container-gui", "linux/amd64", "8001", "compose cp")
@@ -751,7 +753,7 @@ git commit -m "feat: add optional container GUI deployment"
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-final-focused"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-final-focused"
 & $Py -m pytest tests/test_docker_release.py tests/test_docker_static.py tests/test_judge_launcher.py -q --basetemp=$BaseTemp
 ```
 
@@ -761,8 +763,8 @@ Record exact passed/failed counts and exit code.
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-final-affected"
-& $Py -m pytest tests/test_release_preflight.py tests/test_validation_scripts.py tests/test_api.py tests/test_run_service.py tests/test_runner.py tests/test_traci_bridge.py -q --basetemp=$BaseTemp
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-final-affected"
+& $Py -m pytest tests/test_release_preflight.py tests/test_validation_scripts.py tests/test_api.py tests/test_run_service.py tests/test_runner_channel.py tests/test_traci_bridge.py -q --basetemp=$BaseTemp
 & $Py -m compileall -q scripts/run_judge.py scripts/release tests/test_docker_release.py tests/test_docker_static.py
 & $Py -m flake8 scripts/run_judge.py scripts/release/docker_status.py scripts/release/docker_verify.py tests/test_judge_launcher.py tests/test_docker_release.py tests/test_docker_static.py
 ```
@@ -771,7 +773,7 @@ $BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-fi
 
 ```powershell
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-final-full"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-final-full"
 & $Py -m pytest tests -q --basetemp=$BaseTemp
 npm run typecheck --prefix web
 npm run build --prefix web
@@ -872,7 +874,7 @@ git commit -m "docs: prepare Task 19 verification record"
 ```powershell
 git status --short --untracked-files=no
 $Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
-$BaseTemp = Join-Path ([System.IO.Path]::GetTempPath()) "challenge-cup-task19-postcommit-focused"
+$BaseTemp = Join-Path ([System.IO.Path]::GetPathRoot((Resolve-Path ".").Path)) "Temp\challenge-cup-task19-postcommit-focused"
 & $Py -m pytest tests/test_docker_release.py tests/test_docker_static.py tests/test_judge_launcher.py -q --basetemp=$BaseTemp
 git diff HEAD^ --name-status
 $ProtectedWorktree = git diff --name-only -- "赛题资料.7z" data/intersection_data
