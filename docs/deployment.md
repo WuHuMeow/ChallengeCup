@@ -4,6 +4,44 @@
 `output/` 下的独立目录。仓库当前不保留完整矩阵、验收输出或压缩包；下列命令会在本机
 重新创建一次性运行目录。
 
+## 评委一键启动
+
+Windows 评委入口会选择仓库内的 `.venv` Python，执行原生 SUMO/FastAPI/Web 控制台预检，
+在 `/api/health` 返回 `{"status":"ok"}` 后才打开浏览器。请求端口被占用时，启动器只在
+连续十个端口内选择并把冲突写入诊断文件，不会静默改用不可追踪的端口。
+
+```powershell
+.\scripts\start_judge.ps1
+.\scripts\start_judge.ps1 --gui-mode headless --no-browser
+.\scripts\start_judge.ps1 --gui-mode native --port 8765
+```
+
+也可以双击或从命令提示符运行 `scripts\start_judge.bat`。启动状态写入
+`output/evidence/judge-launch/launcher.json`，其中包含所选端口、Python/FastAPI/Uvicorn/
+TraCI/SUMO 版本、静态资产、健康检查、浏览器动作和退出原因。`--gui-mode auto` 在本机
+Windows 优先选择 `sumo-gui`；`headless` 强制使用 `sumo`；`native` 在缺少 Windows
+`sumo-gui` 时明确失败，不会伪造 GUI 成功。启动器会打印最终选择的控制台 URL；若
+native 窗口在运行后不可聚焦，`/api/runs/{run_id}/native-gui` 会返回明确的失败状态。
+
+稳定 CLI 选项包括：`--host`、`--port`、`--port-attempts`（最多连续十个端口）、
+`--gui-mode auto|native|headless`、`--open-browser/--no-browser`、`--health-timeout`
+以及 `--diagnostics`。
+
+常见故障处理：
+
+- 缺少 `.venv`：先按下方环境章节创建虚拟环境并安装依赖。
+- SUMO 版本不是 1.27.1：安装/修正 `SUMO_HOME` 后重新启动，诊断文件会保留检测版本。
+- `api/static/dist/index.html` 缺失：先在 `web/` 执行 `npm ci; npm run build`。
+- 连续十个端口均冲突：释放其中一个端口，或用 `--port` 指定新的扫描起点。
+- native GUI 不可用：使用 `--gui-mode headless --no-browser` 验证服务，或在有桌面的
+  Windows 环境重试 native 模式。
+
+手动启动入口仍保留，适合开发调试：
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn api.server:app --host 127.0.0.1 --port 8000
+```
+
 ## 1. 本地环境
 
 ### Windows PowerShell

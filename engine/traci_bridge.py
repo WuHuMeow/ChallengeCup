@@ -41,6 +41,50 @@ from visualization.frame_publisher import FrameRecord
 logger = logging.getLogger(__name__)
 _TRACI_LIFECYCLE_LOCK = threading.RLock()
 
+
+def _is_sumo_gui_binary(binary: str) -> bool:
+    return Path(str(binary)).name.casefold() in {"sumo-gui", "sumo-gui.exe"}
+
+
+def _request_gui_window_close(
+    pid: int,
+    *,
+    platform_name: str = sys.platform,
+    user32: object | None = None,
+) -> bool:
+    """Ask the exact SUMO-GUI process window to close gracefully."""
+    if platform_name != "win32" or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        import ctypes
+
+        user32 = user32 or ctypes.windll.user32
+        pid_value = ctypes.c_ulong()
+        matches: list[object] = []
+
+        def callback(hwnd, _lparam):
+            if not bool(user32.IsWindowVisible(hwnd)):
+                return True
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+            if int(pid_value.value) == pid:
+                matches.append(hwnd)
+                return False
+            return True
+
+        callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        callback_pointer = callback_type(
+            ctypes.c_bool,
+            ctypes.c_void_p,
+            ctypes.c_long,
+        )(callback)
+        user32.EnumWindows(callback_pointer, 0)
+        if not matches:
+            return False
+        return bool(user32.PostMessageW(matches[0], 0x0010, 0, 0))
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
 # 兼容本地 SUMO 安装：若通过 pip 安装 traci 则无需 SUMO_HOME。
 if "SUMO_HOME" in os.environ:
     sys.path.append(os.path.join(os.environ["SUMO_HOME"], "tools"))
@@ -137,6 +181,9 @@ class TraCIBridge:
     def _build_cmd(self) -> List[str]:
         """组装 traci.start 命令（含可选 --seed 与 additional files）。"""
         cmd = [self.binary, "-c", str(self.sumo_cfg), "--no-step-log", "true"]
+        if _is_sumo_gui_binary(self.binary):
+            # SUMO-GUI waits for an explicit GUI start before accepting TraCI init.
+            cmd.append("--start")
         if self.seed is not None:
             cmd += ["--seed", str(self.seed)]
         if self.additional_files:
@@ -856,6 +903,8 @@ class TraCIBridge:
                 close_error = exc
             try:
                 if process is not None and process.poll() is None:
+                    if _is_sumo_gui_binary(self.binary):
+                        _request_gui_window_close(int(process.pid))
                     try:
                         process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
@@ -867,6 +916,7 @@ class TraCIBridge:
                             process.wait(timeout=5)
             finally:
                 self._owned_process = None
+                self._owned_pid = None
                 self._connection = None
                 self._connection_label = None
             if close_error is not None:

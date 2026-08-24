@@ -237,6 +237,11 @@ uvicorn api.server:app --reload
 规范接口统一使用 `/api/*`；静态契约见 `docs/api/openapi.json` 与
 `docs/api/postman_collection.json`。FastAPI 的 `/docs` 仅作为本地调试入口。
 
+评委演示请优先使用 `scripts\start_judge.ps1`（或 `scripts\start_judge.bat`）。它会使用仓库
+`.venv`、预检 SUMO/FastAPI/Web 资产、健康检查通过后打开内置 Web 控制台，并把诊断写入
+`output/evidence/judge-launch/launcher.json`；完整选项和故障处理见
+[`docs/deployment.md`](docs/deployment.md) 的“评委一键启动”。
+
 <a id="使用本地其他路径的数据"></a>
 
 ### 使用本地其他路径的数据（可选）

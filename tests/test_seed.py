@@ -29,6 +29,15 @@ def test_build_cmd_with_seed():
     assert cmd[i + 1] == "42"
 
 
+def test_build_cmd_starts_sumogui_for_traci_control(tmp_path):
+    config = tmp_path / "demo.sumocfg"
+    config.write_text("<configuration />", encoding="utf-8")
+
+    cmd = TraCIBridge(config, binary="sumo-gui.exe")._build_cmd()
+
+    assert "--start" in cmd
+
+
 def test_runner_passes_seed_to_bridge():
     from unittest.mock import patch
     from algorithms.fixed_time import FixedTimeAlgorithm

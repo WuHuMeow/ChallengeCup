@@ -709,11 +709,33 @@ def test_bridge_cleanup_targets_only_its_recorded_process(monkeypatch, tmp_path)
 
     bridge.close()
 
-    assert bridge.process_id == 41001
+    assert bridge.process_id is None
     assert owned.terminated is True
     assert owned.killed is False
     assert unrelated.terminated is False
     assert unrelated.killed is False
+
+
+def test_gui_bridge_close_requests_exact_window_close_before_reaping(
+    monkeypatch, tmp_path
+):
+    bridge = TraCIBridge(tmp_path / "unused.sumocfg", binary="sumo-gui.exe")
+    owned = _OwnedProcess(41011)
+    connection = _ConnectionHandle()
+    requested: list[int] = []
+    bridge._owned_process = owned
+    bridge._connection = connection
+    monkeypatch.setattr(traci, "isLoaded", lambda: False)
+    monkeypatch.setattr(
+        "engine.traci_bridge._request_gui_window_close",
+        lambda pid: requested.append(pid) or True,
+    )
+
+    bridge.close()
+
+    assert requested == [41011]
+    assert connection.close_calls == [False]
+    assert owned.terminated is True
 
 
 def test_bridge_close_reaps_child_when_connection_close_is_interrupted(tmp_path):
@@ -773,7 +795,7 @@ def test_bridge_start_failure_reaps_process_created_during_connection_setup(
     with pytest.raises(RuntimeError, match="connect failed"):
         bridge.start()
 
-    assert bridge.process_id == 41003
+    assert bridge.process_id is None
     assert bridge_process.terminated is True
     assert bridge_process.killed is False
     assert unrelated.terminated is False
@@ -810,7 +832,7 @@ def test_bridge_start_interrupt_reaps_recorded_process(monkeypatch, tmp_path):
     with pytest.raises(KeyboardInterrupt):
         bridge.start()
 
-    assert bridge.process_id == 41005
+    assert bridge.process_id is None
     assert bridge_process.terminated is True
     assert bridge_process.killed is False
     assert connection.close_calls == [False]
@@ -860,7 +882,7 @@ def test_bridge_init_race_does_not_close_another_owners_connection(
     assert labels[0] != "default"
     assert other_connection.close_calls == []
     assert global_close_calls == []
-    assert bridge.process_id == 41007
+    assert bridge.process_id is None
     assert bridge_process.terminated is True
     assert bridge_process.killed is False
 
