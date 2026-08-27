@@ -1,12 +1,16 @@
 # 项目文档索引
 
-`docs/` 是当前文档地图。当前命令以根目录 [`README.md`](../README.md) 和活跃操作指南为准；`docs/superpowers/` 与 `docs/tasks/` 分别保留历史设计决策和周任务安排，不替代当前运行说明。
+`docs/` 面向评委与使用者组织。当前命令以根目录 [`README.md`](../README.md)、
+[发布文档](release/README.md) 和本页入口为准。
 
 ## 当前入口
 
-- [项目说明、快速开始和当前验证命令](../README.md)
-- [当前分工完成情况](tasks/current-status.md)
-- [数据契约、算法接口、引擎接口和 API](interface.md)
+- [评委快速开始与当前证据状态](../README.md)
+- [发布文档总览](release/README.md)
+- [实验协议（540-run 矩阵与统计判定）](release/experiment-protocol.md)
+- [证据合同（产物字段与单位）](release/evidence-contract.md)
+- [算法扩展指南](release/algorithm-extension.md)
+- [数据契约、模块接口与架构](interface.md)
 - [部署与复现说明](deployment.md)
 - [SUMO 环境安装与版本检查](sumo_env_setup.md)
 - [操作指南](guides/)
@@ -14,25 +18,19 @@
 最小验证入口（输出目录由命令在运行时创建）：
 
 ```powershell
-python scripts/validate_all.py --output-root output/runs/validate-original
-python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
+python scripts/run_pdf_matrix.py --profile smoke --output-root output/runs/matrix-smoke
+python scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
 ```
 
-## PDF 与验收依据
+## 参考资料
 
 - [原始赛题 PDF](pdf/XH-202613_面向雄安新区“城市大脑”的车路云.pdf)
-- [IA/IB 最终验收](ia-ib-final-verification.md)：13 项检查通过，Docker live 与第二机器复现保持 `not_run`。
-- [仿真产物清理记录](ia-ib-simulation-artifact-cleanup.md)：大体积仿真结果及压缩包已删除，按复现指南重新生成。
-
-## 操作与参考资料
-
 - [20 个路口边 ID 与方向映射](edge_mapping.md)
 - [SUMO 版本迁移记录](migration_log.md)
 - [增强配置批量验证报告](batch_validate_report.md)
 - [调研与技术选型记录](notes/)
 
-## 历史设计和周任务
+## 历史设计记录
 
-- [项目总路线](总路线.md)：保留六周计划和角色安排；当前状态以分工状态页和验收记录为准。
-- [周任务书与路线图](tasks/)，以及[当前分工完成情况](tasks/current-status.md)
-- [历史设计与实施记录](superpowers/)
+- [设计与实施记录](superpowers/)：按任务归档的设计、计划与台账，仅作历史依据，
+  不替代当前运行说明。

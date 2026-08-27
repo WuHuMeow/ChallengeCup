@@ -3,662 +3,123 @@
 [![挑战杯 2026](https://img.shields.io/badge/%E6%8C%91%E6%88%98%E6%9D%AF-2026-blue)](https://www.tiaozhanbei.net)
 [![编号 XH-202613](https://img.shields.io/badge/%E7%BC%96%E5%8F%B7-XH--202613-orange)](docs/pdf/)
 [![赛道 B](https://img.shields.io/badge/%E8%B5%9B%E9%81%93-B%EF%BC%88%E7%AE%97%E6%B3%95%E8%B0%83%E4%BC%98%E5%9E%8B%EF%BC%89-green)](docs/pdf/)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python)](https://www.python.org)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)](https://www.python.org)
 [![SUMO](https://img.shields.io/badge/SUMO-1.27.1-brightgreen)](https://www.eclipse.org/sumo/)
 [![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 当前分工进度（2026-07-28）
+本项目为挑战杯 2026 参赛作品（编号 XH-202613，赛道 B：算法调优型）。针对雄安
+"窄路密网"交通特征（路口间距短、进口道容量低、排队回溢快），提出 **CA-MP
+（Capacity-Aware MaxPressure）** 信号控制算法：容量归一化压力、下游溢出门控、
+云端动态绿灯三项改进。基于 SUMO 微观仿真，在 20 个真实路口上与固定配时、经典
+MaxPressure 对比验证，形成可复现的车路云协同算法优化平台与评委入口。
 
-> 口径：只依据当前仓库中的代码、测试、验收记录和实际交付文件判断；“未完成”包含尚无直接证据、仍待外部验证或尚未形成正式交付物的事项。详细任务勾选见 [`docs/tasks/current-status.md`](docs/tasks/current-status.md)。
+## 评委快速开始
 
-| 代号 | 分工 | 当前状态 | 已完成 | 未完成或待确认 |
-|---|---|---|---|---|
-| TL | 技术负责人 | 部分完成 | 核心类型契约、算法接口、集成验证、仓库整理 | 最终集成审查、交付材料清单、答辩与提交协调 |
-| IA | 仿真基础设施 A | 基础完成 | 20 个路口本地 SUMO 验证、配置迁移、Docker 文件、部署文档 | Docker live、镜像指标、第二机器复现、提交包准备 |
-| IB | 仿真基础设施 B | 基础完成 | TraCI/Runner、云边端消息、REST API、精确指标、矩阵与恢复机制 | Docker live、第二机器复现、最终提交归档 |
-| AA | 算法 A | 部分完成 | FixedTime/Actuated 基线、测试、固定配时实跑 | 全矩阵复核、最终基线数据口径、答辩材料 |
-| AB | 算法 B | 实现完成 | CA-MP 合法相位、容量归一化、溢出门控、动态绿灯、EWMA/校准链路 | 最终性能结论、答辩口径、交付审查 |
-| EX | 实验组 | 基础完成 | 可恢复 360 组矩阵、精确指标、校准/留出分割、图表来源链路 | 重生成并归档正式全量证据，与最终报告数字逐项对齐 |
-| DA | 交付 A | 未完成 | 技术 Markdown 工作提纲 | Word/PDF 报告、PPT、实际场景演示方案、最终排版 |
-| DB | 交付 B | 部分完成 | Matplotlib 绘图接口 | 5–8 分钟演示视频；PyQt 看板为可选加分项，当前未实现 |
+环境要求：Python 3.12（3.10+ 可运行）、SUMO 1.27.1（安装与校验见
+[`docs/sumo_env_setup.md`](docs/sumo_env_setup.md)）。
 
-本项目为挑战杯 2026 参赛作品（编号 XH-202613），围绕雄安新区"城市大脑"车路云一体化场景，针对"窄路密网"交通特征（路口间距短、进口道容量低、排队回溢快），提出 **CA-MP（Capacity-Aware MaxPressure）** 信号控制算法。基于 SUMO 微观仿真平台，在 20 个真实路口上对比验证固定配时、感应控制、CA-MP 三种策略，形成可复现的车路云协同算法优化平台。
+### 1. 一键启动（原生）
 
-本仓库是团队内部研发仓库。项目 PDF 要求功能一、功能二作为共同基础完成，功能三选择一个方向深入；本项目选择赛道 B（算法调优型），以 CA-MP 的场景适配、参数调优和性能评估为主线。
-
-当前仓库保留可运行代码、20 路口配置、接口与部署说明、实验流程和验收报告。大体积仿真结果及压缩包已删除，需要时按复现指南重新生成。Docker live 与第二机器复现尚无真实证据，状态保持 `not_run`。PPT、Word 报告和演示视频将在后续评委版仓库中整理。
-
-当前 IA/IB 状态见 [`docs/ia-ib-final-verification.md`](docs/ia-ib-final-verification.md)，仿真产物清理与重新生成说明见 [`docs/ia-ib-simulation-artifact-cleanup.md`](docs/ia-ib-simulation-artifact-cleanup.md)。
-
-`master` 是稳定分支，功能改动应在独立分支完成，并通过 Pull Request 审查后合入。
-
----
-
-<a id="目录"></a>
-
-## 目录
-
-- [当前分工进度](#当前分工进度)
-- [项目概述](#项目概述)
-- [仓库导航](#仓库导航)
-- [快速开始](#快速开始)
-- [协作指南](#协作指南)
-- [项目结构](#项目结构)
-- [数据说明](#数据说明)
-- [系统架构](#系统架构)
-- [核心算法](#核心算法)
-- [实验设计](#实验设计)
-- [团队分工](#团队分工)
-- [开发计划](#开发计划)
-- [提交材料](#提交材料)
-- [许可与致谢](#许可与致谢)
-
----
-
-<a id="项目概述"></a>
-
-## 项目概述
-
-<a id="竞赛信息"></a>
-
-### 竞赛信息
-
-| 项目 | 内容 |
-|------|------|
-| 竞赛 | 挑战杯 2026"揭榜挂帅" |
-| 编号 | XH-202613 |
-| 题目 | 面向雄安新区"城市大脑"的车路云一体化协同管控算法与仿真平台研究 |
-| 出题方 | 雄安国创中心科技有限公司、中雄智图（雄安）科技有限公司 |
-| 赛道 | 功能三 赛道 B（算法调优型） |
-| 提交截止 | 2026 年 9 月 1 日（内部死线） |
-| 团队规模 | 8 人 |
-
-<a id="三大功能模块"></a>
-
-### 三大功能模块
-
-| 功能 | 核心内容 | 系统定位 |
-|------|----------|----------|
-| 功能一 | 智能交通协同管控算法的抽象设计与建模：场景建模、云-边-端数据接口设计、算法逻辑 | 设计层 |
-| 功能二 | 高保真仿真验证平台：场景构建与数据导入、算法接入适配器、可视化验证、Docker 部署；PDF 允许任一实用模块，本仓库实现通信仿真、数据/可视化和算法适配器 | 共同基础平台层 |
-| 功能三 | 经典交通管控算法的场景适配与深度优化：固定配时 -> 感应控制 -> CA-MP | 主战场 |
-
-<a id="核心创新"></a>
-
-### 核心创新（CA-MP 三项改进）
-
-| # | 改进 | 经典 MaxPressure 的问题 | CA-MP 的解法 |
-|---|------|------------------------|--------------|
-| 1 | 容量归一化压力 | 绝对排队数偏向长车道，短车道（雄安 24m 短边）被忽视 | `pressure = queue / capacity`，短车道自动获得高优先级 |
-| 2 | 溢出门控 | 窄路排队回溢堵死上游路口 | 进口道占用率 > 90% 时强制放行，防止死锁 |
-| 3 | 云端动态绿灯 | 固定绿灯时长无法适应流量波动 | `CloudPolicy` 根据全局压力周期性下发 `base_green`，边缘按压力比例动态分配 |
-
-<a id="当前状态"></a>
-
-### 当前状态
-
-功能一、功能二作为共同基础的代码链路已落地；赛道 B 的实现聚焦 CA-MP 场景适配、参数调优和性能评估：
-
-- `RunRequest -> RunService（单 worker） -> VariantBundle -> SimulationRunner` 统一单次、批量和 REST API 运行。
-- 每次运行获得独立 `run_id`，产物写入
-  `<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`，原始 `data/intersection_data/` 保持只读。
-- REST API、OpenAPI 与 Postman 契约位于 `api/`、`docs/api/openapi.json` 和
-  `docs/api/postman_collection.json`。
-- CA-MP 已使用合法整数相位、容量归一化上下游压力、下游溢出门控、安全黄灯/全红过渡、
-  动态绿灯与严格校准/留出种子分割。
-- `summary.json` 从 SUMO `tripinfo.xml` 与队列快照计算精确指标；缺失的精确量使用 JSON
-  `null`，不伪造为 `0`。
-
-**仓库与分工状态（2026-07-28）**：当前基线位于 `main` 分支，代码测试为 198 passed；
-IA/IB 的仓库实现、自动化契约、真实本地 SUMO 验证、实验矩阵和图表来源追踪已完成。
-大型仿真产物已清理，正式数值和图表需要按复现入口重新生成。Docker 实机构建/运行和第二机器复现
-是独立证据轴；当前没有真实证据时必须记录为 `not_run`。角色级完成情况见
-[`docs/tasks/current-status.md`](docs/tasks/current-status.md)。
-
----
-
-<a id="仓库导航"></a>
-
-## 仓库导航
-
-<a id="数据集"></a>
-
-### 数据集
-
-| 路径 | 说明 |
-|------|------|
-| `data/intersection_data/` | 20 个雄安路口原始数据，每个路口包含 SUMO 工程、流量与配时 Excel、高精地图 PNG |
-| `data/intersection_data/metadata/` | 路口元数据汇总（intersections.csv + intersections.yaml） |
-| `data/intersection_data.zip` | 上述路口数据的完整压缩包（66.7 MB），便于离线传输 |
-
-数据内容详见 [数据说明](#数据说明)。
-
-<a id="竞赛资料"></a>
-
-### 竞赛资料
-
-| 路径 | 说明 |
-|------|------|
-| [docs/pdf/](docs/pdf/) | 发榜单位提供的原始赛题资料，含功能要求、评分标准与提交说明 |
-
-<a id="设计文档"></a>
-
-### 设计文档
-
-| 路径 | 说明 |
-|------|------|
-| [docs/总路线.md](docs/总路线.md) | 项目总路线图（六周里程碑、团队角色、实验设计、风险应对） |
-| [docs/tasks/w1/](docs/tasks/w1/) 至 [docs/tasks/w6/](docs/tasks/w6/) | 各周个人任务书（8 人 x 6 周） |
-| [docs/interface.md](docs/interface.md) | 数据契约、模块接口与架构说明 |
-| [docs/deployment.md](docs/deployment.md) | 部署运行说明文档 |
-| [docs/sumo_env_setup.md](docs/sumo_env_setup.md) | SUMO 环境安装指南 |
-| [docs/edge_mapping.md](docs/edge_mapping.md) | 20 路口边 ID 到方向映射表 |
-| [docs/migration_log.md](docs/migration_log.md) | SUMO 版本迁移记录 |
-| [docs/batch_validate_report.md](docs/batch_validate_report.md) | 3600 步全量验证报告 |
-| [docs/w3-log-audit.md](docs/w3-log-audit.md) | W3 日志审计报告 |
-| [docs/w5-verification.md](docs/w5-verification.md) | W5 验证报告 |
-| [docs/w6-review-issues.md](docs/w6-review-issues.md) | W6 审查问题记录 |
-| [docs/README.md](docs/README.md) | 文档分类、规范入口与模块文档索引 |
-| [docs/guides/](docs/guides/) | 操作指南（11 篇）与协作规范 |
-
----
-
-<a id="快速开始"></a>
-
-## 快速开始
-
-<a id="环境要求"></a>
-
-### 环境要求
-
-- 操作系统：Windows 10/11（推荐）、Linux、macOS
-- Python：3.10 或更高版本
-- SUMO：1.27.1
-- Git
-
-<a id="安装-sumo"></a>
-
-### 安装 SUMO
-
-1. 访问 [Eclipse SUMO 官方下载页](https://www.eclipse.org/sumo/)。
-2. 下载并安装 SUMO 1.27.1。
-3. 设置环境变量 `SUMO_HOME`：
-   - Windows：`SUMO_HOME = C:\Program Files (x86)\Eclipse\Sumo`
-   - Linux/macOS：`export SUMO_HOME=/usr/share/sumo`
-4. 将 `%SUMO_HOME%\bin` 或 `$SUMO_HOME/bin` 加入 `PATH`。
-5. 验证安装：
-
-```bash
-sumo --version
-```
-
-<a id="安装-python-依赖"></a>
-
-### 安装 Python 依赖
-
-```bash
-git clone https://github.com/WuHuMeow/ChallengeCup.git
-cd ChallengeCup
+```powershell
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
-pip install -e .
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\scripts\start_judge.ps1
 ```
 
-<a id="验证安装"></a>
+启动器使用仓库 `.venv`、预检 SUMO/FastAPI/Web 资产、`/api/health` 通过后打开
+Web 控制台，诊断写入 `output/evidence/judge-launch/launcher.json`。完整选项与
+故障处理见 [`docs/deployment.md`](docs/deployment.md)。
 
-### 验证安装
-
-```bash
-python -c "import traci; print('traci', traci.__version__)"
-python -c "import pandas, numpy; print('all dependencies OK')"
-```
-
-<a id="运行最小示例"></a>
-
-### 运行最小示例
-
-路口数据已随仓库提交，位于 `data/intersection_data/`，无需额外配置路径。
+### 2. 演示与矩阵命令（秒数口径）
 
 ```powershell
-python examples/run_fixed_time.py 1
-python examples/run_ca_max_pressure.py 1 36000
-python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
-  --flow-multiplier 1.5 --seed 42 --steps 36000 --output-dir output/exp1
+# 100 秒演示（路口 1）
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile smoke --output-root output/runs/matrix-smoke
+
+# 600 秒 quick 演示（路口 1 / 11 / 16）
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
+
+# 540-run 形式矩阵（Task 22 执行并冻结前保持 not_run）
+.\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile formal `
+  --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal
 ```
 
-启动 FastAPI 服务（可选）：
+实验协议与统计判定：[`docs/release/experiment-protocol.md`](docs/release/experiment-protocol.md)。
+产物字段与单位：[`docs/release/evidence-contract.md`](docs/release/evidence-contract.md)。
 
-```bash
-uvicorn api.server:app --reload
-```
-
-规范接口统一使用 `/api/*`；静态契约见 `docs/api/openapi.json` 与
-`docs/api/postman_collection.json`。FastAPI 的 `/docs` 仅作为本地调试入口。
-
-评委演示请优先使用 `scripts\start_judge.ps1`（或 `scripts\start_judge.bat`）。它会使用仓库
-`.venv`、预检 SUMO/FastAPI/Web 资产、健康检查通过后打开内置 Web 控制台，并把诊断写入
-`output/evidence/judge-launch/launcher.json`；完整选项和故障处理见
-[`docs/deployment.md`](docs/deployment.md) 的“评委一键启动”。
-
-<a id="使用本地其他路径的数据"></a>
-
-### 使用本地其他路径的数据（可选）
-
-若需使用仓库外的路口数据，可通过环境变量覆盖：
-
-```bash
-# Windows
-set CC_DATA_ROOT=C:\path\to\路口数据
-
-# Linux/macOS
-export CC_DATA_ROOT=/path/to/路口数据
-```
-
-<a id="验证命令"></a>
-
-### 验证命令
+### 3. Docker 部署（辅助路径）
 
 ```powershell
-python -m pytest tests/ -q
-python scripts/validate_all.py --output-root output/runs/validate-original
-python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
-python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full
-python scripts/package_offline.py --output-dir output/offline
+docker compose up --build                 # headless，127.0.0.1:8000
+docker compose --profile gui up --build   # container-gui，127.0.0.1:8001
 ```
 
-完整 IA/IB 验收：
+镜像契约、证据导出与 live 验证门控见 [`docker/README.md`](docker/README.md)。
 
-```powershell
-python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick
-python scripts/verify_ia_ib.py --output-root output/runs/ia-ib-full
-```
+## 支持的算法
 
-`verification.json` 对每个检查使用 `pass`、`fail`、`not_run` 三态。Docker 或第二机器没有
-真实证据时保持 `not_run`。上述目录均由命令运行时创建，当前仓库不保留历史矩阵和验收产物。
+| Canonical ID | 说明 |
+| --- | --- |
+| `fixed_time` | 固定配时基线 |
+| `classic_max_pressure` | 经典 MaxPressure 基线 |
+| `capacity_aware_max_pressure` | CA-MP：容量归一化压力 + 下游溢出门控 + 云端动态绿灯 |
 
-```bash
-bash scripts/quality/lint_check.sh
-```
+扩展新算法的接口与契约见
+[`docs/release/algorithm-extension.md`](docs/release/algorithm-extension.md)。
 
----
+## 当前证据状态
 
-<a id="协作指南"></a>
+所有检查严格使用三态：`pass`（当前代码真实执行且门禁通过）、`fail`、
+`not_run`（未执行）。
 
-## 协作指南
+| 证据轴 | 状态 |
+| --- | --- |
+| 全量 Python 测试（`pytest tests`） | pass（1889 passed, 1 skipped） |
+| Web typecheck / build / Playwright judge-flow | pass / pass / pass（15 用例） |
+| 静态 Docker 契约（Dockerfile/Compose/lock） | pass |
+| 原生 smoke/quick 真实 SUMO 运行 | pass（本机可复现，见上命令） |
+| 540-run 形式矩阵（Task 22） | not_run |
+| Docker live build/health/smoke/save-load/GUI frames/cleanup | not_run |
+| 第二环境复现（Task 23） | not_run |
 
-如果你是第一次参与本仓库，建议先阅读以下指南：
+Docker live 状态的机器实时结果以
+`output/evidence/docker/docker-status.json`（detector 输出）为准。
 
-| 指南 | 说明 |
-|------|------|
-| [Git 工作流](docs/guides/git-workflow.md) | 如何克隆仓库、提交修改、推送代码、解决冲突 |
-| [引用方法](docs/guides/citation-guide.md) | 如何规范引用文献、图片、代码和内部文档 |
-| [操作指南（11 篇）](docs/guides/README.md) | 算法配置、仿真运行、批量实验、Docker 部署等 |
+## 数据与场景
 
-### 分支策略
+| 路径 | 说明 |
+| --- | --- |
+| `data/intersection_data/` | 20 个雄安路口原始数据（SUMO 工程、流量与配时 Excel、高精地图），只读 |
+| `data/intersection_data/metadata/` | 路口元数据汇总（intersections.csv + intersections.yaml） |
 
-| 分支 | 用途 | 规则 |
-|------|------|------|
-| `master` | 稳定版本 | 只接受 PR merge，不直接 push |
-| `dev` | 开发分支 | 每周日从 master 拉新分支 |
-| `feature/<name>` | 功能分支 | 每人一个（如 `feature/algo-ca-mp`、`feature/infra-traci`） |
+导入、校验与场景变体说明见
+[`docs/guides/02-import-intersection.md`](docs/guides/02-import-intersection.md)
+与 [`docs/interface.md`](docs/interface.md)。
 
-### 同步节奏
-
-- **每日 21:00**：群内同步"今天完成 + 卡住的问题"（每人不超过 5 行）
-- **每周六 21:00**：30 分钟全体同步会
-- **卡住 > 4 小时**：群内升级到 TL
-
----
-
-<a id="项目结构"></a>
-
-## 项目结构
+## 项目结构（摘要）
 
 ```text
-ChallengeCup/
-├──                       # 主包（pip install -e . 后可直接 import）
-│   ├── core/                   # 全项目共享核心
-│   │   ├── types.py            # JointState / ControlAction / SceneMeta 等数据契约
-│   │   └── config.py           # YAML 配置加载（支持 CC_DATA_ROOT 环境变量覆盖）
-│   ├── engine/                 # 仿真引擎（SUMO + TraCI）
-│   │   ├── runner.py           # 单次仿真实验运行器
-│   │   ├── traci_bridge.py     # TraCI 批量读写桥接（JointState <-> SUMO）
-│   │   ├── collector.py        # 每 60 步状态与指标 CSV 采集
-│   │   └── configs/            # 增强版 sumocfg x20
-│   ├── scenes/                 # 场景管理
-│   │   ├── registry.py         # 20 路口元数据索引
-│   │   ├── variant.py          # 流量变体生成（1.0x / 1.5x）
-│   │   └── timing_loader.py    # 从 Excel 读取信号配时方案
-│   ├── algorithms/             # 算法库
-│   │   ├── base.py             # BaseControlAlgorithm 标准接口（ABC）
-│   │   ├── fixed_time.py       # 固定配时基线
-│   │   ├── rule_adaptive.py    # 感应控制 Actuated
-│   │   └── ca_max_pressure.py  # CA-MP 容量感知最大压力
-│   ├── cloud/                  # 云端策略层
-│   │   └── cloud_policy.py     # CloudPolicy 全局参数下发 + EWMA 预测
-│   ├── ml/                     # ML 模型模块
-│   │   ├── train.py            # EWMA 参数校准
-│   │   ├── features.py         # 特征工程
-│   │   └── evaluate.py         # 模型评估（MAE、RMSE）
-│   ├── api/                    # REST API（功能一要求）
-│   │   └── server.py           # FastAPI 应用
-│   ├── experiments/            # 实验分析框架
-│   │   ├── runner.py           # 多场景多算法交叉跑批（360 次仿真）
-│   │   └── metrics.py          # 指标计算
-│   └── visualization/          # 可视化
-│       └── plots.py            # Matplotlib 图表
-├── config/
-│   └── default.yaml            # 全局配置
-├── data/                       # 数据集
-│   ├── intersection_data/      # 20 个路口原始数据（只读）
-│   ├── intersection_data/metadata/  # 路口元数据（CSV + YAML）
-│   └── intersection_data.zip   # 路口数据压缩包
-├── examples/
-│   └── run_fixed_time.py       # 最小可运行示例
-├── scripts/
-│   ├── extract_metadata.py       # 元数据提取
-│   ├── generate_edge_mapping.py  # 边方向映射生成
-│   ├── generate_configs.py       # SUMO 配置生成
-│   ├── validate_all.py            # 快速验证
-│   ├── batch_validate.py         # 批量验证
-│   └── quality/                  # lint 与静态检查
-├── tests/                        # 扁平测试入口
-├── docs/
-│   ├── 总路线.md                  # 项目路线图
-│   ├── interface.md              # 数据契约与模块接口
-│   ├── deployment.md             # 部署说明
-│   ├── tasks/                    # W1-W6 任务书
-│   ├── guides/                   # 操作指南
-│   ├── superpowers/              # 设计规格、计划与架构图
-│   └── pdf/                      # 赛题 PDF
-├── output/                     # 运行时输出、历史归档与提交物
-├── docker/                     # 容器化部署
-│   └── Dockerfile              # ubuntu:22.04 + ppa:sumo/stable（SUMO 1.27.x）
-├── docker-compose.yml          # 单容器编排（输出挂载宿主机）
-├── pyproject.toml              # 包定义与工具配置
-├── requirements.txt
-├── LICENSE                     # MIT
-├── .gitignore
-└── README.md
+core/            共享数据契约与配置
+engine/          SUMO + TraCI 运行器、安全执行、指标采集
+scenes/          20 路口注册表、流量变体、配时加载
+algorithms/      fixed_time / classic_max_pressure / capacity_aware_max_pressure
+cloud/           云端策略（动态绿灯信封）
+api/             FastAPI REST + WebSocket + 内置 Web 控制台
+experiments/     矩阵、密封证据、配对统计
+scripts/         run_pdf_matrix / analyze_matrix / release 工具 / 启动器
+web/             React 控制台源码（构建产物经镜像内构建，不入库）
+docker/          三阶段镜像 + GUI 派生 + 依赖锁
+tests/           全量测试套件
+docs/release/    评委向发布文档（协议/证据合同/算法扩展）
 ```
-
----
-
-<a id="数据说明"></a>
-
-## 数据说明
-
-<a id="路口数据"></a>
-
-### 路口数据
-
-`data/intersection_data/` 包含 20 个雄安路口的原始数据，编号为 1 至 20。每个路口目录结构如下：
-
-```text
-intersection_data/{id}/
-├── sumo工程/
-│   ├── algorithm.py              # TraCI 启动模板（主办方提供）
-│   ├── demo_{id}.net.xml         # SUMO 路网文件（路口几何、车道、信号灯）
-│   ├── demo_{id}.rou.xml         # 车辆行驶路径（OD）
-│   ├── demo_{id}.flow.xml        # 交通流量定义（各方向到达率）
-│   ├── demo_{id}.turn.xml        # 转向比例定义
-│   └── demo_{id}.sumocfg         # SUMO 仿真配置（步长、输出）
-├── 路口数据/
-│   └── demo_{id}流量和交叉口配时方案.xlsx
-└── 高精地图/                      # 路口 11 为 "高清地图"，已做兼容处理
-    └── demo_{id}.png
-```
-
-<a id="数据内容"></a>
-
-### 数据内容
-
-| 数据类型 | 文件 | 用途 |
-|----------|------|------|
-| SUMO 路网 | `.net.xml` | 路口几何、车道数、信号灯相位逻辑 |
-| 车辆路径 | `.rou.xml` | 车辆 OD 与行驶路径 |
-| 交通流量 | `.flow.xml` | 车辆在各方向的到达率 |
-| 转向比例 | `.turn.xml` | 车辆在路口的左转、直行、右转比例 |
-| 仿真配置 | `.sumocfg` | SUMO 运行参数（步长 1s 或 0.1s） |
-| 流量与配时 | `.xlsx` | 早、平、晚高峰流量统计与三段信号配时方案 |
-| 高精地图 | `.png` | 路口可视化底图 |
-
-<a id="数据差异要点"></a>
-
-### 数据差异要点
-
-| 特征 | 说明 |
-|------|------|
-| SUMO 版本 | 原始数据使用多个版本；项目验证版本为 1.27.1 |
-| 仿真步长 | 路口 1-10、14 为 1s；路口 11-13、15-20 为 0.1s |
-| 额外输出 | 路口 11-13、15-20 有 queues.xml（queue-output） |
-| 流量范围 | 183~834 辆/h/方向，各路口差异极大 |
-| 边命名 | 不统一（E0/-E1/-E2/-E3，部分有 -E4/-E5，方向映射各异） |
-| 地图目录 | 路口 11 为 `高清地图`，其余为 `高精地图`（代码已兼容） |
-
-<a id="元数据"></a>
-
-### 元数据
-
-`data/intersection_data/metadata/` 提供所有路口的关键参数汇总：
-
-- `intersections.csv`：结构化表格，供批量脚本读取
-- `intersections.yaml`：带注释的 YAML 格式，含特殊路口说明
-
----
-
-<a id="系统架构"></a>
-
-## 系统架构
-
-![统一运行容器架构与云端 / 边缘 / 终端映射](docs/architecture/images/architecture.svg)
-
-<a id="云-边-端协同框架"></a>
-
-### 云-边-端协同框架
-
-赛道 B 在单机进程内用模块边界模拟三层协同：
-
-| 层级 | 模块 | 职责 | 数据契约 |
-|------|------|------|----------|
-| 云端 | `cloud/cloud_policy.py` | 全局压力评估，EWMA 流量预测，周期性下发参数 | `PredictionResult` |
-| 边缘 | `algorithms/ca_max_pressure.py` | CA-MP 决策：容量归一化 + 溢出门控 + 动态绿灯 | `JointState` -> `ControlAction` |
-| 车端/路侧 | `engine/traci_bridge.py` | 接收控制指令写入 SUMO，反馈车辆状态 | `JointState` |
-
-<a id="仿真数据流"></a>
-
-### 仿真数据流
-
-![单次仿真控制循环与证据生成](docs/architecture/images/simulation-loop.svg)
-
-每个仿真步的完整循环：
-
-```text
-SUMO step -> TraCI 读取 -> JointState -> CA-MP 决策 -> ControlAction -> 写入 SUMO -> 下一步
-                                              ^
-                                      CloudPolicy（EWMA 修正）
-```
-
----
-
-<a id="核心算法"></a>
-
-## 核心算法
-
-<a id="ca-mp-决策逻辑"></a>
-
-### CA-MP 决策逻辑
-
-```python
-def ca_mp_decide(state: JointState, prediction: PredictionResult) -> List[ControlAction]:
-    # 1. 溢出门控：任何进口道占用率 > 90% -> 强制放行该方向
-    for approach in state.queues:
-        if approach.queue_length / approach.capacity > 0.9:
-            return [ControlAction(tls_id=state.tls_id, action_type="set_phase",
-                                  value=approach.phase, reason="溢出门控")]
-
-    # 2. 容量归一化压力：pressure = queue / capacity
-    pressures = {d: q.queue_length / q.capacity for d, q in state.queues.items()}
-    best_phase = argmax(pressures)
-    avg_pressure = mean(pressures.values())
-    duration = clamp(base_green * (pressures[best_phase] / avg_pressure), min_green, max_green)
-    return [ControlAction(tls_id=state.tls_id, action_type="set_phase_duration",
-                          value=duration, reason="CA-MP 动态绿灯")]
-```
-
-<a id="算法对比"></a>
-
-### 算法对比
-
-| 算法 | 类型 | ML 介入 | 协同层级 | 实现文件 |
-|------|------|---------|----------|----------|
-| 固定配时 | 基线 | 无 | 无协同 | `algorithms/fixed_time.py` |
-| 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `algorithms/rule_adaptive.py` |
-| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ca_max_pressure.py` |
-
-<a id="ewma-预测"></a>
-
-### EWMA 流量预测
-
-```text
-predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
-```
-
-- alpha = 0.3（平滑系数，平衡响应速度与稳定性）
-- 预测结果用于修正 CA-MP 的 pressure 计算，使决策具有前瞻性
-- 轻量级：无需 GPU，单步计算 < 0.1ms
-
----
-
-<a id="实验设计"></a>
-
-## 实验设计
-
-| 维度 | 方案 |
-|------|------|
-| 场景 | 20 个路口（主办方提供） |
-| 算法 | CA-MP / FixedTime / Actuated（3 种） |
-| 流量 | 原始流量 + 1.5 倍压力（2 档） |
-| 重复 | 每组 3 次（随机种子 42 / 123 / 456） |
-| **总计** | **20 x 3 x 2 x 3 = 360 次仿真** |
-| 统计方法 | 配对 t 检验 |
-
-### 评估指标
-
-| 指标 | 来源 | 对应评分维度 |
-|------|------|--------------|
-| 平均行程时间（s） | tripinfo | 效率 |
-| 平均排队长度（veh） | TraCI 实时读取 | 效率 |
-| 总吞吐量（veh） | 到达目的地车辆数 | 效率 |
-| 平均延误（s/veh） | 等待时间 | 效率 |
-| 停车次数（次/veh） | tripinfo.stops | 安全/舒适 |
-| 燃油消耗（mL） | tripinfo.fuelAbs | 能耗 |
-
-### 重点验证路口
-
-- **路口 16**：含 24m 短边进口道，CA-MP 容量归一化效果最显著
-- **路口 11**：0.1s 步长 + 4 方向标准十字路口，验证步长兼容性
-- **路口 1**：标准十字路口，边命名规范（E0/-E1/-E2/-E3），作为基准
-
-### 已知限制
-
-- 主办方原始路口 J2 信号方案会触发 SUMO 的 unsafe/unused-state warning；原始数据只读，
-  运行终态和警告必须同时保留。
-- Docker live 验证与第二机器复现需要对应环境的真实执行证据；没有执行时状态为 `not_run`。
-- PPT、Word 实验报告与演示视频是独立提交物，不因 IA/IB 代码验收通过而自动视为完成。
-
----
-
-<a id="团队分工"></a>
-
-## 团队分工
-
-![角色、模块与交付接口责任矩阵](docs/architecture/images/team-org.svg)
-
-| 代号 | 角色 | 人数 | 职责概述 | 主要交付 | 进度（2026-07-28） |
-|------|------|------|----------|----------|--------------------|
-| TL | Tech Lead | 1 | 架构设计、接口定义、代码合入、集成协调 | `core/types.py` + `algorithms/base.py` + 集成 | 部分完成：核心契约、接口、文档 taxonomy 与集成验证已落地；最终集成和交付审查待完成 |
-| IA | 仿真基础设施 A | 1 | SUMO 版本统一、20 路口迁移验证 | 20 路口可运行确认 | 基础实现与本地 SUMO 验证完成；Docker live、镜像指标和第二机器复现待真实证据 |
-| IB | 仿真基础设施 B | 1 | SumoSimulator 封装、TraCI 接口、云-边-端消息流 | `engine/` + 部署文档 | 仓库实现、运行隔离、REST API、精确指标、矩阵和恢复机制完成；外部环境验证待完成 |
-| AA | 算法 A | 1 | FixedTimeController + ActuatedController（基线） | `fixed_time.py` + `rule_adaptive.py` | 基线实现、测试和固定配时实跑完成；全矩阵复核和最终基线口径待完成 |
-| AB | 算法 B | 1 | CAMaxPressureController（核心创新）+ EWMA 预测 | `ca_max_pressure.py` + `cloud/` + `ml/` | CA-MP 合法相位、容量归一化、溢出门控、动态绿灯和 EWMA/校准链路完成；最终性能答辩口径待确认 |
-| EX | 实验组 | 1 | 实验矩阵设计、批量运行、指标采集、统计分析 | `experiments/` + 360 次数据 | 可恢复 360 组矩阵、精确指标、校准/留出分割与图表来源链路已实现；正式数据需重生成并与报告对齐 |
-| DA | 交付 A | 1 | 报告撰写、PPT 制作、文档排版 | 报告 + PPT | 未完成：仅有技术 Markdown 提纲；Word/PDF 报告、PPT、演示方案和排版待完成 |
-| DB | 交付 B | 1 | 可视化（Matplotlib + PyQt 看板）、视频录制剪辑 | 图表 + 视频 | 部分完成：Matplotlib 绘图接口已有；演示视频缺失，PyQt 看板未实现（可选加分项） |
-
-### 个人任务书入口
-
-| 代号 | 角色 | W1 | W2 | W3 | W4 | W5 | W6 |
-|------|------|----|----|----|----|----|----|
-| TL | Tech Lead | [W1](docs/tasks/w1/TL_tech_lead.md) | [W2](docs/tasks/w2/TL_tech_lead.md) | [W3](docs/tasks/w3/TL_tech_lead.md) | [W4](docs/tasks/w4/TL_tech_lead.md) | [W5](docs/tasks/w5/TL_tech_lead.md) | [W6](docs/tasks/w6/TL_tech_lead.md) |
-| IA | 仿真基础设施 A | [W1](docs/tasks/w1/IA_infra_a.md) | [W2](docs/tasks/w2/IA_infra_a.md) | [W3](docs/tasks/w3/IA_infra_a.md) | [W4](docs/tasks/w4/IA_infra_a.md) | [W5](docs/tasks/w5/IA_infra_a.md) | [W6](docs/tasks/w6/IA_infra_a.md) |
-| IB | 仿真基础设施 B | [W1](docs/tasks/w1/IB_infra_b.md) | [W2](docs/tasks/w2/IB_infra_b.md) | [W3](docs/tasks/w3/IB_infra_b.md) | [W4](docs/tasks/w4/IB_infra_b.md) | [W5](docs/tasks/w5/IB_infra_b.md) | [W6](docs/tasks/w6/IB_infra_b.md) |
-| AA | 算法 A | [W1](docs/tasks/w1/AA_algo_a.md) | [W2](docs/tasks/w2/AA_algo_a.md) | [W3](docs/tasks/w3/AA_algo_a.md) | [W4](docs/tasks/w4/AA_algo_a.md) | [W5](docs/tasks/w5/AA_algo_a.md) | [W6](docs/tasks/w6/AA_algo_a.md) |
-| AB | 算法 B | [W1](docs/tasks/w1/AB_algo_b.md) | [W2](docs/tasks/w2/AB_algo_b.md) | [W3](docs/tasks/w3/AB_algo_b.md) | [W4](docs/tasks/w4/AB_algo_b.md) | [W5](docs/tasks/w5/AB_algo_b.md) | [W6](docs/tasks/w6/AB_algo_b.md) |
-| EX | 实验组 | [W1](docs/tasks/w1/EX_experiment.md) | [W2](docs/tasks/w2/EX_experiment.md) | [W3](docs/tasks/w3/EX_experiment.md) | [W4](docs/tasks/w4/EX_experiment.md) | [W5](docs/tasks/w5/EX_experiment.md) | [W6](docs/tasks/w6/EX_experiment.md) |
-| DA | 交付 A | [W1](docs/tasks/w1/DA_delivery_a.md) | [W2](docs/tasks/w2/DA_delivery_a.md) | [W3](docs/tasks/w3/DA_delivery_a.md) | [W4](docs/tasks/w4/DA_delivery_a.md) | [W5](docs/tasks/w5/DA_delivery_a.md) | [W6](docs/tasks/w6/DA_delivery_a.md) |
-| DB | 交付 B | [W1](docs/tasks/w1/DB_delivery_b.md) | [W2](docs/tasks/w2/DB_delivery_b.md) | [W3](docs/tasks/w3/DB_delivery_b.md) | [W4](docs/tasks/w4/DB_delivery_b.md) | [W5](docs/tasks/w5/DB_delivery_b.md) | [W6](docs/tasks/w6/DB_delivery_b.md) |
-
-总路线图：[`docs/总路线.md`](docs/总路线.md)
-
----
-
-<a id="开发计划"></a>
-
-## 开发计划
-
-![工程复现与交付阶段门控](docs/architecture/images/timeline.svg)
-
-> 上图按当前仓库证据表达阶段门控；下表保留原始六周计划，日期和历史里程碑不替代当前完成状态。
-
-| 阶段 | 时间 | 关键产出 | 里程碑 |
-|------|------|----------|--------|
-| W1 框架搭建 | 7/20-7/26 | 接口冻结；路口 1 固定配时 + CA-MP 跑通 3600 步 | M1（7/23 接口冻结） |
-| W2 算法联调 | 7/27-8/2 | 云-边-端消息流贯通；CA-MP 对比数据；Actuated 完成 | M2（8/2 对比表） |
-| W3 全量实验 | 8/3-8/9 | 20 路口 x 3 算法 x 原始流量跑完；图表产出 | M3（8/9 180 次完成） |
-| W4 压力测试 | 8/10-8/16 | 1.5 倍流量完成；EWMA 接入；Docker 打包 | M4（8/16 360 次全量） |
-| W5 交付制作 | 8/17-8/23 | 报告初稿、PPT 初稿、视频脚本 + 录制 | 报告 v2 |
-| W6 打磨提交 | 8/24-8/31 | 全员 review、修 bug、视频定稿、最终提交 | M5（8/31 提交） |
-
----
-
-<a id="提交材料"></a>
 
 ## 提交材料
 
-根据赛题资料，2026 年 9 月 1 日前需提交：
-
-| # | 材料 | 格式 | 负责人 | 状态 |
-|---|------|------|--------|------|
-| 1 | PPT 汇报 | .pptx | DA | 待完成 |
-| 2 | 可运行仿真系统 + 源代码 | 代码仓库 | TL 集成 | 本地代码链路和自动化验证完成；最终集成审查待完成 |
-| 3 | 部署运行说明文档 | Markdown | IB | 已完成，路径为 `docs/deployment.md` |
-| 4 | 实验评估报告 | Word | DA + EX | 待完成 |
-| 5 | 演示视频（5-8 分钟） | .mp4 | DB | 待完成 |
-| 6 | 实际场景演示方案 | Word/Markdown | DA | 待完成 |
-| 7 | Dockerfile + 部署文档 | Dockerfile + docs/ | IB | 文件已完成，Docker live 构建/运行和镜像指标待验证 |
-
-压缩包命名格式：`学校全称-团队名称-车路云协同管控算法与平台-负责人姓名`
-
----
-
-<a id="许可与致谢"></a>
+正式报告、答辩 PPT、演示方案与视频脚本由冻结的形式矩阵证据生成
+（`output/deliverables/`，随 Task 24 交付）；每个数字回链到具体 run 目录。
+分支策略与协作规范见 [`docs/guides/git-workflow.md`](docs/guides/git-workflow.md)。
 
 ## 许可与致谢
 
-[MIT](LICENSE)
-
-本项目为挑战杯 2026 参赛作品，技术方案参考竞赛官方资料要求与雄安新区"城市大脑"车路云一体化场景需求。
-
-### 参考资源
-
-| 资源 | 说明 |
-|------|------|
-| [SUMO 官方文档](https://sumo.dlr.de/docs/) | 仿真平台文档 |
-| [TraCI Python 接口](https://sumo.dlr.de/docs/TraCI.html) | SUMO 实时控制接口 |
-| [MaxPressure (Varaiya 2013)](https://doi.org/10.1016/j.trb.2013.08.003) | 经典最大压力控制理论 |
-| [LibSignal](https://github.com/LibSignal/LibSignal) | 多算法统一信号控制库 |
-| [基于虚拟仿真的雄安新区道路交通系统分析](https://www.doc88.com/p-38873065731422.html) | 雄安路网特征参考 |
+MIT License，见 [LICENSE](LICENSE)。感谢 Eclipse SUMO 社区与出题方提供的
+真实路口数据。
