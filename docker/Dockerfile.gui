@@ -1,0 +1,30 @@
+# Judge GUI derivative image (Task 19.E).
+# Contract: docs/superpowers/specs/2026-08-24-docker-judge-deployment-design.md Section 3.6
+# Built FROM the headless judge service build context (see docker-compose.yml
+# additional_contexts); adds only the frozen Xvfb/Xauth/GLU runtime packages.
+FROM --platform=linux/amd64 judge_base
+
+ARG TASK19_INVOCATION_ID=manual
+LABEL io.challengecup.task19.invocation=$TASK19_INVOCATION_ID
+
+USER root
+RUN set -eux; \
+    rm -f /etc/apt/sources.list.d/debian.sources \
+    && printf '%s\n' \
+      'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260824T000000Z bookworm main' \
+      'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20260824T000000Z bookworm-updates main' \
+      'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20260824T000000Z bookworm-security main' \
+      > /etc/apt/sources.list \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install -y --no-install-recommends \
+      xvfb=2:21.1.7-3+deb12u12 \
+      xauth=1:1.1.2-1 \
+      libglu1-mesa=9.0.2-1.1 \
+    && command -v sumo-gui > /tmp/sumo-gui-path.txt \
+    && ldd "$(cat /tmp/sumo-gui-path.txt)" > /tmp/sumo-gui-ldd.txt \
+    && ! grep -F 'not found' /tmp/sumo-gui-ldd.txt \
+    && rm -rf /var/lib/apt/lists/* /tmp/sumo-gui-path.txt /tmp/sumo-gui-ldd.txt
+USER judge
+
+ENTRYPOINT ["xvfb-run", "-a", "python", "scripts/run_judge.py"]
+CMD ["--host", "0.0.0.0", "--port", "8000", "--port-attempts", "1", "--no-browser", "--gui-mode", "container-gui", "--diagnostics", "/app/output/evidence/docker/launcher.json"]

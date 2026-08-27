@@ -145,30 +145,58 @@ API 和 CLI 都调用单 worker 的 `RunService`，不会绕过统一运行目�
 
 ## 6. Docker
 
-统一入口是 `python3 -m experiments.runner`：
+原生启动器是评委首选；Docker 是无宿主依赖的辅助路径。镜像目标固定
+`linux/amd64`、Python 3.12、SUMO 1.27.1。详细契约见 `docker/README.md` 与
+`docs/superpowers/specs/2026-08-24-docker-judge-deployment-design.md`。
 
-```powershell
-docker build -t ca-mp:ia-ib -f docker/Dockerfile .
-docker run --rm `
-  -v "${PWD}/output:/app/output" `
-  ca-mp:ia-ib `
-  --intersection 1 `
-  --algorithm fixed_time `
-  --steps 100 `
-  --output-dir /app/output/runs
-```
-
-Compose：
+默认 headless 服务（内部严格 8000 端口，host 端口默认 8000）：
 
 ```powershell
 docker compose up --build
-docker compose run --rm simulation `
-  --intersection 16 --algorithm ca_maxpressure `
-  --steps 36000 --output-dir /app/output/runs
+docker compose down
 ```
 
-Dockerfile、Compose 配置和静态契约已检查；当前没有 Docker live build/run/save/load
-的真实证据，因此 Docker live 状态为 `not_run`。第二机器复现同样保持 `not_run`。
+可选 GUI profile（host 8001 → 容器 8000，`container-gui` 模式经 Xvfb 运行
+`sumo-gui`）：
+
+```powershell
+docker compose --profile gui up --build
+```
+
+直接构建必须显式指定平台：
+
+```powershell
+docker build --platform linux/amd64 -t ca-mp:latest -f docker/Dockerfile .
+# Dockerfile.gui 需要 judge_base 命名上下文（常规路径为 compose --profile gui）：
+docker build --platform linux/amd64 `
+  --build-context judge_base=docker-image://ca-mp:latest `
+  -t ca-mp-gui:latest -f docker/Dockerfile.gui .
+```
+
+证据导出与受控关闭：
+
+```powershell
+docker compose cp judge:/app/output/evidence ./output/evidence-from-container
+docker compose down
+```
+
+detector（任何主机、零变更）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/release/docker_status.py --repo-root . `
+  --output output/evidence/docker/docker-status.json
+```
+
+Docker CLI 不可用时输出 `not_run` / `docker_cli_unavailable`；CLI 与 daemon
+可用但未执行 live 时输出 `not_run` / `live_verification_not_run`。live 验证
+`python scripts/release/docker_verify.py --repo-root . --execute-live` 只能在
+明确授权且具备 Docker 的主机执行；它按 invocation ID 管理资源并拒绝任何宽泛
+清理（`docker system prune`、`docker volume prune`、`docker compose down -v`
+均为禁止命令）。
+
+当前没有 Docker live build/run/save/load/GUI frames 的真实证据，Docker live
+状态为 `not_run`；换机后的控制器实际结果以 detector 的 JSON 输出为准。第二
+机器复现同样保持 `not_run`，由 Task 23 在真实独立环境补齐。
 
 ## 7. 离线包与第二机器
 

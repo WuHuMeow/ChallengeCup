@@ -195,7 +195,7 @@ def test_invocation_arg_and_label_declared_in_final_stage() -> None:
 
 def test_compose_default_service_contract() -> None:
     services = COMPOSE["services"]
-    assert list(services) == ["judge"]
+    assert list(services) == ["judge", "judge-gui"]
     judge = services["judge"]
     assert judge["image"] == "${JUDGE_IMAGE:-ca-mp:latest}"
     assert judge["platform"] == "linux/amd64"
@@ -277,3 +277,200 @@ def test_requirements_lock_is_hash_pinned_and_covers_runtime() -> None:
         assert name and re.search(
             rf"^{re.escape(name)}==", lock, re.M | re.I
         ), f"runtime dependency missing from lock: {name}"
+
+
+DOCKERFILE_GUI_PATH = Path("docker/Dockerfile.gui")
+DOCKERFILE_GUI = (
+    DOCKERFILE_GUI_PATH.read_text(encoding="utf-8")
+    if DOCKERFILE_GUI_PATH.exists()
+    else ""
+)
+DOCKERIGNORE = Path(".dockerignore").read_text(encoding="utf-8")
+GUI_SNAPSHOT = "https://snapshot.debian.org/archive/debian/20260824T000000Z"
+
+
+def test_gui_dockerfile_depends_on_judge_base_context() -> None:
+    assert DOCKERFILE_GUI, "docker/Dockerfile.gui must exist"
+    first_from = next(
+        line.strip() for line in DOCKERFILE_GUI.splitlines() if line.strip().upper().startswith("FROM ")
+    )
+    assert first_from == "FROM --platform=linux/amd64 judge_base", first_from
+    # No mutable release tag: the GUI image is built from the judge service
+    # context, never from a floating registry reference.
+    assert not re.search(r"^FROM .*(ca-mp|judge:)\"", DOCKERFILE_GUI, re.M)
+    assert re.search(r"^ARG TASK19_INVOCATION_ID=manual$", DOCKERFILE_GUI, re.M)
+    assert re.search(
+        rf"^LABEL {INVOCATION_LABEL}=\$TASK19_INVOCATION_ID$", DOCKERFILE_GUI, re.M
+    )
+    label_pos = DOCKERFILE_GUI.index(f"LABEL {INVOCATION_LABEL}")
+    from_pos = DOCKERFILE_GUI.upper().index("FROM ")
+    assert from_pos < label_pos, "GUI image must reset the invocation label itself"
+
+
+def test_gui_dockerfile_pins_frozen_bookworm_snapshot() -> None:
+    snapshot_base = "https://snapshot.debian.org/archive"
+    sources = re.findall(r"deb \[[^\]]+\] (\S+) (\S+) main", DOCKERFILE_GUI)
+    assert len(sources) == 3, sources
+    for url, suite in sources:
+        assert url in (
+            f"{snapshot_base}/debian/{GUI_SNAPSHOT.split('/')[-1]}",
+            f"{snapshot_base}/debian-security/{GUI_SNAPSHOT.split('/')[-1]}",
+        ), url
+        assert suite.startswith("bookworm"), suite
+    assert "bookworm-security" in DOCKERFILE_GUI
+    assert "bookworm-updates" in DOCKERFILE_GUI
+    assert DOCKERFILE_GUI.count("20260824T000000Z") >= 3
+    assert "Acquire::Check-Valid-Until=false" in DOCKERFILE_GUI
+    assert "rm -f /etc/apt/sources.list.d/debian.sources" in DOCKERFILE_GUI
+    # Every frozen source line must itself carry check-valid-until=no.
+    brackets = re.findall(r"deb \[([^\]]*)\] (\S+) (\S+) main", DOCKERFILE_GUI)
+    assert len(brackets) == 3
+    for options, _url, _suite in brackets:
+        assert "check-valid-until=no" in options, options
+
+
+def test_gui_dockerfile_pins_exact_x11_packages() -> None:
+    assert "xvfb=2:21.1.7-3+deb12u12" in DOCKERFILE_GUI
+    assert "xauth=1:1.1.2-1" in DOCKERFILE_GUI
+    assert "libglu1-mesa=9.0.2-1.1" in DOCKERFILE_GUI
+    assert "--no-install-recommends" in DOCKERFILE_GUI
+
+
+def test_gui_dockerfile_fails_on_missing_libraries() -> None:
+    assert re.search(r"command -v sumo-gui", DOCKERFILE_GUI)
+    assert re.search(r"ldd \"\$\(cat /tmp/sumo-gui-path\.txt\)\"", DOCKERFILE_GUI)
+    assert re.search(r"!\s*grep -F 'not found' /tmp/sumo-gui-ldd\.txt", DOCKERFILE_GUI)
+
+
+def test_gui_entrypoint_runs_xvfb_container_gui() -> None:
+    assert (
+        'ENTRYPOINT ["xvfb-run", "-a", "python", "scripts/run_judge.py"]'
+        in DOCKERFILE_GUI
+    )
+    assert (
+        'CMD ["--host", "0.0.0.0", "--port", "8000", '
+        '"--port-attempts", "1", "--no-browser", '
+        '"--gui-mode", "container-gui", '
+        '"--diagnostics", "/app/output/evidence/docker/launcher.json"]'
+    ) in DOCKERFILE_GUI
+    assert re.search(r"^USER judge$", DOCKERFILE_GUI, re.M)
+
+
+def test_compose_gui_profile_contract() -> None:
+    gui = COMPOSE["services"]["judge-gui"]
+    assert gui["profiles"] == ["gui"]
+    assert gui["build"]["dockerfile"] == "docker/Dockerfile.gui"
+    assert gui["build"]["additional_contexts"] == {"judge_base": "service:judge"}
+    assert gui["build"]["args"]["TASK19_INVOCATION_ID"] == INVOCATION_DEFAULT
+    assert gui["image"] == "${JUDGE_GUI_IMAGE:-ca-mp-gui:latest}"
+    assert gui["platform"] == "linux/amd64"
+    assert gui["ports"] == ["127.0.0.1:8001:8000"]
+    assert gui["volumes"] == ["judge-gui-output:/app/output"]
+    assert gui["read_only"] is True and gui["init"] is True
+    assert gui["restart"] == "no" and gui["tmpfs"] == ["/tmp"]
+    assert gui["labels"][INVOCATION_LABEL] == INVOCATION_DEFAULT
+    gui_volume = COMPOSE["volumes"]["judge-gui-output"]
+    assert gui_volume["labels"][INVOCATION_LABEL] == INVOCATION_DEFAULT
+    judge_volume = COMPOSE["volumes"]["judge-output"]
+    assert judge_volume["labels"][INVOCATION_LABEL] == INVOCATION_DEFAULT
+
+
+def test_dockerignore_excludes_protected_and_generated() -> None:
+    required_exclusions = [
+        "赛题资料.7z",
+        "web/node_modules",
+        "api/static/dist",
+        ".superpowers",
+        ".agents",
+        ".worktrees",
+        "output",
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".env",
+        ".7z",
+        ".pem",
+        "playwright-report",
+        "test-results",
+    ]
+    for exclusion in required_exclusions:
+        assert exclusion in DOCKERIGNORE, f"missing .dockerignore rule: {exclusion}"
+
+
+def test_dockerignore_permits_runtime_inputs() -> None:
+    rules = [
+        line.strip()
+        for line in DOCKERIGNORE.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    banned_exact = {
+        "data",
+        "data/",
+        "data/intersection_data",
+        "data/intersection_data/",
+        "engine",
+        "engine/configs",
+        "web",
+        "web/src",
+        "web/package.json",
+        "web/package-lock.json",
+        "scripts",
+        "config",
+        "scenes",
+        "algorithms",
+        "core",
+        "*.xml",
+        "*.yaml",
+        "*.py",
+    }
+    assert not (banned_exact & set(rules)), sorted(banned_exact & set(rules))
+    # Prefix or glob exclusions that would swallow runtime trees or inputs.
+    for rule in rules:
+        for prefix in (
+            "data", "scripts", "scenes", "engine", "config", "web/s", "web/p",
+            "algorithms", "core", "ml", "experiments", "visualization",
+            "cloud",
+        ):
+            assert not rule.startswith(prefix), rule
+        # api is special: only the host-built dist may be excluded (the
+        # runtime dist is built inside the image); nothing else under api/.
+        if rule.startswith("api"):
+            assert rule in {"api/static/dist", "/api/static/dist"}, rule
+        assert not rule.endswith((".py", ".xml", ".yaml")), rule
+
+
+def test_operator_docs_carry_required_terms() -> None:
+    docs = [
+        Path("docker/README.md").read_text(encoding="utf-8"),
+        Path("docs/deployment.md").read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(docs)
+    for term in (
+        "docker_cli_unavailable",
+        "not_run",
+        "--execute-live",
+        "container-gui",
+        "linux/amd64",
+        "8001",
+        "compose cp",
+    ):
+        assert term in combined, f"operator docs missing required term: {term}"
+    for forbidden_claim in (
+        "Docker live verification: pass",
+        "gui_smoke: pass",
+        "save_load: pass",
+    ):
+        assert forbidden_claim not in combined, forbidden_claim
+    # A direct Dockerfile.gui build must supply the judge_base named context;
+    # a bare `docker build -f docker/Dockerfile.gui` cannot resolve it.
+    for doc in docs:
+        if "docker/Dockerfile.gui" not in doc:
+            continue
+        # Multiline-aware: PowerShell continuation blocks span several lines,
+        # so the per-command regex alone would be vacuous for those docs.
+        assert "--build-context judge_base=" in doc, (
+            "GUI direct-build route must supply the judge_base context"
+        )
+        for match in re.finditer(r"docker build[^\n]*docker/Dockerfile\.gui", doc):
+            command = match.group(0)
+            assert "--build-context judge_base=" in command, command

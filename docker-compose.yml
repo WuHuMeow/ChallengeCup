@@ -34,8 +34,46 @@ services:
     labels:
       io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
 
+  judge-gui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gui
+      additional_contexts:
+        judge_base: service:judge
+      args:
+        TASK19_INVOCATION_ID: ${TASK19_INVOCATION_ID:-manual}
+    image: ${JUDGE_GUI_IMAGE:-ca-mp-gui:latest}
+    platform: linux/amd64
+    profiles:
+      - gui
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - judge-gui-output:/app/output
+    tmpfs:
+      - /tmp
+    read_only: true
+    init: true
+    restart: "no"
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import json,urllib.request; body=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=5)); assert body == {"run_workers": 1, "status": "ok"}, body'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    labels:
+      io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
+
 volumes:
   judge-output:
+    labels:
+      io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
+  judge-gui-output:
     labels:
       io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
 
