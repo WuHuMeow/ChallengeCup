@@ -108,8 +108,17 @@ def test_release_copy_manifest_hashes_and_protected_status(tmp_path: Path) -> No
     assert len(on_disk["entries"]) == len(manifest.entries)
 
 
-def test_release_copy_refuses_destination_inside_repository(tmp_path: Path) -> None:
+def test_release_copy_refuses_destination_inside_copied_tree(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _official_skeleton(repo)
-    with pytest.raises(ValueError, match="outside"):
-        clean_release.build_release_copy(repo, repo / "output" / "copy")
+    (repo / "algorithms").mkdir()
+    with pytest.raises(ValueError, match="overlaps"):
+        clean_release.build_release_copy(repo, repo / "algorithms" / "copy")
+
+
+def test_release_copy_allows_gitignored_output_destination(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _official_skeleton(repo)
+    destination = repo / "output" / "release-candidate"
+    manifest = clean_release.build_release_copy(repo, destination)
+    assert manifest.entries

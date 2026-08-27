@@ -30,7 +30,10 @@ def _build_release_copy(tmp_path: Path, *, with_archive: bool = False) -> Path:
     (repo / "output").mkdir(exist_ok=True)
     (repo / "output" / "README.md").write_text("# output\n", encoding="utf-8")
     (repo / "algorithms").mkdir()
-    (repo / "algorithms" / "registry.py").write_text("# canonical ids only\n", encoding="utf-8")
+    (repo / "algorithms" / "registry.py").write_text(
+        "# canonical ids: fixed_time classic_max_pressure capacity_aware_max_pressure\n",
+        encoding="utf-8",
+    )
     (repo / "api" / "static" / "dist").mkdir(parents=True)
     (repo / "api" / "static" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
     (repo / "README.md").write_text("# judge release\n", encoding="utf-8")
@@ -68,6 +71,7 @@ def test_verify_release_copy_passes_on_clean_candidate(tmp_path: Path) -> None:
         "public_entrypoints",
         "no_internal_files",
         "no_stale_algorithms",
+        "canonical_registry_ids",
         "official_source_archive",
         "official_scene_data",
         "web_build_present",
@@ -101,12 +105,14 @@ def test_verify_release_copy_detects_internal_leak(tmp_path: Path) -> None:
     assert result.details["internal_files"] == ["docs/tasks/internal.md"]
 
 
-def test_verify_release_copy_detects_stale_algorithm(tmp_path: Path) -> None:
+def test_verify_release_copy_detects_stale_matrix_wording(tmp_path: Path) -> None:
     release = _build_release_copy(tmp_path)
-    registry = release / "algorithms" / "registry.py"
-    registry.write_text("OLD = 'ca_maxpressure'\n", encoding="utf-8")
+    guide = release / "docs" / "guides" / "old.md"
+    guide.parent.mkdir(parents=True, exist_ok=True)
+    guide.write_text("python scripts/run_pdf_matrix.py --quick\n", encoding="utf-8")
     result = verify_package.verify_release_copy(release)
     assert result.checks["no_stale_algorithms"] == "fail"
+    assert result.details["stale_algorithm_files"] == ["docs/guides/old.md"]
 
 
 def test_verify_release_copy_detects_broken_doc_boundary(tmp_path: Path) -> None:

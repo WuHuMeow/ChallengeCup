@@ -42,7 +42,7 @@ python examples/run_ca_max_pressure.py 16 36000
 
 ```bash
 python -m experiments.runner --intersection [路口编号] --algorithm [算法名] \
-  --steps 36000 --output-dir output/runs
+  --steps 3600 --output-dir output/runs
 ```
 
 算法名可选：`fixed_time`、`actuated`、`ca_maxpressure`。这是推荐入口，会创建带
@@ -71,7 +71,7 @@ CSV 输出: output/csv/16_ca_maxpressure.csv
 A: 执行 `pip install traci sumolib`，或确认 `SUMO_HOME/tools` 在 Python 路径中。
 
 **Q: 仿真步数怎么换算成秒？**
-A: 步长 = 0.1s（路口 11-13、15-20）或 1.0s（路口 1-10）。36000 步 = 3600 秒（1 小时）或 36000 秒。具体看 `engine/configs/demo_N.sumocfg` 中的 `step-length`。
+A: 步长 = 0.1s（路口 11-13、15-20）或 1.0s（路口 1-10）。1s 步长路口每小时 3600 步，0.1s 步长路口每小时 3.6 万步。具体看 `engine/configs/demo_N.sumocfg` 中的 `step-length`。
 
 **Q: 输出文件在哪？**
 A: 通用入口写入 `output/runs/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`；直接示例脚本

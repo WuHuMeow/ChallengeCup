@@ -54,6 +54,8 @@ RELEASE_COPY_DIRECTORIES: tuple[str, ...] = (
     "docs/release",
     "docs/api",
     "docs/guides",
+    "docs/notes",
+    "docs/pdf",
 )
 RELEASE_COPY_FILES: tuple[str, ...] = (
     "README.md",
@@ -72,6 +74,9 @@ RELEASE_COPY_FILES: tuple[str, ...] = (
     "docs/deployment.md",
     "docs/sumo_env_setup.md",
     "docs/interface.md",
+    "docs/edge_mapping.md",
+    "docs/migration_log.md",
+    "docs/batch_validate_report.md",
     "docs/README.md",
     "output/README.md",
     "scripts/start_judge.ps1",
@@ -180,8 +185,20 @@ def build_release_copy(repo_root: Path, destination: Path) -> ReleaseManifest:
     """Copy only allowlisted files plus built assets into ``destination``."""
     repo_root = repo_root.resolve()
     destination = destination.resolve()
-    if destination == repo_root or repo_root in destination.parents:
-        raise ValueError("release destination must be outside the repository tree")
+    # The destination may live under output/ (gitignored); what must never
+    # happen is writing INTO a tree that the copier reads from.
+    copied_roots = [repo_root / rel for rel in (*RELEASE_COPY_DIRECTORIES,)]
+    copied_roots += [repo_root / rel for rel in RELEASE_COPY_FILES]
+    copied_roots.append(repo_root / RELEASE_COPY_BUILT_ASSETS)
+    copied_roots.append(repo_root / SOURCE_ARCHIVE)
+    for source_root in copied_roots:
+        if not source_root.exists():
+            continue
+        source_resolved = source_root.resolve()
+        if destination == source_resolved or source_resolved in destination.parents:
+            raise ValueError(
+                f"release destination overlaps a copied source tree: {source_root}"
+            )
     manifest = ReleaseManifest(
         root=repo_root.name,
         generated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ"),

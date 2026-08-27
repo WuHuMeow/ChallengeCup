@@ -296,16 +296,16 @@ deprecated 兼容端点。
 
 ```powershell
 python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
-  --flow-multiplier 1.5 --seed 42 --steps 36000 `
+  --flow-multiplier 1.25 --seed 42 --steps 7200 `
   --output-dir output/runs
 ```
 
 PDF 矩阵：
 
 ```powershell
-python scripts/run_pdf_matrix.py --quick `
+python scripts/run_pdf_matrix.py --profile quick `
   --output-root output/runs/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 `
+python scripts/run_pdf_matrix.py --profile formal --duration-seconds 3600 `
   --output-root output/runs/matrix-full
 ```
 

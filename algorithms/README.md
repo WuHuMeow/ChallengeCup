@@ -52,9 +52,9 @@ name
 `holdout_summary.json`。
 
 ```powershell
-python scripts/run_pdf_matrix.py --quick --tune `
+python scripts/run_pdf_matrix.py --profile quick `
   --output-root output/runs/tuning-quick
-python scripts/run_pdf_matrix.py --steps 36000 `
+python scripts/run_pdf_matrix.py --profile formal --duration-seconds 3600 --warmup-seconds 600 `
   --output-root output/runs/matrix-full
 ```
 

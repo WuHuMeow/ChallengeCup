@@ -26,7 +26,7 @@ python scripts/batch_validate.py --output-root output/runs/validate-enhanced --n
 
 ## 参考资料
 
-- [原始赛题 PDF](pdf/XH-202613_面向雄安新区“城市大脑”的车路云.pdf)
+- [原始赛题 PDF](pdf/)（含 XH-202613 题目与评分说明）
 - [20 个路口边 ID 与方向映射](edge_mapping.md)
 - [SUMO 版本迁移记录](migration_log.md)
 - [增强配置批量验证报告](batch_validate_report.md)
@@ -34,5 +34,5 @@ python scripts/batch_validate.py --output-root output/runs/validate-enhanced --n
 
 ## 历史设计记录
 
-- [设计与实施记录](superpowers/)：按任务归档的设计、计划与台账，仅作历史依据，
-  不替代当前运行说明。
+- 内部设计与实施记录（`docs/superpowers/`，仅仓库内保留，不随发布副本分发）
+  按任务归档设计、计划与台账，仅作历史依据，不替代当前运行说明。

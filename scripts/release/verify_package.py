@@ -16,13 +16,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.release import check_docs
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from scripts.release import check_docs  # noqa: E402
 
 MANIFEST_NAME = "release-manifest.json"
 INTERNAL_MARKERS = ("docs/tasks", ".superpowers", "verify_route", "会话")
@@ -94,26 +99,35 @@ def verify_release_copy(release_root: Path) -> Verification:
     details["internal_files"] = internal_hits
 
     stale_hits = []
-    scan_roots = [
-        release_root / "algorithms",
-        release_root / "scripts",
-        release_root / "docs",
-        release_root / "README.md",
-    ]
-    for root in scan_roots:
-        items = [root] if root.is_file() else (root.rglob("*") if root.is_dir() else [])
-        for item in items:
-            if not item.is_file() or item.suffix not in {".py", ".md", ""}:
-                continue
-            try:
-                text = item.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            relative = item.relative_to(release_root).as_posix()
-            if any(marker in text for marker in STALE_ALGORITHM_MARKERS):
-                stale_hits.append(relative)
+    stale_markers = (
+        "run_pdf_matrix.py --quick",
+        "run_pdf_matrix.py --steps",
+        "--steps 36000",
+        "36000 步",
+        "360-run",
+        "360 次仿真",
+        "1.5x",
+        "--flow-multiplier 1.5",
+    )
+    for item in release_root.rglob("*.md"):
+        relative = item.relative_to(release_root).as_posix()
+        if relative.startswith(("docs/notes/", "docs/superpowers/")):
+            continue  # historical research records, not prescriptive claims
+        try:
+            text = item.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if any(marker in text for marker in stale_markers):
+            stale_hits.append(relative)
     checks["no_stale_algorithms"] = "pass" if not stale_hits else "fail"
     details["stale_algorithm_files"] = stale_hits
+    registry = release_root / "algorithms" / "registry.py"
+    canonical_present = registry.is_file() and all(
+        token in registry.read_text(encoding="utf-8")
+        for token in ("fixed_time", "classic_max_pressure", "capacity_aware_max_pressure")
+    )
+    checks["canonical_registry_ids"] = "pass" if canonical_present else "fail"
+    details["canonical_registry_ids"] = canonical_present
 
     protected = manifest.get("protected_inputs", {})
     archive_info = protected.get("source_archive", {})

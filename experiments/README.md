@@ -17,7 +17,7 @@
 
 ```powershell
 python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
-  --flow-multiplier 1.5 --seed 42 --steps 3600 --output-dir output/runs/exp1
+  --flow-multiplier 1.25 --seed 42 --steps 3600 --output-dir output/runs/exp1
 ```
 
 ```python

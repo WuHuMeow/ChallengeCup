@@ -28,8 +28,7 @@ docker compose up
 ### 指定路口和算法
 
 ```bash
-docker compose run --rm simulation \
-  --intersection 16 --algorithm ca_maxpressure --steps 36000 \
+docker compose up --build \
   --output-dir /app/output/runs
 ```
 
@@ -37,7 +36,7 @@ docker compose run --rm simulation \
 
 ```bash
 docker run --rm -v "${PWD}/output:/app/output" ca-mp:latest \
-  --intersection 16 --algorithm ca_maxpressure --steps 36000 \
+  # 运行参数经 /api/runs 下发，见 docker/README.md
   --output-dir /app/output/runs
 ```
 
@@ -68,7 +67,7 @@ A: 首次构建需下载 SUMO PPA 包（约 500MB）。后续构建有缓存，�
 
 **Q: 想跑 CA-MP 而不是固定配时？**
 A: 镜像入口是 `python3 -m experiments.runner`，按上面的命令传入
-`--algorithm ca_maxpressure`，无需修改镜像或进入容器。
+运行参数经 REST API（`/api/runs`）或 Compose 环境变量下发，无需修改镜像或进入容器。
 
 **Q: Windows 下路径问题？**
 A: 确保使用 Docker Desktop for Windows，volume 映射使用正斜杠。
