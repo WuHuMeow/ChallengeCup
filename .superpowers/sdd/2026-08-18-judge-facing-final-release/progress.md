@@ -1146,3 +1146,35 @@
   `git status --short --untracked-files=no` 干净；保护 diff 为空。
 - Step 11/12：报告与台账改写为 complete；本提交即 Step 12 完成元数据
   （仅 report/progress 两文件）。
+
+## Task 20-23 换机执行 checkpoint (2026-08-28)
+
+- Task 20 提交 `8528e87` (`docs: publish judge-facing release guidance`)：
+  根 README 全量重写为评委口径（快速开始/秒数矩阵命令/证据三态表/canonical
+  算法 ID），新增 `docs/release/` 四份文档（协议/证据合同/算法扩展/总览）、
+  `scripts/release/check_docs.py` 边界检查器与 `tests/test_release_docs.py`
+  （17 passed）。边界扫描从 110 违规清零；output/README.md 检查已合规零改动。
+  Task 20 计划文档随该提交入库。
+- Task 21 提交 `8e121bf` (`chore: add recoverable final release cleanup`)：
+  `scripts/release/clean_release.py`（plan_cleanup/apply_cleanup/
+  build_release_copy，fail-closed 保护检查先于存在性检查）+ 7 项安全测试
+  （含 output_policy 回归共 34 passed）。发布副本含官方源归档（存在时）与
+  163 文件官方场景数据；目的地强制在仓库树之外。
+- Task 23 工具提前落地 提交 `833779f`（verify_package + 测试 6 passed）：
+  manifest 哈希复核/入口/内部文件/旧算法拼写/官方源（绑定 manifest 记录
+  哈希；冻结哈希门禁留在打包主机保护门禁）/Web 构建/文档边界。
+- **Task 22 quick 档暴露真实缺陷（staged 纪律的价值）**：54 runs 中 18
+  completed、36 failed——全部 `classic_maxpressure` 与
+  `capacity_aware_maxpressure` 因变体信号程序缺少 1 秒全红清空被安全执行器
+  fail-closed 拒绝（`unsafe_startup_program`）。根因：
+  `scenes/variant.py::_write_signal_additional` 从 net.xml 的 tlLogic 拷贝
+  相位（无全红），而 fixed_time 使用 Excel 标准计划（含全红）故全过。
+  test-first 修复（RED：变体程序必须保留全红清空）→ 变体程序改由
+  `FixedTimePlanResolver` 的验证计划派生（仅缩放绿灯），无计划场景回退
+  net 行为；旧断言按计划口径更新（38s 而非 net 的 42s）。
+  提交 `b0f500b` (`fix: derive variant signal programs from validated timing
+  plans`)。
+- Task 22 Step 1：quick `--resume` 重试 36 个失败 run 进行中；Step 2 预检
+  （validate_all 100 步 × 20 场景）并行进行；formal 540-run 的 10 分区并行
+  驱动器与合并脚本（D:\Temp\t22_*.py，不入库）已就绪。
+- Task 24 待形式矩阵冻结后启动；Task 23 runtime 验证待发布副本构建。
