@@ -1,7 +1,7 @@
-# Task 19 报告 — Docker 判定环境部署（verification_pending）
+# Task 19 报告 — Docker 判定环境部署（complete）
 
-状态：`verification_pending`（本报告按计划 Step 6/9 提交；Step 11 复审 CLEAN 后
-才改写为 complete）。
+状态：`complete`（Step 9 pending 记录 `88505c8` 提交并通过 Step 10 后改写；
+Step 12 提交本完成版本）。
 
 ## 提交链
 
@@ -83,6 +83,10 @@ cleanup。本控制器不因静态测试成功而声称任何 live pass；第二
 
 - 19.C/19.D/19.E：替代只读复审代理多轮迭代后均 **CLEAN**（本环境无 Terra/Sol
   模型路由；正式 Terra/max 复审待具备该工作流的环境补做，已在台账声明）。
+- Step 9 后补提交：双轴复审要求的源码修复（software GL 钉定 + 静态测试加固）
+  以 `56a46d9` (`fix: pin software GL and harden static contract tests`) 单独
+  入库；Step 10 post-commit focused 于该 HEAD 重跑：**988 passed, 1 skipped**
+  （62.23s），tracked 树干净（除本报告/台账），保护 diff 为空。
 - 19.F 全量 closeout 双轴复审（两个独立只读代理，各两轮）：standards 轴
   1 Important（台账缺 19.E 小节）+ 4 Minor 全部修复或采纳后 **CLEAN**；spec 轴
   1 Important（5059dc5 未记录 allowlist 修正案）+ 5 Minor 全部修复或采纳后

@@ -1135,3 +1135,13 @@
   修复/采纳 → **CLEAN**；spec 轴 1 Important（5059dc5 allowlist 修正案未记录）
   +5 Minor → 全部修复/采纳（含 `ENV LIBGL_ALWAYS_SOFTWARE=1` test-first、
   allowlist 归属按 git 实证修正）→ **CLEAN**。状态保持 verification_pending。
+- Step 9：pending 记录提交 `88505c8` (`docs: prepare Task 19 verification
+  record`)，仅含 task-19-report.md（-f）与 progress.md；staged check 与保护
+  diff 干净。
+- 复审源码修复单独入库：`56a46d9` (`fix: pin software GL and harden static
+  contract tests`)，software GL 钉定 + GUI FROM 集合相等断言 + REPO_ROOT
+  锚定 + allowlist 归属修正。
+- Step 10：post-commit focused @ `56a46d9`：988 passed, 1 skipped（62.23s）；
+  `git status --short --untracked-files=no` 干净；保护 diff 为空。
+- Step 11/12：报告与台账改写为 complete；本提交即 Step 12 完成元数据
+  （仅 report/progress 两文件）。
