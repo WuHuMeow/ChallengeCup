@@ -1071,12 +1071,13 @@
   --exclude-newer 2026-08-24T00:00:00Z`（官方 PyPI；阿里云镜像对 traci 元数据
   缺失、不可用于解析）。确定性验证：--no-header 双跑字节相等，且 tracked 文件
   去头后与 no-header 输出逐行相等；46 包全部带哈希（按目标平台过滤）。
-- pip 跨平台 dry-run（supplemental，计划明示可 not_run）：直连 PyPI 首跑暴露
+- pip 跨平台 dry-run（supplemental）最终为 `fail`：直连 PyPI 首跑暴露
   pip `--platform` 精确标签匹配限制（nvidia-nccl-cu13 wheel 为
-  manylinux_2_18，uv 按 glibc 兼容正确解析；lock 本身正确）。扩展标签后下载
-  至 nccl 252MB 处停滞，按计划记 not_run（supplemental resolver/download-plan
-  check stalled on direct-PyPI download; uv platform-constrained dry-run
-  通过 + 确定性 lock 提供等效证据）。
+  manylinux_2_18，uv 按 glibc 兼容正确解析；lock 本身经权威元数据核对
+  无误）。扩展标签并在 46 包全部下载校验后，pip `--require-hashes` 模式对
+  wheel 元数据传递依赖（click→colorama）要求全量钉定而结构性中止——属
+  pip 与哈希锁的摩擦而非 lock 缺陷；权威校验为 uv 平台约束解析 + 确定性
+  lock（--no-header 双跑字节相等）。
 - 实现提交：多阶段 Dockerfile（web-builder → python-builder → runtime）与
   Compose `judge` 服务（named volume、read_only、tmpfs /tmp、init、restart
   "no"、30s grace、精确 JSON healthcheck、`${JUDGE_HOST:-127.0.0.1}:8000:8000`）。
