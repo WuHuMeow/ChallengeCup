@@ -8,6 +8,7 @@ ARG TASK19_INVOCATION_ID=manual
 LABEL io.challengecup.task19.invocation=$TASK19_INVOCATION_ID
 
 USER root
+ENV LIBGL_ALWAYS_SOFTWARE=1
 RUN set -eux; \
     rm -f /etc/apt/sources.list.d/debian.sources \
     && printf '%s\n' \

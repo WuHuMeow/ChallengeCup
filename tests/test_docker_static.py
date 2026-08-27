@@ -16,10 +16,11 @@ import pytest
 yaml = pytest.importorskip("yaml")
 
 
-DOCKERFILE = Path("docker/Dockerfile").read_text(encoding="utf-8")
-COMPOSE_TEXT = Path("docker-compose.yml").read_text(encoding="utf-8")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DOCKERFILE = (REPO_ROOT / "docker/Dockerfile").read_text(encoding="utf-8")
+COMPOSE_TEXT = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 COMPOSE = yaml.safe_load(COMPOSE_TEXT)
-_REQUIREMENTS_IN_PATH = Path("docker/requirements.in")
+_REQUIREMENTS_IN_PATH = REPO_ROOT / "docker/requirements.in"
 REQUIREMENTS_IN = (
     _REQUIREMENTS_IN_PATH.read_text(encoding="utf-8")
     if _REQUIREMENTS_IN_PATH.exists()
@@ -247,7 +248,7 @@ def test_requirements_in_freezes_exact_sumo_pins() -> None:
 
 
 def test_requirements_lock_is_hash_pinned_and_covers_runtime() -> None:
-    lock_path = Path("docker/requirements.lock")
+    lock_path = REPO_ROOT / "docker/requirements.lock"
     assert lock_path.exists(), "docker/requirements.lock must be committed"
     lock = lock_path.read_text(encoding="utf-8")
     for pin in ("eclipse-sumo==1.27.1", "traci==1.27.1", "sumolib==1.27.1"):
@@ -268,7 +269,7 @@ def test_requirements_lock_is_hash_pinned_and_covers_runtime() -> None:
         assert "==" in stripped or stripped.startswith("--hash="), stripped
         assert " @" not in stripped and "file://" not in stripped
     # Every runtime dependency of requirements.txt must be locked by name.
-    runtime_req = Path("requirements.txt").read_text(encoding="utf-8")
+    runtime_req = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
     for line in runtime_req.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -279,13 +280,13 @@ def test_requirements_lock_is_hash_pinned_and_covers_runtime() -> None:
         ), f"runtime dependency missing from lock: {name}"
 
 
-DOCKERFILE_GUI_PATH = Path("docker/Dockerfile.gui")
+DOCKERFILE_GUI_PATH = REPO_ROOT / "docker/Dockerfile.gui"
 DOCKERFILE_GUI = (
     DOCKERFILE_GUI_PATH.read_text(encoding="utf-8")
     if DOCKERFILE_GUI_PATH.exists()
     else ""
 )
-DOCKERIGNORE = Path(".dockerignore").read_text(encoding="utf-8")
+DOCKERIGNORE = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
 GUI_SNAPSHOT = "https://snapshot.debian.org/archive/debian/20260824T000000Z"
 
 
@@ -296,8 +297,14 @@ def test_gui_dockerfile_depends_on_judge_base_context() -> None:
     )
     assert first_from == "FROM --platform=linux/amd64 judge_base", first_from
     # No mutable release tag: the GUI image is built from the judge service
-    # context, never from a floating registry reference.
-    assert not re.search(r"^FROM .*(ca-mp|judge:)\"", DOCKERFILE_GUI, re.M)
+    # context, never from a floating registry reference.  The GUI stage has
+    # exactly one FROM and it is the judge_base context.
+    gui_from_lines = [
+        line.strip()
+        for line in DOCKERFILE_GUI.splitlines()
+        if line.strip().upper().startswith("FROM ")
+    ]
+    assert gui_from_lines == ["FROM --platform=linux/amd64 judge_base"], gui_from_lines
     assert re.search(r"^ARG TASK19_INVOCATION_ID=manual$", DOCKERFILE_GUI, re.M)
     assert re.search(
         rf"^LABEL {INVOCATION_LABEL}=\$TASK19_INVOCATION_ID$", DOCKERFILE_GUI, re.M
@@ -354,6 +361,10 @@ def test_gui_entrypoint_runs_xvfb_container_gui() -> None:
         '"--diagnostics", "/app/output/evidence/docker/launcher.json"]'
     ) in DOCKERFILE_GUI
     assert re.search(r"^USER judge$", DOCKERFILE_GUI, re.M)
+    # Design 3.6: software GL is mandatory so frames do not depend on a GPU.
+    assert re.search(
+        r"^ENV LIBGL_ALWAYS_SOFTWARE=1$", DOCKERFILE_GUI, re.M
+    )
 
 
 def test_compose_gui_profile_contract() -> None:
@@ -441,8 +452,8 @@ def test_dockerignore_permits_runtime_inputs() -> None:
 
 def test_operator_docs_carry_required_terms() -> None:
     docs = [
-        Path("docker/README.md").read_text(encoding="utf-8"),
-        Path("docs/deployment.md").read_text(encoding="utf-8"),
+        (REPO_ROOT / "docker/README.md").read_text(encoding="utf-8"),
+        (REPO_ROOT / "docs/deployment.md").read_text(encoding="utf-8"),
     ]
     combined = "\n".join(docs)
     for term in (
