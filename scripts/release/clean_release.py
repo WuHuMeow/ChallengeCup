@@ -213,6 +213,12 @@ def build_release_copy(repo_root: Path, destination: Path) -> ReleaseManifest:
     built = repo_root / RELEASE_COPY_BUILT_ASSETS
     if built.is_dir():
         copy_tree(built, destination / RELEASE_COPY_BUILT_ASSETS)
+    # The protected source archive travels with the release candidate; its
+    # digest is recorded under protected_inputs and re-verified by the
+    # packaging-host protection gate.
+    archive = repo_root / SOURCE_ARCHIVE
+    if archive.is_file():
+        shutil.copy2(archive, destination / SOURCE_ARCHIVE)
 
     for item in sorted(destination.rglob("*")):
         if not item.is_file():
