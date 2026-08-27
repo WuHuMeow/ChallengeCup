@@ -1,21 +1,45 @@
-# 单容器编排。默认运行路口 1 的 100 步固定配时基线。
-# 用法：docker compose up --build
-#       docker compose run --rm simulation --intersection 16 --algorithm ca_maxpressure
+# Judge headless service (Task 19).
+# Contract: docs/superpowers/specs/2026-08-24-docker-judge-deployment-design.md Section 3.5
+# Manual use:  docker compose up --build
+# The live verifier injects JUDGE_IMAGE / TASK19_INVOCATION_ID for scoped builds.
 services:
-  simulation:
+  judge:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: ca-mp:latest
-    init: true
+      args:
+        TASK19_INVOCATION_ID: ${TASK19_INVOCATION_ID:-manual}
+    image: ${JUDGE_IMAGE:-ca-mp:latest}
+    platform: linux/amd64
+    ports:
+      - "${JUDGE_HOST:-127.0.0.1}:8000:8000"
     volumes:
-      - ./output:/app/output
-    command:
-      - "--intersection"
-      - "1"
-      - "--algorithm"
-      - "fixed_time"
-      - "--steps"
-      - "100"
-      - "--output-dir"
-      - "/app/output/runs"
+      - judge-output:/app/output
+    tmpfs:
+      - /tmp
+    read_only: true
+    init: true
+    restart: "no"
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - 'import json,urllib.request; body=json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=5)); assert body == {"run_workers": 1, "status": "ok"}, body'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    labels:
+      io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
+
+volumes:
+  judge-output:
+    labels:
+      io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
+
+networks:
+  default:
+    labels:
+      io.challengecup.task19.invocation: "${TASK19_INVOCATION_ID:-manual}"
