@@ -1178,3 +1178,28 @@
   （validate_all 100 步 × 20 场景）并行进行；formal 540-run 的 10 分区并行
   驱动器与合并脚本（D:\Temp\t22_*.py，不入库）已就绪。
 - Task 24 待形式矩阵冻结后启动；Task 23 runtime 验证待发布副本构建。
+
+## 启动校验语义分层裁定 (2026-08-28, controller 裁定，待正式复审)
+
+- 触发：quick 档修复变体程序后，路口 11 的 12 个 MP run 仍 fail——其官方
+  Excel 计划（excel:早高峰）为多阶段结构（信号组跨阶段保持绿灯、组间仅
+  全红 2s、无黄灯直转），与 Task 8 冻结的启动程序校验模型（每组单绿灯窗口
+  + 黄 + 全红）结构性冲突。全 20 场景初扫显示多阶段结构普遍存在。
+- 裁定（分层校验）：启动程序按**来源分层**——
+  1. `plan_derived`（fixed_time 基线与流量变体程序，program value 携带
+     `source: "plan_derived"` 标记）：走新 `validate_plan_program_safety`
+     结构校验（数值正时长、≥1 服务绿相位、状态宽度一致、非空环）；
+  2. 算法作者程序（无标记，fail-closed 默认）：维持冻结的严格
+     `validate_startup_program_safety`（min_green/yellow/all-red）不变；
+  3. 运行时 set_phase 切换的清空策略（yellow/all-red 插入）不变。
+- 理由：官方配时计划是评分基线数据，SUMO 原生执行；多阶段/保护+许可相位
+  是真实路口配时的常规形态，校验模型需与其对齐；算法生成部分的安全门禁
+  语义未被削弱（分层面向不同威胁模型）。fixed_time 在路口 11 的基线不一致
+  问题（拒绝被容忍→实际运行 net 程序）同时被修复：现在全算法统一安装
+  验证过的计划程序。
+- 证据：新增 `validate_plan_program_safety` 结构校验 + executor 分层派发 +
+  plan_derived 标记（fixed_time.py、traci_bridge.py 变体动作）+ 6 项新测试
+  （多阶段计划接受/缺服务绿拒绝/非法时长拒绝/宽度不一致拒绝/executor 两向
+  派发）。全量回归见下一条记录。
+- 影响：quick 中路口 11 的 12 个失败 run 与 formal 中相应 run 将以新 run id
+  重试；Task 22 协议保持 20 路口全量口径。
