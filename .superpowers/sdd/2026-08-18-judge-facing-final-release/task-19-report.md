@@ -62,9 +62,10 @@ working-tree.patch blob 哈希（4b1f57b→d2c2d1e、71850f2→0361e2f）双向�
   待定/待补/稍后 × docker、scripts/release、两测试文件、compose、.dockerignore、
   两文档）零命中。
 - 依赖锁：uv 平台约束解析 + `--no-header` 双跑字节相等；46 包全哈希。pip 跨平台
-  dry-run（supplemental）记 `not_run`：直连 PyPI 下载至 252MB nvidia-nccl 处
-  停滞；期间实证 pip `--platform` 精确标签匹配与 uv glibc 兼容解析的差异，
-  lock 本身经权威 PyPI 元数据核对无误。
+  dry-run（supplemental）最终为 `fail`：pip `--require-hashes` 模式要求 wheel
+  元数据传递依赖也全部钉定（click→colorama），这是 pip 与哈希锁的结构性摩擦，
+  非 lock 缺陷——46 包在直连 PyPI 上均已下载并校验，`--platform` 精确标签匹配
+  与 uv glibc 兼容解析的差异亦已实证；权威校验为 uv 平台约束解析 + 确定性锁。
 
 ## Detector 当前主机结果（诚实声明）
 
