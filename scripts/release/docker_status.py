@@ -17,8 +17,8 @@ import sys
 from typing import Callable, Mapping, Sequence
 from uuid import uuid4
 
-
 SCHEMA = "judge-docker-evidence.v1"
+LIVE_VERIFIER_CONTRACT = "task19.c.live-verifier.binding-1"
 VALID_STATUSES = frozenset({"pass", "fail", "not_run"})
 PHASES = (
     "static_contract",
@@ -58,14 +58,21 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 _INVOCATION_ID_PATTERN = re.compile(r"^[0-9a-f]{12}$")
 _EMPTY_STREAM_SHA256 = hashlib.sha256(b"").hexdigest()
-_WINDOWS_DRIVE_PATH_PATTERN = re.compile(
-    r"(?i)(?<![a-z0-9+.-])[a-z]:[\\/]"
-)
+_HEALTHY_STDOUT_SHA256 = hashlib.sha256(b"healthy\n").hexdigest()
+_API_HEALTH_OK_STDOUT_SHA256 = hashlib.sha256(
+    b'{"run_workers":1,"status":"ok"}\n'
+).hexdigest()
+_WINDOWS_DRIVE_PATH_PATTERN = re.compile(r"(?i)(?<![a-z0-9+.-])[a-z]:[\\/]")
 _WINDOWS_UNC_PATH_PATTERN = re.compile(r"(?<!\\)\\\\(?:[?\\.]\\|[^\\])")
-_POSIX_ABSOLUTE_PATH_PATTERN = re.compile(
-    r"(?<![a-z0-9+./-])/(?!/)"
-)
+_POSIX_ABSOLUTE_PATH_PATTERN = re.compile(r"(?<![a-z0-9+./-])/(?!/)")
 _API_ENDPOINT_PATH_PATTERN = re.compile(r"^/api/runs(?:/[a-z0-9-]+)?$")
+_PUBLIC_CONTAINER_PATH_TOKEN_PATTERN = re.compile(
+    r"(?:^|\s)(?:[a-z0-9_.-]+:)?/app/output(?:/[^\s]*)?(?=\s|$)",
+    re.IGNORECASE,
+)
+_API_ENDPOINT_PATH_TOKEN_PATTERN = re.compile(
+    r"(?:^|\s)/api/runs(?:/[a-z0-9-]+)?(?=\s|$)"
+)
 _ENV_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)(?:^|[\s;])"
     r"(?:api[_-]?key|home|password|path|secret|token|user[_-]?name|"
@@ -85,6 +92,15 @@ _CLI_VERSION_PATTERN = re.compile(
 )
 _VERSION_TOKEN_PATTERN = re.compile(
     r"\b([0-9]+(?:\.[0-9a-z]+)+)\b", re.IGNORECASE
+)
+_STRICT_VERSION_PATTERN = re.compile(
+    r"^[0-9]+\.[0-9]+\.[0-9]+(?:[0-9A-Za-z._+-]*)?$"
+)
+_USERNAME_LIKE_VALUE_PATTERN = re.compile(
+    r"(?i)^(?:user|username|admin|root|judge)$"
+)
+_GUI_NONTERMINAL_STATES = frozenset(
+    {"queued", "starting", "running", "stopping"}
 )
 _FORBIDDEN_NORMALIZED_KEYS = frozenset(
     {
@@ -106,6 +122,8 @@ _FORBIDDEN_NORMALIZED_KEYS = frozenset(
 _EVIDENCE_KEYS = frozenset(
     {
         "schema",
+        "producer_contract",
+        "gui_requested",
         "checked_at",
         "status",
         "reason",
@@ -123,6 +141,7 @@ _EVIDENCE_KEYS = frozenset(
         *PHASES,
     }
 )
+_LEGACY_EVIDENCE_KEYS = _EVIDENCE_KEYS - {"producer_contract", "gui_requested"}
 _PLATFORM_KEYS = frozenset({"os", "architecture"})
 _COMMAND_RECORD_KEYS = frozenset(
     {
@@ -137,9 +156,14 @@ _COMMAND_RECORD_KEYS = frozenset(
         "execution",
         "api_proof",
         "failure_proof",
+        "boundary",
     }
 )
 _STATIC_CONTRACT_RECORD_KEYS = _COMMAND_RECORD_KEYS | frozenset(
+    {"render_proof"}
+)
+_LEGACY_COMMAND_RECORD_KEYS = _COMMAND_RECORD_KEYS - {"boundary"}
+_LEGACY_STATIC_CONTRACT_RECORD_KEYS = _LEGACY_COMMAND_RECORD_KEYS | frozenset(
     {"render_proof"}
 )
 _RENDER_PROOF_KEYS = frozenset(
@@ -149,9 +173,20 @@ _RENDER_FACT_KEYS = frozenset(
     {"source_stdout_sha256", "project", "profiles", "services"}
 )
 _RENDER_SERVICE_KEYS = frozenset(
-    {"name", "image", "platform", "labels", "additional_contexts"}
+    {
+        "name",
+        "image",
+        "platform",
+        "profiles",
+        "labels",
+        "additional_contexts",
+    }
 )
+_LEGACY_RENDER_SERVICE_KEYS = _RENDER_SERVICE_KEYS - {"profiles"}
 _CAPABILITY_RECORD_KEYS = _COMMAND_RECORD_KEYS | frozenset({"version"})
+_LEGACY_CAPABILITY_RECORD_KEYS = _LEGACY_COMMAND_RECORD_KEYS | frozenset(
+    {"version"}
+)
 _INVOCATION_KEYS = frozenset(
     {
         "id",
@@ -166,6 +201,43 @@ _INVOCATION_KEYS = frozenset(
         "ownership_label",
     }
 )
+_OBSERVED_IMAGE_IDENTITY_KEYS = frozenset(
+    {
+        "headless_image_id",
+        "repository_digest",
+        "config_digest",
+        "content_digest",
+    }
+)
+FAILURE_BOUNDARY_OWNERS = {
+    "collision": "static_contract",
+    "compose_contract": "static_contract",
+    "headless_build": "headless_build",
+    "image_identity": "headless_build",
+    "headless_start": "headless_health",
+    "container_health": "headless_health",
+    "api_health": "headless_health",
+    "primary_api_run": "headless_smoke",
+    "controlled_stop": "save_load",
+    "image_save": "save_load",
+    "image_load": "save_load",
+    "image_retag": "save_load",
+    "imported_create": "save_load",
+    "imported_start": "save_load",
+    "imported_health": "save_load",
+    "imported_api_run": "save_load",
+    "imported_container_create": "save_load",
+    "imported_container_start": "save_load",
+    "imported_docker_health": "save_load",
+    "imported_api_health": "save_load",
+    "imported_api_smoke": "save_load",
+    "gui_build": "gui_build",
+    "gui_start": "gui_smoke",
+    "gui_health": "gui_smoke",
+    "gui_api_run": "gui_smoke",
+    "gui_frame_capture": "gui_smoke",
+    "cleanup": "cleanup",
+}
 _OWNERSHIP_LABEL_KEYS = frozenset({"key", "value"})
 _QUICK_SMOKE_KEYS = frozenset(
     {
@@ -198,9 +270,7 @@ _API_SMOKE_PROOF_KEYS = frozenset(
     }
 )
 _API_REQUEST_KEYS = frozenset({"method", "path", "body", "body_sha256"})
-_API_REQUEST_BODY_KEYS = frozenset(
-    {"intersection_id", "algorithm", "steps"}
-)
+_API_REQUEST_BODY_KEYS = frozenset({"intersection_id", "algorithm", "steps"})
 _API_RESPONSE_KEYS = frozenset({"status", "run_id", "body_sha256"})
 _API_TERMINAL_KEYS = frozenset(
     {
@@ -233,7 +303,10 @@ _EXPECTED_RESOURCE_KEYS = frozenset(
 _OWNED_RESOURCE_KEYS = frozenset(
     {"before_cleanup", "after_cleanup", "cleanup_actions"}
 )
-_OWNED_RESOURCE_ENTRY_KEYS = frozenset({"kind", "name", "labels"})
+_OWNED_RESOURCE_ENTRY_KEYS = frozenset(
+    {"kind", "name", "labels"}
+)
+_OWNED_INVENTORY_ENTRY_KEYS = _OWNED_RESOURCE_ENTRY_KEYS | {"running"}
 _OWNED_RESOURCE_LABEL_KEYS = frozenset({OWNERSHIP_LABEL_KEY})
 _CLEANUP_ACTION_KEYS = frozenset(
     {
@@ -257,18 +330,164 @@ _SAFETY_REFUSAL_PROOF_KEYS = frozenset(
         "observed_ownership",
     }
 )
-_INTERRUPTION_PROOF_KEYS = frozenset(
-    {"kind", "interruption_kind", "phase"}
-)
+_INTERRUPTION_PROOF_KEYS = frozenset({"kind", "interruption_kind", "phase"})
+_VERIFIER_RESULT_PROOF_KEYS = {
+    "collision_detected": frozenset({"kind", "collisions"}),
+    "postcondition_mismatch": frozenset({"kind", "expected", "observed"}),
+    "local_operation_failed": frozenset({"kind", "operation"}),
+}
+_COMMAND_EXCEPTION_PROOF_KEYS = frozenset({"kind"})
+_COMMAND_EXCEPTION_KINDS = frozenset({"timeout", "os_error"})
 _OBSERVED_OWNERSHIP_RESULTS = frozenset(
     {"missing_resource", "missing_label", "mismatched_label"}
 )
 _INTERRUPTION_KINDS = frozenset({"keyboard_interrupt", "base_exception"})
-_EXPORTED_EVIDENCE_KEYS = frozenset({"status", "path", "contents"})
+_EXPORTED_EVIDENCE_KEYS = frozenset({"status", "path", "contents", "attempt"})
 _EXPORTED_CONTENT_KEYS = frozenset({"path", "sha256", "byte_length"})
-_GUI_FRAME_PROOF_KEYS = frozenset({"run_id", "container", "image", "frames"})
+_GUI_FRAME_PROOF_KEYS = frozenset(
+    {"run_id", "container", "image", "active_observation", "frames"}
+)
 _GUI_FRAME_KEYS = frozenset(
     {"path", "byte_length", "sha256", "sequence", "simulation_time"}
+)
+_STRICT_API_PROOF_KEYS = frozenset(
+    {
+        "requested_steps",
+        "run_id",
+        "terminal_status",
+        "output",
+        "container",
+        "image",
+        "request",
+        "response",
+        "terminal",
+        "observed_completion",
+    }
+)
+_STRICT_API_RESPONSE_KEYS = frozenset(
+    {"status", "run_id", "run_dir", "body_sha256"}
+)
+_STRICT_API_TERMINAL_KEYS = frozenset(
+    {
+        "method",
+        "path",
+        "status",
+        "run_id",
+        "state",
+        "run_dir",
+        "body_sha256",
+    }
+)
+_STRICT_COMPLETION_KEYS = frozenset(
+    {
+        "source",
+        "run_id",
+        "run_path",
+        "requested_steps",
+        "observed_step_count",
+        "observed_step_indices",
+        "step_log_path",
+        "step_log_sha256",
+        "hashes_path",
+        "hashes_sha256",
+    }
+)
+_STRICT_SAVE_STAGE_NAMES = (
+    "controlled_stop",
+    "image_save",
+    "image_load",
+    "image_retag",
+    "imported_container_create",
+    "imported_container_start",
+    "imported_docker_health",
+    "imported_api_health",
+    "imported_api_smoke",
+)
+_STRICT_SAVE_LOAD_KEYS = frozenset(
+    {
+        "tar_path",
+        "tar_sha256",
+        "tar_byte_length",
+        "imported_image",
+        "imported_container",
+        *_STRICT_SAVE_STAGE_NAMES,
+    }
+)
+_STRICT_OWNED_RESOURCE_KEYS = frozenset(
+    {
+        "before_cleanup",
+        "before_cleanup_complete",
+        "after_cleanup",
+        "after_cleanup_complete",
+        "cleanup_actions",
+    }
+)
+_STRICT_CLEANUP_ACTION_KEYS = frozenset(
+    {
+        "status",
+        "execution",
+        "action_kind",
+        "resource_kind",
+        "resource_name",
+        "required_label",
+        "argv",
+        "exit_code",
+        "stdout_sha256",
+        "stderr_sha256",
+        "inventory_stage",
+        "failure_proof",
+        "boundary",
+        "observed_present",
+        "observed_running",
+    }
+)
+_STRICT_CLEANUP_PHASE_KEYS = _COMMAND_RECORD_KEYS | frozenset(
+    {
+        "action_kind",
+        "resource_kind",
+        "resource_name",
+        "required_label",
+        "inventory_stage",
+    }
+)
+_STRICT_HEADLESS_HEALTH_KEYS = _COMMAND_RECORD_KEYS | frozenset(
+    {"api_health"}
+)
+_STRICT_CLEANUP_PROJECTION = (
+    "status",
+    "execution",
+    "action_kind",
+    "resource_kind",
+    "resource_name",
+    "required_label",
+    "argv",
+    "exit_code",
+    "stdout_sha256",
+    "stderr_sha256",
+    "inventory_stage",
+    "failure_proof",
+    "boundary",
+)
+_STRICT_EXPORT_KEYS = frozenset(
+    {"status", "path", "contents", "run_exports", "export_units", "attempt"}
+)
+_STRICT_EXPORT_ATTEMPT_KEYS = _COMMAND_RECORD_KEYS | frozenset(
+    {"partial_contents", "partial_contents_sha256"}
+)
+_STRICT_EXPORT_UNIT_KEYS = frozenset(
+    {
+        "kind",
+        "scope",
+        "status",
+        "source",
+        "destination",
+        "content_paths",
+        "record",
+        "observed_content",
+    }
+)
+_STRICT_RUN_EXPORT_KEYS = frozenset(
+    {"scope", "container", "image", "run_id", "output_path", "host_prefix", "sealed"}
 )
 
 
@@ -294,6 +513,14 @@ def _hash_text(value: object) -> str:
         encoded = value
     else:
         encoded = _stream_text(value).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _canonical_json_sha256(value: object) -> str:
+    """Return the hash of the canonical structured producer bytes."""
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -426,7 +653,9 @@ def _portable_path_identity(path: str) -> str:
     return path.casefold()
 
 
-def _reject_private_values(value: object, location: str = "evidence") -> None:
+def _reject_private_values(
+    value: object, location: str = "evidence", *, strict: bool = False
+) -> None:
     """Reject values that are non-JSON or disclose private host data."""
     if isinstance(value, float):
         if not math.isfinite(value):
@@ -434,22 +663,62 @@ def _reject_private_values(value: object, location: str = "evidence") -> None:
         return
     if isinstance(value, str):
         if (
-            _WINDOWS_DRIVE_PATH_PATTERN.search(value)
+            value.startswith("\\")
+            or value.startswith("//")
+            or _WINDOWS_DRIVE_PATH_PATTERN.search(
+                value
+            )
             or _WINDOWS_UNC_PATH_PATTERN.search(value)
         ):
             raise ValueError(f"{location} contains an absolute path")
+        path_parts = [part for part in re.split(r"[\\/]", value) if part]
+        if strict and (
+            any(part == ".." for part in path_parts)
+            or (
+                "." in path_parts
+                and not (
+                    value.endswith("/.")
+                    and ":/app/output/" in value
+                    and ".." not in path_parts
+                )
+            )
+        ):
+            raise ValueError(
+                f"{location} contains path traversal in a relative path"
+            )
         if (
             _POSIX_ABSOLUTE_PATH_PATTERN.search(value)
             and not _API_ENDPOINT_PATH_PATTERN.fullmatch(value)
         ):
-            raise ValueError(f"{location} contains an absolute path")
-        if (
-            _ENV_ASSIGNMENT_PATTERN.search(value)
-            or _JSON_ENVIRONMENT_KEY_PATTERN.search(value)
-        ):
+            remainder = _PUBLIC_CONTAINER_PATH_TOKEN_PATTERN.sub(" ", value)
+            remainder = _API_ENDPOINT_PATH_TOKEN_PATTERN.sub(" ", remainder)
+            if _POSIX_ABSOLUTE_PATH_PATTERN.search(remainder):
+                raise ValueError(f"{location} contains an absolute path")
+        if _ENV_ASSIGNMENT_PATTERN.search(
+            value
+        ) or _JSON_ENVIRONMENT_KEY_PATTERN.search(value):
             raise ValueError(f"{location} contains environment data")
         if _SENSITIVE_URL_QUERY_PATTERN.search(value):
             raise ValueError(f"{location} contains a secret URL query")
+        if (
+            strict
+            and location.startswith("evidence")
+            and _USERNAME_LIKE_VALUE_PATTERN.fullmatch(value.strip())
+        ):
+            public_service_name = (
+                ".static_contract.render_proof.selected_facts.services["
+                in location
+                and location.endswith("].name")
+                and value in {"judge", "judge-gui"}
+            )
+            public_headless_service = location.endswith(
+                ".headless_build.argv[5]"
+            ) or location.endswith(".headless_health.argv[7]")
+            if not (
+                value == "judge"
+                and (public_service_name or public_headless_service)
+            ):
+                raise ValueError(f"{location} contains a username-like value")
         return
     if value is None or isinstance(value, (bool, int)):
         return
@@ -459,11 +728,15 @@ def _reject_private_values(value: object, location: str = "evidence") -> None:
                 raise ValueError(f"{location} contains a non-string key")
             if _normalized_sensitive_key(key) in _FORBIDDEN_NORMALIZED_KEYS:
                 raise ValueError(f"{location} contains forbidden private data")
-            _reject_private_values(nested, f"{location}.{key}")
+            _reject_private_values(
+                nested, f"{location}.{key}", strict=strict
+            )
         return
     if isinstance(value, (list, tuple)):
         for index, nested in enumerate(value):
-            _reject_private_values(nested, f"{location}[{index}]")
+            _reject_private_values(
+                nested, f"{location}[{index}]", strict=strict
+            )
         return
     raise ValueError(f"{location} contains a non-JSON value")
 
@@ -471,11 +744,11 @@ def _reject_private_values(value: object, location: str = "evidence") -> None:
 def _validate_record(name: str, value: object) -> None:
     record = _require_mapping(value, name)
     if name in {"cli", "daemon"}:
-        allowed = _CAPABILITY_RECORD_KEYS
+        allowed = _LEGACY_CAPABILITY_RECORD_KEYS
     elif name == "static_contract":
-        allowed = _STATIC_CONTRACT_RECORD_KEYS
+        allowed = _LEGACY_STATIC_CONTRACT_RECORD_KEYS
     else:
-        allowed = _COMMAND_RECORD_KEYS
+        allowed = _LEGACY_COMMAND_RECORD_KEYS
     _require_allowed_keys(record, allowed, name)
     if name == "static_contract" and "render_proof" in record:
         render = _require_mapping(
@@ -499,10 +772,17 @@ def _validate_record(name: str, value: object) -> None:
             )
             _require_allowed_keys(
                 service,
-                _RENDER_SERVICE_KEYS,
+                _LEGACY_RENDER_SERVICE_KEYS,
                 f"render selected service {index}",
             )
     status = _require_status(record.get("status"), name)
+    boundary = record.get("boundary")
+    if boundary is not None:
+        if status != "fail" or boundary not in {
+            *FAILURE_BOUNDARY_OWNERS,
+            "evidence_export",
+        }:
+            raise ValueError(f"{name} boundary is invalid")
     started_at = _require_timestamp(record.get("started_at"), name)
     finished_at = _require_timestamp(record.get("finished_at"), name)
     if finished_at < started_at:
@@ -551,6 +831,86 @@ def _validate_record(name: str, value: object) -> None:
             )
         if not isinstance(record.get("api_proof"), Mapping):
             raise ValueError(f"{name} API result requires structured proof")
+    elif execution == "verifier_result":
+        if status != "fail" or boundary is None:
+            raise ValueError(f"{name} verifier result must be a boundary fail")
+        if "api_proof" in record:
+            raise ValueError(
+                f"{name} verifier result cannot contain API proof"
+            )
+        proof = _require_mapping(
+            record.get("failure_proof"), "verifier result proof"
+        )
+        kind = proof.get("kind")
+        allowed_proof = _VERIFIER_RESULT_PROOF_KEYS.get(kind)
+        if allowed_proof is None:
+            raise ValueError("verifier result proof kind is invalid")
+        _require_allowed_keys(proof, allowed_proof, "verifier result proof")
+        if kind == "local_operation_failed":
+            if argv or exit_code is not None:
+                raise ValueError("local verifier result must be commandless")
+            if (
+                record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+                or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+            ):
+                raise ValueError(
+                    "local verifier result must have empty streams"
+                )
+            operation = proof.get("operation")
+            if (
+                not isinstance(operation, str)
+                or not operation
+                or len(operation) > MAX_DETAIL_LENGTH
+            ):
+                raise ValueError("local verifier operation is invalid")
+        else:
+            if not argv or exit_code != 0:
+                raise ValueError(
+                    "semantic verifier result must preserve a "
+                    "successful command"
+                )
+            if kind == "postcondition_mismatch":
+                for field in ("expected", "observed"):
+                    value = proof.get(field)
+                    if (
+                        not isinstance(value, str)
+                        or not value
+                        or len(value) > MAX_DETAIL_LENGTH
+                    ):
+                        raise ValueError(
+                            "postcondition mismatch proof is invalid"
+                        )
+            elif not isinstance(proof.get("collisions"), list):
+                raise ValueError("collision proof must contain a list")
+    elif execution == "command_exception":
+        if status != "fail" or boundary is None:
+            raise ValueError("command exception must be a boundary failure")
+        if not argv or exit_code is not None:
+            raise ValueError("command exception must preserve attempted argv")
+        proof = _require_mapping(
+            record.get("failure_proof"), "command exception proof"
+        )
+        _require_allowed_keys(
+            proof, _COMMAND_EXCEPTION_PROOF_KEYS, "command exception proof"
+        )
+        if proof.get("kind") not in _COMMAND_EXCEPTION_KINDS:
+            raise ValueError("command exception proof kind is invalid")
+    elif execution == "internal_error":
+        if status != "fail" or boundary is None:
+            raise ValueError("internal error must be a boundary failure")
+        if argv or exit_code is not None:
+            raise ValueError("internal error must be commandless")
+        if (
+            record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError("internal error must have empty streams")
+        proof = _require_mapping(
+            record.get("failure_proof"), "internal error proof"
+        )
+        _require_allowed_keys(proof, {"kind"}, "internal error proof")
+        if proof.get("kind") != "internal_error":
+            raise ValueError("internal error proof kind is invalid")
     elif execution in {"safety_refusal", "interruption"}:
         if status != "fail":
             raise ValueError(f"{name} failure execution must fail")
@@ -632,6 +992,8 @@ def _validate_record(name: str, value: object) -> None:
             )
     elif exit_code == 0:
         raise ValueError(f"{name} not_run record cannot have zero exit code")
+    if boundary is not None and status != "fail":
+        raise ValueError(f"{name} boundary is fail-only")
     _reject_private_values(record, name)
 
 
@@ -678,17 +1040,19 @@ def _require_pass_record(
 
 
 def _require_cli_version_record(
-    payload: Mapping[str, object]
+    payload: Mapping[str, object],
 ) -> Mapping[str, object]:
     """Require the exact successful CLI capability query."""
     record = _require_pass_record(payload, "cli")
     if _require_docker_command(record, "cli") != ["docker", "--version"]:
         raise ValueError("cli must record the Docker version query")
+    if "version" not in record:
+        raise ValueError("cli must record the Docker version")
     return record
 
 
 def _require_daemon_info_record(
-    payload: Mapping[str, object]
+    payload: Mapping[str, object],
 ) -> Mapping[str, object]:
     """Require the exact successful daemon capability query."""
     record = _require_pass_record(payload, "daemon")
@@ -696,6 +1060,16 @@ def _require_daemon_info_record(
     if _require_docker_command(record, "daemon") != expected:
         raise ValueError("daemon must record the Docker info query")
     return record
+
+
+def _require_strict_version(value: object, name: str) -> str:
+    """Require the sanitized three-component Docker version grammar."""
+    if (
+        not isinstance(value, str)
+        or _STRICT_VERSION_PATTERN.fullmatch(value) is None
+    ):
+        raise ValueError(f"{name} version is not producer-consistent")
+    return value
 
 
 def _command_tokens(record: Mapping[str, object], name: str) -> list[str]:
@@ -720,9 +1094,7 @@ def _argv_contains(argv: Sequence[str], *tokens: str) -> bool:
     return all(token in argv for token in tokens)
 
 
-def _require_option_value(
-    argv: Sequence[str], option: str, name: str
-) -> str:
+def _require_option_value(argv: Sequence[str], option: str, name: str) -> str:
     """Return a required command option value from sanitized argv metadata."""
     try:
         index = argv.index(option)
@@ -745,7 +1117,7 @@ def _option_occurrences(
                 raise ValueError(f"{name} must record a value for {option}")
             occurrences.append((argv[index + 1], False))
         elif token.startswith(alternate_prefix):
-            value = token[len(alternate_prefix):]
+            value = token[len(alternate_prefix) :]
             if not value:
                 raise ValueError(f"{name} must record a value for {option}")
             occurrences.append((value, True))
@@ -762,9 +1134,7 @@ def _require_unique_label(
         if key != label_key:
             continue
         if inline:
-            raise ValueError(
-                f"{name} ownership label must use --label VALUE"
-            )
+            raise ValueError(f"{name} ownership label must use --label VALUE")
         labels.append(label)
     if len(labels) != 1:
         raise ValueError(
@@ -773,9 +1143,7 @@ def _require_unique_label(
     return labels[0]
 
 
-def _validate_phase_command(
-    name: str, record: Mapping[str, object]
-) -> None:
+def _validate_phase_command(name: str, record: Mapping[str, object]) -> None:
     """Ensure a claimed phase records the class of Docker action it needs."""
     if record.get("execution") == "api_result":
         if name not in {"headless_smoke", "gui_smoke"}:
@@ -797,9 +1165,15 @@ def _validate_phase_command(
     elif name == "save_load":
         if not _argv_contains(argv, "image", "save"):
             raise ValueError("save_load must record docker image save")
-    elif name == "cleanup":
-        if "rm" not in argv:
-            raise ValueError("cleanup must record an exact removal command")
+        elif name == "cleanup":
+            if "rm" not in argv and not (
+                len(argv) == 4
+                and argv[1] in {"container", "network", "volume", "image"}
+                and argv[2] == "inspect"
+            ):
+                raise ValueError(
+                    "cleanup must record an exact removal or inventory command"
+                )
 
 
 def _validate_phase_command_identity(
@@ -871,9 +1245,7 @@ def _validate_phase_command_identity(
         ]
     elif name in {"headless_smoke", "gui_smoke"}:
         target = (
-            primary_container
-            if name == "headless_smoke"
-            else gui_container
+            primary_container if name == "headless_smoke" else gui_container
         )
         if (
             argv[:3] != ["docker", "exec", target]
@@ -888,14 +1260,281 @@ def _validate_phase_command_identity(
         raise ValueError(f"{name} command is not canonical")
 
 
+def _strict_api_command(
+    container: object,
+    marker: str,
+    *,
+    image: object = "",
+    run_id: object = "",
+) -> list[str]:
+    """Return the redacted argv emitted for one strict in-container probe."""
+    scripts = {
+        "api-health": "<api-health-script>",
+        "api-smoke": "<api-smoke-script>",
+        "gui-frames": "<gui-frames-script>",
+    }
+    script = scripts.get(marker)
+    if script is None:
+        raise ValueError("unknown strict API command marker")
+    command = ["docker", "exec", str(container), "python", "-c", script]
+    if marker == "api-health":
+        command.append(marker)
+    elif marker == "api-smoke":
+        command.extend(
+            [
+                str(container),
+                str(image),
+                str(run_id),
+                marker,
+                "--run-id",
+                str(run_id),
+            ]
+        )
+    else:
+        command.extend([str(container), str(image), marker])
+    return command
+
+
+def _strict_boundary_argvs(
+    payload: Mapping[str, object],
+    name: str,
+    record: Mapping[str, object],
+) -> list[list[str]] | None:
+    """Return the exact producer argv alternatives for one strict record."""
+    invocation_id, invocation = _validate_invocation(payload)
+    project = invocation.get("compose_project")
+    primary = f"{project}-judge-1"
+    imported = f"{project}-imported-judge-1"
+    gui = f"{project}-judge-gui-1"
+    tar_path = f"output/evidence/docker/live/{invocation_id}/headless-image.tar"
+    boundary = record.get("boundary")
+    key = boundary if isinstance(boundary, str) else name
+    compose_prefix = ["docker", "compose", "--project-name", project]
+    gui_requested = payload.get("gui_requested")
+    if type(gui_requested) is not bool:
+        gui_requested = any(
+            isinstance(payload.get(phase), Mapping)
+            and payload.get(phase, {}).get("status") != "not_run"
+            for phase in ("gui_build", "gui_smoke")
+        )
+    config_prefix = [
+        *compose_prefix,
+        *(["--profile", "gui"] if gui_requested else []),
+    ]
+    values: dict[str, list[list[str]]] = {
+        "static_contract": [
+            [*config_prefix, "config", "--quiet"],
+            [*config_prefix, "config", "--format", "json"],
+        ],
+        "compose_contract": [
+            [*config_prefix, "config", "--quiet"],
+            [*config_prefix, "config", "--format", "json"],
+        ],
+        "headless_build": [[*compose_prefix, "build", "judge"]],
+        "image_identity": [
+            ["docker", "image", "inspect", invocation.get("headless_image")]
+        ],
+        "headless_start": [
+            [*compose_prefix, "up", "--detach", "--no-build", "judge"]
+        ],
+        "headless_health": [
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                primary,
+            ]
+        ],
+        "api_health": [
+            _strict_api_command(primary, "api-health"),
+        ],
+        "primary_api_run": [
+            _strict_api_command(
+                primary,
+                "api-smoke",
+                image=invocation.get("headless_image"),
+                run_id=f"headless-run-{invocation_id}",
+            )
+        ],
+        "controlled_stop": [["docker", "container", "stop", primary]],
+        "image_save": [
+            [
+                "docker",
+                "image",
+                "save",
+                "--output",
+                tar_path,
+                invocation.get("headless_image"),
+            ]
+        ],
+        "image_load": [["docker", "image", "load", "--input", tar_path]],
+        "image_retag": [
+            [
+                "docker",
+                "image",
+                "tag",
+                invocation.get("headless_image"),
+                invocation.get("imported_image"),
+            ]
+        ],
+        "imported_container_create": [
+            [
+                "docker",
+                "container",
+                "create",
+                "--name",
+                imported,
+                "--label",
+                f"{OWNERSHIP_LABEL_KEY}={invocation_id}",
+                invocation.get("imported_image"),
+            ]
+        ],
+        "imported_container_start": [
+            ["docker", "container", "start", imported]
+        ],
+        "imported_docker_health": [
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                imported,
+            ]
+        ],
+        "imported_api_health": [_strict_api_command(imported, "api-health")],
+        "imported_api_smoke": [
+            _strict_api_command(
+                imported,
+                "api-smoke",
+                image=invocation.get("imported_image"),
+                run_id=f"imported-run-{invocation_id}",
+            )
+        ],
+        "gui_build": [
+            [
+                *compose_prefix,
+                "--profile",
+                "gui",
+                "build",
+                "judge-gui",
+            ]
+        ],
+        "gui_start": [
+            [
+                *compose_prefix,
+                "--profile",
+                "gui",
+                "up",
+                "--detach",
+                "--no-build",
+                "judge-gui",
+            ]
+        ],
+        "gui_health": [
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Health.Status}}",
+                gui,
+            ],
+            _strict_api_command(gui, "api-health"),
+        ],
+        "gui_api_run": [
+            _strict_api_command(
+                gui,
+                "api-smoke",
+                image=invocation.get("gui_image"),
+                run_id=f"gui-run-{invocation_id}",
+            ),
+            _strict_api_command(
+                gui,
+                "gui-frames",
+                image=invocation.get("gui_image"),
+            ),
+        ],
+        "gui_frame_capture": [
+            _strict_api_command(
+                gui,
+                "gui-frames",
+                image=invocation.get("gui_image"),
+            )
+        ],
+    }
+    if key == "collision":
+        collisions = payload.get("name_collisions")
+        entries = collisions.get("before", []) if isinstance(collisions, Mapping) else []
+        if isinstance(entries, list):
+            candidates = []
+            for entry in entries:
+                if isinstance(entry, Mapping):
+                    kind, resource = entry.get("kind"), entry.get("name")
+                    if isinstance(kind, str) and isinstance(resource, str):
+                        candidates.append(["docker", kind, "inspect", resource])
+            if candidates:
+                values["collision"] = candidates
+    if key == "headless_health" and boundary == "headless_start":
+        key = "headless_start"
+    if key == "gui_smoke" and boundary in {
+        "gui_start", "gui_health", "gui_api_run", "gui_frame_capture"
+    }:
+        key = str(boundary)
+    if key == "save_load":
+        # The outer save/load projection is the image-save stage.
+        key = "image_save"
+    return values.get(key)
+
+
+def _validate_strict_command_identity(
+    payload: Mapping[str, object],
+    name: str,
+    record: Mapping[str, object],
+) -> None:
+    """Bind command and command-exception records to producer argv."""
+    if record.get("execution", "command") not in {
+        "command",
+        "command_exception",
+        "verifier_result",
+    }:
+        return
+    expected = _strict_boundary_argvs(payload, name, record)
+    if expected is not None and record.get("argv") not in expected:
+        raise ValueError(
+            f"{record.get('boundary')} command is not canonical in {name}"
+        )
+
+
+def _validate_strict_primary_health(
+    record: Mapping[str, object],
+    invocation: Mapping[str, object],
+) -> None:
+    """Bind successful primary Docker and API health transcripts."""
+    if record.get("status") != "pass":
+        if "api_health" in record:
+            raise ValueError("unreached primary health retains API health")
+        return
+    if record.get("stdout_sha256") != _HEALTHY_STDOUT_SHA256:
+        raise ValueError("primary Docker health stdout is not canonical")
+    api_health = _strict_record("primary API health", record.get("api_health"))
+    primary_container = f"{invocation.get('compose_project')}-judge-1"
+    if (
+        api_health.get("status") != "pass"
+        or api_health.get("execution", "command") != "command"
+        or api_health.get("argv")
+        != _strict_api_command(primary_container, "api-health")
+        or api_health.get("stdout_sha256") != _API_HEALTH_OK_STDOUT_SHA256
+    ):
+        raise ValueError("primary API health evidence is not canonical")
+
+
 def _validate_invocation(
-    payload: Mapping[str, object]
+    payload: Mapping[str, object],
 ) -> tuple[str, Mapping[str, object]]:
     invocation_id = payload.get("invocation_id")
-    if (
-        not isinstance(invocation_id, str)
-        or not _INVOCATION_ID_PATTERN.fullmatch(invocation_id)
-    ):
+    if not isinstance(
+        invocation_id, str
+    ) or not _INVOCATION_ID_PATTERN.fullmatch(invocation_id):
         raise ValueError("pass evidence requires a unique invocation ID")
     invocation = _require_mapping(payload.get("invocation"), "invocation")
     _require_allowed_keys(invocation, _INVOCATION_KEYS, "invocation")
@@ -913,9 +1552,29 @@ def _validate_invocation(
     for name, expected in expected_images.items():
         if invocation.get(name) != expected:
             raise ValueError(f"invocation {name} is invalid")
-    _require_digest(invocation.get("headless_image_id"), "headless image ID")
-    for name in ("repository_digest", "config_digest", "content_digest"):
-        _require_digest(invocation.get(name), name)
+    observed = _OBSERVED_IMAGE_IDENTITY_KEYS.intersection(invocation)
+    strict = payload.get("producer_contract") == LIVE_VERIFIER_CONTRACT
+    if strict and "content_digest" in observed:
+        raise ValueError("strict local image content digest is unavailable")
+    if strict and observed and "headless_image_id" not in observed:
+        raise ValueError("strict identity requires the inspected image ID")
+    if not strict and observed and observed != _OBSERVED_IMAGE_IDENTITY_KEYS:
+        raise ValueError(
+            "observed image identity fields must be present all-or-none"
+        )
+    if observed:
+        _require_digest(
+            invocation.get("headless_image_id"), "headless image ID"
+        )
+        for name in observed.difference({"headless_image_id"}):
+            _require_digest(invocation.get(name), name)
+    if strict and "repository_digest" in invocation:
+        if invocation.get("repository_digest") != invocation.get(
+            "headless_image_id"
+        ):
+            raise ValueError(
+                "strict repository digest is not bound to the inspected image"
+            )
 
     label = _require_mapping(
         invocation.get("ownership_label"), "ownership label"
@@ -927,6 +1586,20 @@ def _validate_invocation(
     ):
         raise ValueError("ownership label does not match invocation")
     return invocation_id, invocation
+
+
+def _require_observed_image_identity(
+    invocation: Mapping[str, object],
+    *,
+    strict: bool = False,
+) -> None:
+    required = (
+        {"headless_image_id"}
+        if strict
+        else _OBSERVED_IMAGE_IDENTITY_KEYS
+    )
+    if not required.issubset(invocation):
+        raise ValueError("observed image identity is required after build")
 
 
 def _validate_compose_build_project(
@@ -958,10 +1631,10 @@ def _validate_compose_build_profile(
         if token == "--profile" or token.startswith("--profile=")
     ]
     if gui:
-        if (
-            profile_spellings != ["--profile"]
-            or list(argv[4:6]) != ["--profile", "gui"]
-        ):
+        if profile_spellings != ["--profile"] or list(argv[4:6]) != [
+            "--profile",
+            "gui",
+        ]:
             raise ValueError(f"{name} Compose profile is invalid")
     elif profile_spellings:
         raise ValueError(f"{name} Compose profile is forbidden")
@@ -1056,6 +1729,7 @@ def _validate_render_command(
     invocation: Mapping[str, object],
     *,
     gui_scope: bool,
+    strict: bool = False,
 ) -> Mapping[str, object]:
     """Validate the independently hashed structured Compose render command."""
     static = _require_mapping(
@@ -1086,6 +1760,10 @@ def _validate_render_command(
     facts = _require_mapping(
         render.get("selected_facts"), "render selected facts"
     )
+    if strict:
+        _require_allowed_keys(facts, _RENDER_FACT_KEYS, "render selected facts")
+        if set(facts) != _RENDER_FACT_KEYS:
+            raise ValueError("render selected facts are incomplete")
     if facts.get("source_stdout_sha256") != stdout_sha256:
         raise ValueError("render selected facts stdout hash is mismatched")
     return facts
@@ -1097,6 +1775,7 @@ def _validate_render_facts(
     invocation: Mapping[str, object],
     *,
     gui_scope: bool,
+    strict: bool = False,
 ) -> dict[str, Mapping[str, object]]:
     """Bind selected Compose facts to exact invocation-owned services."""
     if facts.get("project") != invocation.get("compose_project"):
@@ -1111,6 +1790,14 @@ def _validate_render_facts(
     services: dict[str, Mapping[str, object]] = {}
     for index, value in enumerate(services_value):
         service = _require_mapping(value, f"render selected service {index}")
+        if strict:
+            _require_allowed_keys(
+                service,
+                _RENDER_SERVICE_KEYS,
+                f"render selected service {index}",
+            )
+            if set(service) != _RENDER_SERVICE_KEYS:
+                raise ValueError("render selected service fields are incomplete")
         name = service.get("name")
         if not isinstance(name, str) or name in services:
             raise ValueError("render selected services contain duplicates")
@@ -1131,6 +1818,10 @@ def _validate_render_facts(
             raise ValueError("render selected service platform is invalid")
         if service.get("labels") != expected_label:
             raise ValueError("render selected ownership label is invalid")
+        if (strict or "profiles" in service) and service.get("profiles") != (
+            ["gui"] if name == "judge-gui" else []
+        ):
+            raise ValueError("render selected service profiles are invalid")
         expected_contexts = (
             {"judge_base": "service:judge"} if name == "judge-gui" else {}
         )
@@ -1213,14 +1904,10 @@ def _validate_api_smoke_proof(
         raise ValueError(f"{name} intersection_id must be the string '1'")
     algorithm = body.get("algorithm")
     if not isinstance(algorithm, str) or algorithm != "fixed_time":
-        raise ValueError(
-            f"{name} algorithm must be the string 'fixed_time'"
-        )
+        raise ValueError(f"{name} algorithm must be the string 'fixed_time'")
     requested_steps = body.get("steps")
     if not _is_exact_integer(requested_steps, 100):
-        raise ValueError(
-            f"{name} API request must ask for exactly 100 steps"
-        )
+        raise ValueError(f"{name} API request must ask for exactly 100 steps")
     _require_sha256(request.get("body_sha256"), f"{name} request body")
 
     response = _require_mapping(proof.get("response"), f"{name} response")
@@ -1251,9 +1938,7 @@ def _validate_api_smoke_proof(
         raise ValueError(
             f"{name} API terminal must complete exactly 100 steps"
         )
-    _require_sha256(
-        terminal.get("body_sha256"), f"{name} terminal body"
-    )
+    _require_sha256(terminal.get("body_sha256"), f"{name} terminal body")
 
     summary_steps = proof.get("requested_steps")
     if not _is_exact_integer(summary_steps, 100):
@@ -1267,9 +1952,7 @@ def _validate_api_smoke_proof(
         )
         or completed_steps != list(range(1, 101))
     ):
-        raise ValueError(
-            f"{name} must prove completed steps one through 100"
-        )
+        raise ValueError(f"{name} must prove completed steps one through 100")
     if proof.get("run_id") != run_id:
         raise ValueError(f"{name} API proof run ID does not match")
     if proof.get("terminal_status") != "completed":
@@ -1385,9 +2068,7 @@ def _validate_present_api_results(payload: Mapping[str, object]) -> None:
     claims = dict(_find_api_result_claims(payload))
     if any(location not in allowed_locations for location in claims):
         raise ValueError("API result location is invalid")
-    imported_record = claims.get(
-        ("save_load_proof", "repeated_smoke")
-    )
+    imported_record = claims.get(("save_load_proof", "repeated_smoke"))
     gui_record = claims.get(("gui_smoke",))
 
     primary_phase = _require_mapping(
@@ -1536,9 +2217,7 @@ def _validate_save_load_proof(
         raise ValueError("save/load imported container is invalid")
 
     if validate_phase_summary:
-        save_record = _require_mapping(
-            payload.get("save_load"), "save/load"
-        )
+        save_record = _require_mapping(payload.get("save_load"), "save/load")
         save_argv = _require_docker_command(save_record, "save/load")
         expected_save_argv = [
             "docker",
@@ -1549,9 +2228,7 @@ def _validate_save_load_proof(
             invocation.get("headless_image"),
         ]
         if save_argv != expected_save_argv:
-            raise ValueError(
-                "save/load phase does not prove the tar artifact"
-            )
+            raise ValueError("save/load phase does not prove the tar artifact")
     records = {
         "image_load": "save/load image load",
         "image_retag": "save/load image retag",
@@ -1695,8 +2372,8 @@ def _validate_save_load_failure_proof(
         "repeated_health",
         "repeated_smoke",
     )
-    failed_index = -1 if failed_stage == "image_save" else order.index(
-        failed_stage
+    failed_index = (
+        -1 if failed_stage == "image_save" else order.index(failed_stage)
     )
     phase_argv = _command_tokens(phase, "save_load")
     for index, key in enumerate(order):
@@ -1722,10 +2399,9 @@ def _validate_save_load_failure_proof(
                 or record.get("execution", "command") != "command"
             ):
                 raise ValueError("save/load failed nested stage is invalid")
-            if (
-                _command_tokens(record, name) != phase_argv
-                or record.get("exit_code") != phase.get("exit_code")
-            ):
+            if _command_tokens(record, name) != phase_argv or record.get(
+                "exit_code"
+            ) != phase.get("exit_code"):
                 raise ValueError(
                     "save/load summary and nested failure mismatch"
                 )
@@ -1746,7 +2422,7 @@ def _validate_save_load_failure_proof(
 
 
 def _canonical_resource_names(
-    invocation: Mapping[str, object]
+    invocation: Mapping[str, object],
 ) -> dict[str, set[str]]:
     """Derive live-workflow resource names from the invocation identity."""
     compose_project = invocation.get("compose_project")
@@ -1775,8 +2451,10 @@ def _require_exact_names(
     resources: Mapping[str, object], name: str, canonical: set[str]
 ) -> set[str]:
     value = resources.get(name)
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
     ):
         raise ValueError(f"collision expected {name} is invalid")
     names = set(value)
@@ -1886,9 +2564,12 @@ def _validate_pass_command_resource_identities(
         repeated_smoke_argv = _require_docker_command(
             repeated_smoke, "save/load repeated smoke"
         )
-        if _require_option_value(
-            repeated_smoke_argv, "exec", "save/load repeated smoke"
-        ) != imported_container:
+        if (
+            _require_option_value(
+                repeated_smoke_argv, "exec", "save/load repeated smoke"
+            )
+            != imported_container
+        ):
             raise ValueError(
                 "save/load repeated smoke container is not canonical"
             )
@@ -1920,9 +2601,7 @@ def _validate_pass_command_resource_identities(
     gui_smoke = _require_mapping(payload.get("gui_smoke"), "gui smoke")
     if gui_smoke.get("status") == "pass":
         if gui_smoke.get("execution") != "api_result":
-            gui_smoke_argv = _require_docker_command(
-                gui_smoke, "gui smoke"
-            )
+            gui_smoke_argv = _require_docker_command(gui_smoke, "gui smoke")
             if "exec" in gui_smoke_argv:
                 gui_target = _require_option_value(
                     gui_smoke_argv, "exec", "gui smoke"
@@ -1951,7 +2630,9 @@ def _validate_owned_inventory_list(
     for index, candidate in enumerate(value):
         record = _require_mapping(candidate, f"{name} resource {index}")
         _require_allowed_keys(
-            record, _OWNED_RESOURCE_ENTRY_KEYS, f"{name} resource {index}"
+            record,
+            _OWNED_INVENTORY_ENTRY_KEYS,
+            f"{name} resource {index}",
         )
         kind = record.get("kind")
         resource_name = record.get("name")
@@ -1972,6 +2653,9 @@ def _validate_owned_inventory_list(
             raise ValueError(
                 "owned resource lacks the current invocation label"
             )
+        if "running" in record:
+            if kind != "container" or type(record.get("running")) is not bool:
+                raise ValueError("only container inventories may claim running")
         if resource_name in owned_names[kind]:
             raise ValueError("owned resource inventory contains duplicates")
         owned_names[kind].add(resource_name)
@@ -2002,10 +2686,9 @@ def _validate_cleanup_action_failure_proof(
         )
         if proof.get("kind") != "cleanup_ownership_refusal":
             raise ValueError("cleanup action refusal kind is invalid")
-        if (
-            proof.get("resource_kind") != action.get("resource_kind")
-            or proof.get("resource_name") != action.get("resource_name")
-        ):
+        if proof.get("resource_kind") != action.get(
+            "resource_kind"
+        ) or proof.get("resource_name") != action.get("resource_name"):
             raise ValueError("cleanup action refusal resource is mismatched")
         required_label = _require_mapping(
             proof.get("required_label"), "cleanup action refusal label"
@@ -2020,10 +2703,7 @@ def _validate_cleanup_action_failure_proof(
             or required_label.get("value") != invocation_id
         ):
             raise ValueError("cleanup action refusal label is invalid")
-        if (
-            proof.get("observed_ownership")
-            not in _OBSERVED_OWNERSHIP_RESULTS
-        ):
+        if proof.get("observed_ownership") not in _OBSERVED_OWNERSHIP_RESULTS:
             raise ValueError("cleanup action refusal observation is invalid")
         return
     _require_allowed_keys(
@@ -2071,6 +2751,7 @@ def _validate_cleanup_evidence(
     actions: dict[tuple[str, str], Mapping[str, object]] = {}
     successes: set[tuple[str, str]] = set()
     failures: list[Mapping[str, object]] = []
+    inventory_failure = False
     for index, candidate in enumerate(actions_value):
         action = _require_mapping(candidate, f"cleanup action {index}")
         _require_allowed_keys(
@@ -2084,9 +2765,6 @@ def _validate_cleanup_evidence(
         ):
             raise ValueError("cleanup action resource is not canonical")
         identity = (kind, resource_name)
-        if identity in actions:
-            raise ValueError("cleanup action identities must be unique")
-        actions[identity] = action
         required_label = _require_mapping(
             action.get("required_label"), "cleanup action required label"
         )
@@ -2105,6 +2783,18 @@ def _validate_cleanup_evidence(
             isinstance(item, str) for item in argv
         ):
             raise ValueError("cleanup action argv must be a string list")
+        inventory_argv = ["docker", kind, "inspect", resource_name]
+        is_inventory_action = argv == inventory_argv
+        if is_inventory_action:
+            if inventory_failure or candidate is not actions_value[-1]:
+                raise ValueError(
+                    "cleanup inventory failure must be the final action"
+                )
+            inventory_failure = True
+        elif identity in actions:
+            raise ValueError("cleanup action identities must be unique")
+        else:
+            actions[identity] = action
         exit_code = action.get("exit_code")
         _require_sha256(action.get("stdout_sha256"), "cleanup action stdout")
         _require_sha256(action.get("stderr_sha256"), "cleanup action stderr")
@@ -2115,6 +2805,13 @@ def _validate_cleanup_evidence(
                     "cleanup action exit code must be an exact integer"
                 )
             expected_argv = ["docker", kind, "rm", resource_name]
+            if is_inventory_action:
+                if exit_code == 0:
+                    raise ValueError(
+                        "cleanup inventory command failure must be nonzero"
+                    )
+                failures.append(action)
+                continue
             if argv != expected_argv:
                 raise ValueError(
                     "cleanup action must remove one exact resource"
@@ -2132,6 +2829,38 @@ def _validate_cleanup_evidence(
                 successes.add(identity)
             else:
                 failures.append(action)
+        elif execution == "verifier_result":
+            if exit_code != 0:
+                raise ValueError(
+                    "cleanup mismatch must preserve zero command exit"
+                )
+            expected_argv = ["docker", kind, "rm", resource_name]
+            if not is_inventory_action and argv != expected_argv:
+                raise ValueError(
+                    "cleanup mismatch must preserve its exact removal command"
+                )
+            proof = _require_mapping(
+                action.get("failure_proof"), "cleanup mismatch proof"
+            )
+            _require_allowed_keys(
+                proof,
+                _VERIFIER_RESULT_PROOF_KEYS["postcondition_mismatch"],
+                "cleanup mismatch proof",
+            )
+            if proof.get("kind") != "postcondition_mismatch":
+                raise ValueError("cleanup mismatch proof kind is invalid")
+            if is_inventory_action:
+                if proof.get("expected") != "valid_inventory_json" or (
+                    proof.get("observed") != "malformed_inventory_json"
+                ):
+                    raise ValueError(
+                        "cleanup inventory mismatch proof is invalid"
+                    )
+                failures.append(action)
+                continue
+            if identity not in before or identity not in after:
+                raise ValueError("cleanup mismatch resource must remain owned")
+            failures.append(action)
         elif execution in {"safety_refusal", "interruption"}:
             if argv or exit_code is not None:
                 raise ValueError(
@@ -2160,7 +2889,7 @@ def _validate_cleanup_evidence(
         else:
             raise ValueError("cleanup action execution is invalid")
 
-    if before.difference(after) != successes:
+    if not inventory_failure and before.difference(after) != successes:
         raise ValueError("cleanup inventory does not match successful actions")
     cleanup = _require_mapping(payload.get("cleanup"), "cleanup")
     cleanup_status = cleanup.get("status")
@@ -2172,7 +2901,7 @@ def _validate_cleanup_evidence(
             )
         return before_names
     if cleanup_status == "pass":
-        if after or set(actions) != before or failures:
+        if inventory_failure or after or set(actions) != before or failures:
             raise ValueError(
                 "cleanup pass requires complete successful actions"
             )
@@ -2238,9 +2967,7 @@ def _validate_resource_inventories(
     if expected.get("compose_project") != compose_project:
         raise ValueError("collision expected compose project is invalid")
     canonical_names = _canonical_resource_names(invocation)
-    _require_exact_names(
-        expected, "containers", canonical_names["container"]
-    )
+    _require_exact_names(expected, "containers", canonical_names["container"])
     _require_exact_names(expected, "networks", canonical_names["network"])
     _require_exact_names(expected, "volumes", canonical_names["volume"])
     _require_exact_names(expected, "images", canonical_names["image"])
@@ -2269,6 +2996,8 @@ def _validate_exported_evidence(
     )
     if _require_status(exported.get("status"), "exported evidence") != "pass":
         raise ValueError("pass evidence requires exported evidence")
+    if "attempt" in exported:
+        raise ValueError("pass exported evidence cannot contain an attempt")
     expected_path = f"output/evidence/docker/live/{invocation_id}"
     exported_path = _require_relative_path(
         exported.get("path"), "exported evidence"
@@ -2278,15 +3007,21 @@ def _validate_exported_evidence(
     contents = exported.get("contents")
     if not isinstance(contents, list) or not contents:
         raise ValueError("exported evidence requires content hash proof")
+    return _validate_exported_contents(contents)
+
+
+def _validate_exported_contents(
+    contents: object,
+) -> list[Mapping[str, object]]:
+    if not isinstance(contents, list):
+        raise ValueError("exported evidence contents must be a list")
     validated: list[Mapping[str, object]] = []
     for index, item in enumerate(contents):
         entry = _require_mapping(item, f"exported evidence content {index}")
         _require_allowed_keys(
             entry, _EXPORTED_CONTENT_KEYS, f"exported evidence content {index}"
         )
-        _require_relative_path(
-            entry.get("path"), "exported evidence content"
-        )
+        _require_relative_path(entry.get("path"), "exported evidence content")
         _require_sha256(entry.get("sha256"), "exported evidence content")
         if "byte_length" in entry:
             byte_length = entry.get("byte_length")
@@ -2302,13 +3037,38 @@ def _validate_exported_evidence(
     return validated
 
 
+def _validate_failed_export(
+    payload: Mapping[str, object], invocation_id: str
+) -> None:
+    exported = _require_mapping(
+        payload.get("exported_evidence"), "exported evidence"
+    )
+    _require_allowed_keys(
+        exported, _EXPORTED_EVIDENCE_KEYS, "exported evidence"
+    )
+    if exported.get("status") != "fail":
+        raise ValueError("evidence export failure must have fail status")
+    expected_path = f"output/evidence/docker/live/{invocation_id}"
+    if (
+        _require_relative_path(exported.get("path"), "exported evidence")
+        != expected_path
+    ):
+        raise ValueError("exported evidence path is invalid")
+    _validate_exported_contents(exported.get("contents"))
+    attempt = _require_mapping(
+        exported.get("attempt"), "evidence export attempt"
+    )
+    _validate_record("evidence_export", attempt)
+    if attempt.get("boundary") != "evidence_export":
+        raise ValueError("evidence export attempt boundary is invalid")
+
+
 def _validate_gui_frame_proof(payload: Mapping[str, object]) -> None:
     """Bind a GUI API result to advancing exported PNG frame evidence."""
     gui_build = _require_mapping(payload.get("gui_build"), "gui_build")
     gui_smoke = _require_mapping(payload.get("gui_smoke"), "gui_smoke")
     gui_passed = (
-        gui_build.get("status") == "pass"
-        and gui_smoke.get("status") == "pass"
+        gui_build.get("status") == "pass" and gui_smoke.get("status") == "pass"
     )
     has_proof = "gui_frame_proof" in payload
     if not gui_passed:
@@ -2327,9 +3087,7 @@ def _validate_gui_frame_proof(payload: Mapping[str, object]) -> None:
     api_proof = _require_mapping(
         gui_smoke.get("api_proof"), "GUI API smoke proof"
     )
-    proof = _require_mapping(
-        payload.get("gui_frame_proof"), "GUI frame proof"
-    )
+    proof = _require_mapping(payload.get("gui_frame_proof"), "GUI frame proof")
     _require_allowed_keys(proof, _GUI_FRAME_PROOF_KEYS, "GUI frame proof")
     if proof.get("run_id") != api_proof.get("run_id"):
         raise ValueError("GUI frame proof run ID does not match")
@@ -2395,10 +3153,7 @@ def _validate_gui_frame_proof(payload: Mapping[str, object]) -> None:
             raise ValueError("GUI frame simulation time must be finite")
         if previous_sequence is not None and sequence <= previous_sequence:
             raise ValueError("GUI frame sequence must strictly increase")
-        if (
-            previous_time is not None
-            and simulation_time <= previous_time
-        ):
+        if previous_time is not None and simulation_time <= previous_time:
             raise ValueError(
                 "GUI frame simulation time must strictly increase"
             )
@@ -2408,6 +3163,13 @@ def _validate_gui_frame_proof(payload: Mapping[str, object]) -> None:
             {"path": path, "sha256": digest, "byte_length": byte_length}
         )
 
+    exported_object = _require_mapping(
+        payload.get("exported_evidence"), "exported evidence"
+    )
+    if exported_object.get("status") == "fail":
+        # Capture proof remains useful, but a failed export cannot claim
+        # byte-for-byte linkage for artifacts it did not finish copying.
+        return
     exported = _validate_exported_evidence(payload, invocation_id)
     exported_pngs: list[dict[str, object]] = []
     exported_png_paths: set[str] = set()
@@ -2472,6 +3234,10 @@ def _validate_pass_requirements(payload: Mapping[str, object]) -> None:
                 _validate_phase_command(name, record)
 
     invocation_id, invocation = _validate_invocation(payload)
+    _require_observed_image_identity(
+        invocation,
+        strict=payload.get("producer_contract") == LIVE_VERIFIER_CONTRACT,
+    )
     _validate_pass_build_projects(payload, invocation)
     gui_scope = _validate_static_contract_scope(payload, invocation)
     render_facts = _validate_render_command(
@@ -2515,7 +3281,9 @@ def _validate_failed_phase(
         if required_label.get("value") != invocation_id:
             raise ValueError("safety refusal label does not match invocation")
         return
-    if phase.get("execution") == "interruption":
+    if phase.get("execution") in {"interruption", "internal_error"}:
+        return
+    if phase.get("execution") == "verifier_result":
         return
     _require_docker_command(phase, phase_name)
     if phase_name == "save_load":
@@ -2525,6 +3293,10 @@ def _validate_failed_phase(
         _validate_phase_command(phase_name, phase)
         if phase_name != "cleanup":
             _validate_phase_command_identity(payload, phase_name, phase)
+    if phase.get("execution") == "command_exception":
+        if phase.get("exit_code") is not None:
+            raise ValueError("command exception exit code must be null")
+        return
     exit_code = phase.get("exit_code")
     if (
         isinstance(exit_code, bool)
@@ -2552,7 +3324,7 @@ def _validate_successful_failure_prefix_phase(
         )
 
 
-def _validate_fail_requirements(payload: Mapping[str, object]) -> None:
+def _validate_legacy_fail_requirements(payload: Mapping[str, object]) -> None:
     reason = payload.get("reason")
     if not isinstance(reason, str) or not reason.endswith("_failed"):
         raise ValueError("fail evidence reason must identify the failed phase")
@@ -2595,9 +3367,9 @@ def _validate_fail_requirements(payload: Mapping[str, object]) -> None:
         elif status != "not_run":
             raise ValueError("failure successor phase must remain not_run")
 
-    cleanup_status = _require_mapping(
-        payload.get("cleanup"), "cleanup"
-    ).get("status")
+    cleanup_status = _require_mapping(payload.get("cleanup"), "cleanup").get(
+        "status"
+    )
     if cleanup_status == "pass":
         cleanup = _require_pass_record(payload, "cleanup")
         _validate_phase_command("cleanup", cleanup)
@@ -2608,6 +3380,389 @@ def _validate_fail_requirements(payload: Mapping[str, object]) -> None:
     _validate_cleanup_evidence(payload, invocation_id, invocation)
 
 
+def _validate_collision_failure(
+    payload: Mapping[str, object],
+    invocation_id: str,
+    invocation: Mapping[str, object],
+    record: Mapping[str, object],
+) -> None:
+    collisions = _require_mapping(
+        payload.get("name_collisions"), "name collisions"
+    )
+    _require_allowed_keys(collisions, _COLLISION_KEYS, "name collisions")
+    expected = _require_mapping(
+        collisions.get("expected_resources"), "collision expected resources"
+    )
+    _require_allowed_keys(
+        expected, _EXPECTED_RESOURCE_KEYS, "collision expected resources"
+    )
+    if expected.get("compose_project") != invocation.get("compose_project"):
+        raise ValueError("collision expected compose project is invalid")
+    canonical = _canonical_resource_names(invocation)
+    _require_exact_names(expected, "containers", canonical["container"])
+    _require_exact_names(expected, "networks", canonical["network"])
+    _require_exact_names(expected, "volumes", canonical["volume"])
+    _require_exact_names(expected, "images", canonical["image"])
+    before = collisions.get("before")
+    if not isinstance(before, list) or not before:
+        raise ValueError("collision failure requires observed collisions")
+    identities: set[tuple[str, str]] = set()
+    for index, candidate in enumerate(before):
+        entry = _require_mapping(candidate, f"collision entry {index}")
+        _require_allowed_keys(
+            entry, _OWNED_RESOURCE_ENTRY_KEYS, f"collision entry {index}"
+        )
+        kind = entry.get("kind")
+        name = entry.get("name")
+        if kind not in canonical or name not in canonical[kind]:
+            raise ValueError("collision entry is not an exact expected name")
+        labels = entry.get("labels")
+        if not isinstance(labels, Mapping):
+            raise ValueError("collision entry labels must be an object")
+        identity = (str(kind), str(name))
+        if identity in identities:
+            raise ValueError("collision entries contain duplicates")
+        identities.add(identity)
+    proof = _require_mapping(
+        record.get("failure_proof"), "collision failure proof"
+    )
+    if (
+        proof.get("kind") != "collision_detected"
+        or proof.get("collisions") != before
+    ):
+        raise ValueError("collision proof does not match inventory")
+    if any(
+        _require_mapping(item, "collision entry")
+        .get("labels", {})
+        .get(OWNERSHIP_LABEL_KEY)
+        == invocation_id
+        for item in before
+    ):
+        # A current-label collision is still a collision; this branch is
+        # intentionally accepted and never makes the resource owned here.
+        pass
+
+
+def _validate_amended_failed_record(
+    payload: Mapping[str, object], phase: str, boundary: str
+) -> None:
+    record = _require_mapping(payload.get(phase), phase)
+    if record.get("status") != "fail":
+        raise ValueError("boundary owner phase must fail")
+    if record.get("boundary") != boundary:
+        raise ValueError("boundary does not match its owner phase")
+    execution = record.get("execution", "command")
+    if execution in {"interruption", "safety_refusal", "internal_error"}:
+        _validate_failed_phase(payload, phase)
+        return
+    if execution == "verifier_result":
+        proof = _require_mapping(
+            record.get("failure_proof"), "verifier result proof"
+        )
+        proof_kind = proof.get("kind")
+        if boundary == "collision":
+            if proof_kind == "collision_detected":
+                invocation_id, invocation = _validate_invocation(payload)
+                _validate_collision_failure(
+                    payload, invocation_id, invocation, record
+                )
+                return
+            if proof_kind != "postcondition_mismatch":
+                raise ValueError(
+                    "collision boundary requires collision or mismatch proof"
+                )
+            collisions = _require_mapping(
+                payload.get("name_collisions"), "collision inventory"
+            )
+            if collisions.get("before") != []:
+                raise ValueError(
+                    "collision inventory cannot be hidden by mismatch proof"
+                )
+        if proof_kind == "collision_detected":
+            raise ValueError("collision proof is collision-boundary only")
+        if proof_kind == "local_operation_failed":
+            return
+    argv = _require_docker_command(record, phase)
+    invocation_id, invocation = _validate_invocation(payload)
+    del invocation_id
+    project = invocation.get("compose_project")
+    primary = f"{project}-judge-1"
+    imported = f"{project}-imported-judge-1"
+    gui = f"{project}-judge-gui-1"
+    headless_image = invocation.get("headless_image")
+    imported_image = invocation.get("imported_image")
+    tar_path = (
+        f"output/evidence/docker/live/{invocation.get('id')}/"
+        "headless-image.tar"
+    )
+    compose = ["docker", "compose", "--project-name", project]
+
+    def exec_marker(container: str, marker: str) -> bool:
+        return (
+            argv[:3] == ["docker", "exec", container]
+            and marker in argv[3:]
+            and "docker" not in argv[3:]
+        )
+
+    allowed = False
+    if boundary == "collision":
+        canonical = _canonical_resource_names(invocation)
+        project_filter = "label=com.docker.compose.project=" + str(project)
+        project_queries = [
+            [
+                "docker",
+                "container",
+                "ls",
+                "--all",
+                "--filter",
+                project_filter,
+                "--format",
+                "json",
+            ],
+            *[
+                [
+                    "docker",
+                    kind,
+                    "ls",
+                    "--filter",
+                    project_filter,
+                    "--format",
+                    "json",
+                ]
+                for kind in ("network", "volume", "image")
+            ],
+        ]
+        allowed = (
+            len(argv) == 4
+            and argv[0] == "docker"
+            and argv[1] in canonical
+            and argv[2] == "inspect"
+            and argv[3] in canonical[argv[1]]
+        ) or argv in project_queries
+    elif boundary == "compose_contract":
+        allowed = argv in (
+            [*compose, "config", "--quiet"],
+            [*compose, "config", "--format", "json"],
+            [*compose, "--profile", "gui", "config", "--quiet"],
+            [
+                *compose,
+                "--profile",
+                "gui",
+                "config",
+                "--format",
+                "json",
+            ],
+        )
+    elif boundary == "headless_build":
+        allowed = argv == [*compose, "build", "judge"]
+    elif boundary == "image_identity":
+        allowed = argv == ["docker", "image", "inspect", headless_image]
+    elif boundary == "headless_start":
+        allowed = argv == [
+            *compose,
+            "up",
+            "--detach",
+            "--no-build",
+            "judge",
+        ]
+    elif boundary == "container_health":
+        allowed = argv == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Health.Status}}",
+            primary,
+        ]
+    elif boundary == "api_health":
+        allowed = exec_marker(primary, "api-health")
+    elif boundary == "primary_api_run":
+        allowed = exec_marker(primary, "api-smoke")
+    elif boundary == "controlled_stop":
+        allowed = argv == ["docker", "container", "stop", primary]
+    elif boundary == "image_save":
+        allowed = argv == [
+            "docker",
+            "image",
+            "save",
+            "--output",
+            tar_path,
+            headless_image,
+        ]
+    elif boundary == "image_load":
+        allowed = argv == ["docker", "image", "load", "--input", tar_path]
+    elif boundary == "image_retag":
+        allowed = argv == [
+            "docker",
+            "image",
+            "tag",
+            headless_image,
+            imported_image,
+        ]
+    elif boundary == "imported_create":
+        allowed = argv == [
+            "docker",
+            "container",
+            "create",
+            "--name",
+            imported,
+            "--label",
+            f"{OWNERSHIP_LABEL_KEY}={invocation.get('id')}",
+            imported_image,
+        ]
+    elif boundary == "imported_start":
+        allowed = argv == ["docker", "container", "start", imported]
+    elif boundary == "imported_health":
+        allowed = argv == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Health.Status}}",
+            imported,
+        ] or exec_marker(imported, "api-health")
+    elif boundary == "imported_api_run":
+        allowed = exec_marker(imported, "api-smoke")
+    elif boundary == "gui_build":
+        allowed = argv == [
+            *compose,
+            "--profile",
+            "gui",
+            "build",
+            "judge-gui",
+        ]
+    elif boundary == "gui_start":
+        allowed = argv == [
+            *compose,
+            "--profile",
+            "gui",
+            "up",
+            "--detach",
+            "--no-build",
+            "judge-gui",
+        ]
+    elif boundary == "gui_health":
+        allowed = argv == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Health.Status}}",
+            gui,
+        ] or exec_marker(gui, "api-health")
+    elif boundary == "gui_api_run":
+        allowed = exec_marker(gui, "api-smoke")
+    elif boundary == "gui_frame_capture":
+        allowed = exec_marker(gui, "gui-frames")
+    if not allowed:
+        raise ValueError("boundary command is not canonical")
+
+
+def _validate_amended_fail_requirements(
+    payload: Mapping[str, object], phase: str, boundary: str
+) -> None:
+    if FAILURE_BOUNDARY_OWNERS.get(boundary) != phase:
+        raise ValueError("boundary is attached to the wrong owner phase")
+    if payload.get("reason") != f"{boundary}_failed":
+        raise ValueError("fail reason does not match precise boundary")
+    _require_cli_version_record(payload)
+    _require_daemon_info_record(payload)
+    invocation_id, invocation = _validate_invocation(payload)
+    order = list(NON_CLEANUP_PHASES)
+    if phase == "cleanup":
+        _require_observed_image_identity(
+            invocation,
+            strict=payload.get("producer_contract")
+            == LIVE_VERIFIER_CONTRACT,
+        )
+        _validate_legacy_fail_requirements(payload)
+        return
+    primary_index = order.index(phase)
+    for index, name in enumerate(order):
+        status = _require_mapping(payload.get(name), name).get("status")
+        if index < primary_index:
+            if status != "pass":
+                raise ValueError("boundary failure predecessor must pass")
+            _validate_successful_failure_prefix_phase(payload, name)
+        elif index == primary_index:
+            _validate_amended_failed_record(payload, name, boundary)
+        elif status != "not_run":
+            raise ValueError("boundary failure successor must remain not_run")
+    if phase not in {"static_contract", "headless_build"}:
+        _require_observed_image_identity(
+            invocation,
+            strict=payload.get("producer_contract")
+            == LIVE_VERIFIER_CONTRACT,
+        )
+    cleanup = _require_mapping(payload.get("cleanup"), "cleanup")
+    if (
+        cleanup.get("status") == "fail"
+        and cleanup.get("boundary") != "cleanup"
+    ):
+        raise ValueError("secondary cleanup failure requires cleanup boundary")
+    if cleanup.get("status") not in {"pass", "fail", "not_run"}:
+        raise ValueError("cleanup status is invalid")
+    _validate_cleanup_evidence(payload, invocation_id, invocation)
+
+
+def _validate_export_fail_requirements(payload: Mapping[str, object]) -> None:
+    if payload.get("reason") != "evidence_export_failed":
+        raise ValueError("evidence export reason is invalid")
+    _require_cli_version_record(payload)
+    _require_daemon_info_record(payload)
+    invocation_id, invocation = _validate_invocation(payload)
+    _require_observed_image_identity(
+        invocation,
+        strict=payload.get("producer_contract") == LIVE_VERIFIER_CONTRACT,
+    )
+    seen_not_run = False
+    for name in NON_CLEANUP_PHASES:
+        status = _require_mapping(payload.get(name), name).get("status")
+        if status == "not_run":
+            seen_not_run = True
+            continue
+        if status != "pass" or seen_not_run:
+            raise ValueError("export failure has an invalid phase prefix")
+        _validate_successful_failure_prefix_phase(payload, name)
+    _validate_failed_export(payload, invocation_id)
+    cleanup = _require_mapping(payload.get("cleanup"), "cleanup")
+    if (
+        cleanup.get("status") == "fail"
+        and cleanup.get("boundary") != "cleanup"
+    ):
+        raise ValueError("secondary cleanup failure requires cleanup boundary")
+    _validate_cleanup_evidence(payload, invocation_id, invocation)
+
+
+def _validate_fail_requirements(payload: Mapping[str, object]) -> None:
+    exported = payload.get("exported_evidence")
+    if isinstance(exported, Mapping) and exported.get("status") == "fail":
+        _validate_export_fail_requirements(payload)
+        return
+    amended = [
+        (name, record.get("boundary"))
+        for name in PHASES
+        if isinstance((record := payload.get(name)), Mapping)
+        and record.get("status") == "fail"
+        and record.get("boundary") is not None
+        and name != "cleanup"
+    ]
+    if amended:
+        if len(amended) != 1:
+            raise ValueError("fail evidence has multiple primary boundaries")
+        phase, boundary = amended[0]
+        _validate_amended_fail_requirements(payload, phase, str(boundary))
+        return
+    cleanup = payload.get("cleanup")
+    if (
+        isinstance(cleanup, Mapping)
+        and cleanup.get("status") == "fail"
+        and cleanup.get("boundary") == "cleanup"
+    ):
+        _validate_amended_fail_requirements(payload, "cleanup", "cleanup")
+        return
+    if payload.get("producer_contract") == LIVE_VERIFIER_CONTRACT:
+        raise ValueError("strict verifier failure requires one boundary")
+    _validate_legacy_fail_requirements(payload)
+
+
 def _validate_not_run_requirements(payload: Mapping[str, object]) -> None:
     reason = payload.get("reason")
     if reason not in REASONS:
@@ -2616,8 +3771,7 @@ def _validate_not_run_requirements(payload: Mapping[str, object]) -> None:
         name: _require_mapping(payload.get(name), name) for name in PHASES
     }
     if any(
-        record.get("status") != "not_run"
-        for record in phase_records.values()
+        record.get("status") != "not_run" for record in phase_records.values()
     ):
         raise ValueError("not_run evidence cannot claim a live phase")
     cli = _require_mapping(payload.get("cli"), "cli")
@@ -2693,7 +3847,10 @@ def new_evidence() -> dict[str, object]:
             "os": platform.system(),
             "architecture": platform.machine(),
         },
-        "cli": not_run("Docker CLI capability has not been confirmed"),
+        "cli": {
+            **not_run("Docker CLI unavailable"),
+            "argv": ["docker", "--version"],
+        },
         "daemon": not_run("Docker daemon has not been checked"),
     }
     payload.update(
@@ -2872,17 +4029,2093 @@ def detect(
     return payload
 
 
-def validate_evidence(payload: object) -> None:
-    """Reject malformed, unsafe, or unsupported evidence documents."""
-    document = _require_mapping(payload, "Docker evidence")
+def _strict_record(
+    name: str,
+    value: object,
+    *,
+    cleanup_phase: bool = False,
+) -> Mapping[str, object]:
+    record = _require_mapping(value, name)
+    if name in {"cli", "daemon"}:
+        allowed = _CAPABILITY_RECORD_KEYS
+    elif name == "static_contract":
+        allowed = _STATIC_CONTRACT_RECORD_KEYS
+    elif name == "headless_health":
+        allowed = _STRICT_HEADLESS_HEALTH_KEYS
+    elif name == "export attempt":
+        allowed = _STRICT_EXPORT_ATTEMPT_KEYS
+    elif cleanup_phase:
+        allowed = _STRICT_CLEANUP_PHASE_KEYS
+    else:
+        allowed = _COMMAND_RECORD_KEYS
+    _require_allowed_keys(record, allowed, name)
+    status = _require_status(record.get("status"), name)
+    started = _require_timestamp(record.get("started_at"), name)
+    finished = _require_timestamp(record.get("finished_at"), name)
+    if finished < started:
+        raise ValueError(f"{name} finished before it started")
+    argv = record.get("argv")
+    if not isinstance(argv, list) or not all(
+        isinstance(token, str) for token in argv
+    ):
+        raise ValueError(f"{name} argv must be a string list")
+    exit_code = record.get("exit_code")
+    if exit_code is not None and (
+        isinstance(exit_code, bool) or not isinstance(exit_code, int)
+    ):
+        raise ValueError(f"{name} exit code is invalid")
+    _require_sha256(record.get("stdout_sha256"), f"{name} stdout")
+    _require_sha256(record.get("stderr_sha256"), f"{name} stderr")
+    detail = record.get("detail")
+    if not isinstance(detail, str) or len(detail) > MAX_DETAIL_LENGTH:
+        raise ValueError(f"{name} detail is invalid")
+    _reject_private_values(detail, f"{name}.detail")
+    version = record.get("version")
+    if version is not None and (
+        not isinstance(version, str) or len(version) > MAX_DETAIL_LENGTH
+    ):
+        raise ValueError(f"{name} version is invalid")
+
+    boundary = record.get("boundary")
+    execution = record.get("execution", "command")
+    if boundary is not None and (
+        status != "fail"
+        or boundary
+        not in {*FAILURE_BOUNDARY_OWNERS, "evidence_export", "capability"}
+    ):
+        raise ValueError(f"{name} boundary is invalid")
+    if status == "not_run":
+        if name in {"cli", "daemon"} and "version" in record:
+            raise ValueError(f"{name} not_run capability cannot claim a version")
+        proof_keys = ("execution", "boundary", "api_proof", "failure_proof")
+        if name in {"cli", "daemon"}:
+            attempted = bool(argv)
+            if execution != "command" or any(key in record for key in proof_keys):
+                raise ValueError(f"{name} not_run capability is invalid")
+            if attempted:
+                if exit_code is None:
+                    if (
+                        record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+                        or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+                    ):
+                        raise ValueError(
+                            f"{name} no-result capability has stream evidence"
+                        )
+                elif exit_code != 1:
+                    raise ValueError(
+                        f"{name} unavailable capability exit is not canonical"
+                    )
+            elif (
+                exit_code is not None
+                or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+                or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+            ):
+                raise ValueError(f"{name} untouched capability is invalid")
+        elif (
+            execution != "command"
+            or argv
+            or exit_code is not None
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+            or any(key in record for key in proof_keys)
+        ):
+            raise ValueError(f"{name} not_run phase must be untouched")
+        return record
+
+    if execution == "command":
+        if not argv:
+            raise ValueError(f"{name} command must preserve argv")
+        if status == "pass":
+            if exit_code != 0 or boundary is not None:
+                raise ValueError(f"{name} pass command is invalid")
+        elif (
+            status != "fail"
+            or isinstance(exit_code, bool)
+            or not isinstance(exit_code, int)
+            or exit_code == 0
+            or boundary is None
+        ):
+            raise ValueError(f"{name} failed command boundary is invalid")
+        if "api_proof" in record or "failure_proof" in record:
+            raise ValueError(f"{name} command contains unexpected proof")
+        return record
+
+    if execution == "api_result":
+        if (
+            status != "pass"
+            or argv
+            or exit_code is not None
+            or boundary is not None
+            or "failure_proof" in record
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError(f"{name} API result shape is invalid")
+        if not isinstance(record.get("api_proof"), Mapping):
+            raise ValueError(f"{name} API result requires proof")
+        return record
+
+    if status != "fail" or boundary is None or "api_proof" in record:
+        raise ValueError(f"{name} failure execution is invalid")
+    proof = _require_mapping(record.get("failure_proof"), f"{name} proof")
+    if execution == "verifier_result":
+        kind = proof.get("kind")
+        allowed_proof = _VERIFIER_RESULT_PROOF_KEYS.get(kind)
+        if allowed_proof is None or kind == "local_operation_failed":
+            raise ValueError(f"{name} verifier-result proof is invalid")
+        if kind == "collision_detected" and boundary != "collision":
+            raise ValueError("collision proof is collision-boundary only")
+        _require_allowed_keys(proof, allowed_proof, f"{name} proof")
+        cleanup_remove_failure = (
+            cleanup_phase
+            and record.get("action_kind") == "remove"
+            and isinstance(exit_code, int)
+            and exit_code != 0
+            and proof.get("kind") == "postcondition_mismatch"
+        )
+        if not argv or (exit_code != 0 and not cleanup_remove_failure):
+            raise ValueError(f"{name} verifier result must preserve success")
+    elif execution == "local_operation":
+        _require_allowed_keys(
+            proof, {"kind", "operation"}, f"{name} local-operation proof"
+        )
+        legal = {
+            ("image_save", "read_saved_image_archive"),
+            ("evidence_export", "write_exported_artifact"),
+        }
+        if proof.get("kind") != "local_operation" or (
+            boundary,
+            proof.get("operation"),
+        ) not in legal:
+            raise ValueError(f"{name} local operation is invalid")
+        if boundary == "evidence_export" and (
+            argv
+            or exit_code is not None
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError("evidence export local operation must be commandless")
+        if boundary == "image_save" and (not argv or exit_code != 0):
+            raise ValueError("archive local operation must retain successful save")
+    elif execution == "command_exception":
+        _require_allowed_keys(
+            proof,
+            {"kind", "exception_kind"},
+            f"{name} command-exception proof",
+        )
+        if (
+            proof.get("kind") != "command_exception"
+            or proof.get("exception_kind") not in {"timeout", "os_error"}
+            or not argv
+            or exit_code is not None
+        ):
+            raise ValueError(f"{name} command exception is invalid")
+    elif execution == "internal_error":
+        _require_allowed_keys(proof, {"kind"}, f"{name} internal proof")
+        if (
+            proof.get("kind") != "internal_error"
+            or argv
+            or exit_code is not None
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError(f"{name} internal error is invalid")
+    elif execution == "interruption":
+        _require_allowed_keys(
+            proof, _INTERRUPTION_PROOF_KEYS, f"{name} interruption proof"
+        )
+        expected_phase = (
+            "collision"
+            if boundary == "collision"
+            else "exported_evidence"
+            if boundary == "evidence_export"
+            else FAILURE_BOUNDARY_OWNERS.get(boundary)
+        )
+        if (
+            proof.get("kind") != "interruption"
+            or proof.get("interruption_kind") not in _INTERRUPTION_KINDS
+            or proof.get("phase") != expected_phase
+            or argv
+            or exit_code is not None
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError(f"{name} interruption phase or shape is invalid")
+    elif execution == "safety_refusal":
+        if not cleanup_phase:
+            raise ValueError("safety refusal is cleanup-only")
+        _require_allowed_keys(
+            proof, _SAFETY_REFUSAL_PROOF_KEYS, "cleanup refusal proof"
+        )
+        if (
+            proof.get("kind") != "cleanup_ownership_refusal"
+            or proof.get("observed_ownership") not in _OBSERVED_OWNERSHIP_RESULTS
+            or argv
+            or exit_code is not None
+            or record.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or record.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError("cleanup safety refusal is invalid")
+    else:
+        raise ValueError(f"{name} execution kind is invalid")
+    return record
+
+
+def _validate_strict_lifecycle_chronology(
+    document: Mapping[str, object],
+    capabilities: Mapping[str, Mapping[str, object]],
+    phases: Mapping[str, Mapping[str, object]],
+) -> None:
+    """Require reached strict records to follow the verifier's serial workflow."""
+    predecessor_finished = _require_timestamp(
+        document.get("checked_at"), "Docker evidence"
+    )
+    for name in ("cli", "daemon", *PHASES):
+        record = capabilities.get(name, phases.get(name))
+        if record is None or record.get("status") == "not_run":
+            continue
+        started = _require_timestamp(record.get("started_at"), name)
+        finished = _require_timestamp(record.get("finished_at"), name)
+        if started < predecessor_finished:
+            raise ValueError("strict lifecycle chronology is invalid")
+        predecessor_finished = finished
+        if name == "headless_health" and record.get("status") == "pass":
+            nested = record.get("api_health")
+            if isinstance(nested, Mapping) and nested.get("status") != "not_run":
+                nested_started = _require_timestamp(
+                    nested.get("started_at"), "nested API health"
+                )
+                nested_finished = _require_timestamp(
+                    nested.get("finished_at"), "nested API health"
+                )
+                if nested_finished < nested_started:
+                    raise ValueError(
+                        "nested primary API health chronology is invalid"
+                    )
+                if nested_started < predecessor_finished:
+                    raise ValueError(
+                        "nested primary API health chronology is invalid"
+                    )
+                predecessor_finished = nested_finished
+
+
+def _validate_strict_export_before_cleanup(
+    exported: Mapping[str, object],
+    cleanup: Mapping[str, object],
+) -> None:
+    """Ensure all recorded evidence export work completes before teardown."""
+    if cleanup.get("status") == "not_run":
+        return
+    cleanup_started = _require_timestamp(cleanup.get("started_at"), "cleanup")
+    records: list[Mapping[str, object]] = []
+    units = exported.get("export_units")
+    if isinstance(units, list):
+        for index, value in enumerate(units):
+            unit = _require_mapping(value, f"export unit {index}")
+            if "record" in unit:
+                records.append(
+                    _strict_record(f"export unit {index} record", unit.get("record"))
+                )
+    if "attempt" in exported:
+        records.append(_strict_record("export attempt", exported.get("attempt")))
+    for record in records:
+        if record.get("status") == "not_run":
+            continue
+        finished = _require_timestamp(
+            record.get("finished_at"), "evidence export"
+        )
+        if finished > cleanup_started:
+            raise ValueError("evidence export must finish before cleanup")
+
+
+def _strict_api_proof(
+    value: object,
+    invocation: Mapping[str, object],
+    *,
+    name: str,
+) -> tuple[str, Mapping[str, object]]:
+    proof = _require_mapping(value, name)
+    _require_allowed_keys(proof, _STRICT_API_PROOF_KEYS, name)
+    if set(proof) != _STRICT_API_PROOF_KEYS:
+        raise ValueError(f"{name} keys are incomplete")
+    run_id = proof.get("run_id")
+    if not isinstance(run_id, str) or not _INVOCATION_ID_PATTERN.fullmatch(run_id):
+        raise ValueError(f"{name} run ID is invalid")
+    run_path = f"runs/i1/fixed_time/x1/s42/{run_id}"
+    run_dir = "/app/output/" + run_path
+    if proof.get("requested_steps") != 100 or proof.get("terminal_status") != "completed":
+        raise ValueError(f"{name} completion status is invalid")
+
+    project = invocation.get("compose_project")
+    scopes = {
+        "headless": (
+            f"{project}-judge-1",
+            invocation.get("headless_image"),
+        ),
+        "imported": (
+            f"{project}-imported-judge-1",
+            invocation.get("imported_image"),
+        ),
+        "gui": (
+            f"{project}-judge-gui-1",
+            invocation.get("gui_image"),
+        ),
+    }
+    matches = [
+        scope
+        for scope, expected in scopes.items()
+        if expected == (proof.get("container"), proof.get("image"))
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"{name} container/image identity is invalid")
+
+    output = _require_mapping(proof.get("output"), f"{name} output")
+    _require_allowed_keys(output, _QUICK_SMOKE_OUTPUT_KEYS, f"{name} output")
+    if output != {"root": "app/output", "path": run_path, "run_id": run_id}:
+        raise ValueError(f"{name} output is invalid")
+    request = _require_mapping(proof.get("request"), f"{name} request")
+    _require_allowed_keys(request, _API_REQUEST_KEYS, f"{name} request")
+    body = _require_mapping(request.get("body"), f"{name} request body")
+    _require_allowed_keys(body, _API_REQUEST_BODY_KEYS, f"{name} request body")
+    if (
+        request.get("method") != "POST"
+        or request.get("path") != "/api/runs"
+        or body
+        != {"intersection_id": "1", "algorithm": "fixed_time", "steps": 100}
+    ):
+        raise ValueError(f"{name} request is invalid")
+    if request.get("body_sha256") != _canonical_json_sha256(body):
+        raise ValueError(f"{name} request body hash is not canonical")
+
+    response = _require_mapping(proof.get("response"), f"{name} response")
+    _require_allowed_keys(response, _STRICT_API_RESPONSE_KEYS, f"{name} response")
+    if (
+        response.get("status") != 202
+        or response.get("run_id") != run_id
+        or response.get("run_dir") != run_dir
+    ):
+        raise ValueError(f"{name} response is invalid")
+    if response.get("body_sha256") != _canonical_json_sha256(
+        {"run_id": run_id, "run_dir": run_dir, "status": response.get("status")}
+    ):
+        raise ValueError(f"{name} response body hash is not canonical")
+
+    terminal = _require_mapping(proof.get("terminal"), f"{name} terminal")
+    _require_allowed_keys(terminal, _STRICT_API_TERMINAL_KEYS, f"{name} terminal")
+    if (
+        terminal.get("method") != "GET"
+        or terminal.get("path") != f"/api/runs/{run_id}"
+        or terminal.get("status") != 200
+        or terminal.get("run_id") != run_id
+        or terminal.get("state") != "completed"
+        or terminal.get("run_dir") != run_dir
+    ):
+        raise ValueError(f"{name} terminal is invalid")
+    if terminal.get("body_sha256") != _canonical_json_sha256(
+        {"run_id": run_id, "run_dir": run_dir, "status": terminal.get("state")}
+    ):
+        raise ValueError(f"{name} terminal body hash is not canonical")
+
+    completion = _require_mapping(
+        proof.get("observed_completion"), f"{name} observed completion"
+    )
+    _require_allowed_keys(completion, _STRICT_COMPLETION_KEYS, f"{name} observed completion")
+    if (
+        set(completion) != _STRICT_COMPLETION_KEYS
+        or completion.get("source") != "sealed_simulation_log.v1"
+        or completion.get("run_id") != run_id
+        or completion.get("run_path") != run_path
+        or completion.get("requested_steps") != 100
+        or completion.get("observed_step_count") != 100
+        or completion.get("observed_step_indices") != list(range(100))
+        or completion.get("step_log_path") != "simulation_log.csv"
+        or completion.get("hashes_path") != "hashes.json"
+    ):
+        raise ValueError(f"{name} observed completion is invalid")
+    _require_sha256(completion.get("step_log_sha256"), f"{name} step log")
+    _require_sha256(completion.get("hashes_sha256"), f"{name} hashes file")
+    return matches[0], proof
+
+
+def _strict_cleanup_action(
+    value: object,
+    invocation_id: str,
+    canonical_names: Mapping[str, set[str]],
+    *,
+    name: str,
+) -> Mapping[str, object]:
+    action = _require_mapping(value, name)
+    _require_allowed_keys(action, _STRICT_CLEANUP_ACTION_KEYS, name)
+    kind = action.get("resource_kind")
+    resource_name = action.get("resource_name")
+    if kind not in canonical_names or resource_name not in canonical_names[kind]:
+        raise ValueError(f"{name} resource is not canonical")
+    required_label = _require_mapping(action.get("required_label"), f"{name} label")
+    if required_label != {"key": OWNERSHIP_LABEL_KEY, "value": invocation_id}:
+        raise ValueError(f"{name} label is invalid")
+    action_kind = action.get("action_kind")
+    if action_kind not in {
+        "remove",
+        "stop",
+        "inventory",
+        "retained_postcondition",
+    }:
+        raise ValueError(f"{name} action kind is invalid")
+    stage = action.get("inventory_stage")
+    if action_kind == "remove":
+        if "inventory_stage" in action:
+            raise ValueError(f"{name} remove cannot carry inventory stage")
+    elif action_kind == "stop":
+        if kind != "container" or "inventory_stage" in action:
+            raise ValueError(f"{name} stop action is invalid")
+    elif stage not in {"initial", "requery", "post_remove", "final"}:
+        raise ValueError(f"{name} inventory stage is invalid")
+    if action_kind == "retained_postcondition" and stage != "final":
+        raise ValueError(f"{name} retained postcondition must be final")
+
+    status = _require_status(action.get("status"), name)
+    execution = action.get("execution")
+    argv = action.get("argv")
+    if not isinstance(argv, list) or not all(isinstance(token, str) for token in argv):
+        raise ValueError(f"{name} argv is invalid")
+    exit_code = action.get("exit_code")
+    if exit_code is not None and (
+        isinstance(exit_code, bool) or not isinstance(exit_code, int)
+    ):
+        raise ValueError(f"{name} exit code is invalid")
+    _require_sha256(action.get("stdout_sha256"), f"{name} stdout")
+    _require_sha256(action.get("stderr_sha256"), f"{name} stderr")
+    observation_fields = {"observed_present", "observed_running"}
+    if action_kind == "inventory":
+        if status == "pass":
+            expected_argv = ["docker", kind, "inspect", resource_name]
+            present = action.get("observed_present")
+            observed_running = action.get("observed_running")
+            if (
+                execution != "inventory_observation"
+                or action.get("boundary") is not None
+                or "failure_proof" in action
+                or argv != expected_argv
+                or type(present) is not bool
+            ):
+                raise ValueError(f"{name} inventory observation is invalid")
+            if present:
+                if exit_code != 0:
+                    raise ValueError(f"{name} present inventory exit is invalid")
+                if kind == "container":
+                    if type(observed_running) is not bool:
+                        raise ValueError(
+                            f"{name} container inventory running state is invalid"
+                        )
+                elif "observed_running" in action:
+                    raise ValueError(
+                        f"{name} non-container inventory claims running state"
+                    )
+            elif (
+                isinstance(exit_code, bool)
+                or not isinstance(exit_code, int)
+                or exit_code == 0
+                or "observed_running" in action
+            ):
+                raise ValueError(f"{name} absent inventory observation is invalid")
+            return action
+        if observation_fields.intersection(action):
+            raise ValueError(f"{name} failed inventory has observed state")
+    elif observation_fields.intersection(action):
+        raise ValueError(f"{name} non-inventory action has observed state")
+    if status == "pass":
+        expected = (
+            ["docker", "container", "stop", resource_name]
+            if action_kind == "stop"
+            else ["docker", kind, "rm", resource_name]
+        )
+        if (
+            action_kind not in {"remove", "stop"}
+            or execution != "command"
+            or argv != expected
+            or exit_code != 0
+            or any(key in action for key in ("failure_proof", "boundary"))
+        ):
+            raise ValueError(f"{name} successful removal is invalid")
+        return action
+    if status != "fail" or action.get("boundary") != "cleanup":
+        raise ValueError(f"{name} failure is invalid")
+    if execution == "command":
+        expected = (
+            ["docker", "container", "stop", resource_name]
+            if action_kind == "stop"
+            else ["docker", kind, "rm", resource_name]
+            if action_kind == "remove"
+            else ["docker", kind, "inspect", resource_name]
+        )
+        if (
+            argv != expected
+            or isinstance(exit_code, bool)
+            or not isinstance(exit_code, int)
+            or exit_code == 0
+            or "failure_proof" in action
+        ):
+            raise ValueError(f"{name} command failure is invalid")
+        return action
+    proof = _require_mapping(action.get("failure_proof"), f"{name} proof")
+    if execution == "verifier_result":
+        _require_allowed_keys(
+            proof,
+            _VERIFIER_RESULT_PROOF_KEYS["postcondition_mismatch"],
+            f"{name} proof",
+        )
+        expected_argv = (
+            ["docker", "container", "stop", resource_name]
+            if action_kind == "stop"
+            else ["docker", kind, "rm", resource_name]
+            if action_kind == "remove"
+            else ["docker", kind, "inspect", resource_name]
+        )
+        valid_exit = (
+            exit_code != 0
+            if action_kind == "remove"
+            else exit_code == 0
+        )
+        inventory_pairs = {
+            (
+                "valid_inventory_json",
+                "malformed_inventory_json",
+            ),
+            (
+                "exact_current_invocation_owner",
+                "missing_resource",
+            ),
+            (
+                "exact_current_invocation_owner",
+                "missing_or_mismatched_ownership_label",
+            ),
+        }
+        expected_proofs = {
+            "remove": {
+                "kind": "postcondition_mismatch",
+                "expected": "owned_resource_removed",
+                "observed": "remove_command_failed",
+            },
+            "stop": {
+                "kind": "postcondition_mismatch",
+                "expected": "container_stopped",
+                "observed": "container_still_running",
+            },
+            "retained_postcondition": {
+                "kind": "postcondition_mismatch",
+                "expected": "empty_owned_inventory",
+                "observed": "retained_owned_resource",
+            },
+        }
+        valid_proof = (
+            (
+                proof.get("kind") == "postcondition_mismatch"
+                and (proof.get("expected"), proof.get("observed"))
+                in inventory_pairs
+            )
+            if action_kind == "inventory"
+            else proof == expected_proofs.get(action_kind)
+        )
+        if argv != expected_argv or not valid_exit or not valid_proof:
+            raise ValueError(f"{name} verifier result is invalid")
+    elif execution == "command_exception":
+        _require_allowed_keys(proof, {"kind", "exception_kind"}, f"{name} proof")
+        expected_argv = (
+            ["docker", "container", "stop", resource_name]
+            if action_kind == "stop"
+            else ["docker", kind, "rm", resource_name]
+            if action_kind == "remove"
+            else ["docker", kind, "inspect", resource_name]
+        )
+        if (
+            proof.get("kind") != "command_exception"
+            or proof.get("exception_kind") not in {"timeout", "os_error"}
+            or argv != expected_argv
+            or exit_code is not None
+        ):
+            raise ValueError(f"{name} command exception is invalid")
+    elif execution == "internal_error":
+        if (
+            proof != {"kind": "internal_error"}
+            or argv
+            or exit_code is not None
+            or action.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or action.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+        ):
+            raise ValueError(f"{name} internal error is invalid")
+    elif execution == "interruption":
+        if (
+            set(proof) != _INTERRUPTION_PROOF_KEYS
+            or proof.get("kind") != "interruption"
+            or proof.get("interruption_kind") not in _INTERRUPTION_KINDS
+            or proof.get("phase") != "cleanup"
+            or argv
+            or exit_code is not None
+        ):
+            raise ValueError(f"{name} interruption is invalid")
+    elif execution == "safety_refusal":
+        if (
+            set(proof) != _SAFETY_REFUSAL_PROOF_KEYS
+            or proof.get("kind") != "cleanup_ownership_refusal"
+            or proof.get("resource_kind") != kind
+            or proof.get("resource_name") != resource_name
+            or proof.get("required_label") != required_label
+            or proof.get("observed_ownership") not in _OBSERVED_OWNERSHIP_RESULTS
+            or argv
+            or exit_code is not None
+        ):
+            raise ValueError(f"{name} safety refusal is invalid")
+    else:
+        raise ValueError(f"{name} execution is invalid")
+    return action
+
+
+def _strict_cleanup(
+    payload: Mapping[str, object],
+    invocation_id: str,
+    invocation: Mapping[str, object],
+) -> None:
+    owned = _require_mapping(payload.get("owned_resources"), "owned resources")
+    _require_allowed_keys(owned, _STRICT_OWNED_RESOURCE_KEYS, "owned resources")
+    if set(owned) != _STRICT_OWNED_RESOURCE_KEYS:
+        raise ValueError("strict owned resources are incomplete")
+    before_complete = owned.get("before_cleanup_complete")
+    after_complete = owned.get("after_cleanup_complete")
+    if type(before_complete) is not bool or type(after_complete) is not bool:
+        raise ValueError("cleanup inventory completeness must be Boolean")
+    canonical_names = _canonical_resource_names(invocation)
+    before_names = _validate_owned_inventory_list(
+        owned.get("before_cleanup"),
+        "before cleanup",
+        invocation_id,
+        canonical_names,
+    )
+    after_names = _validate_owned_inventory_list(
+        owned.get("after_cleanup"),
+        "after cleanup",
+        invocation_id,
+        canonical_names,
+    )
+    before = _inventory_identities(before_names)
+    after = _inventory_identities(after_names)
+    before_entries = owned.get("before_cleanup")
+    running_before = {
+        (entry.get("kind"), entry.get("name"))
+        for entry in before_entries
+        if isinstance(entry, Mapping) and entry.get("running") is True
+    }
+    if before_complete and not after.issubset(before):
+        raise ValueError("cleanup after inventory must be a before subset")
+    if payload.get("status") == "pass":
+        project = invocation.get("compose_project")
+        required = {
+            ("container", f"{project}-judge-1"),
+            ("container", f"{project}-imported-judge-1"),
+            ("network", f"{project}_default"),
+            ("volume", f"{project}_judge-output"),
+            ("image", invocation.get("headless_image")),
+            ("image", invocation.get("imported_image")),
+        }
+        gui_build = payload.get("gui_build")
+        if isinstance(gui_build, Mapping) and gui_build.get("status") == "pass":
+            required.update(
+                {
+                    ("container", f"{project}-judge-gui-1"),
+                    ("volume", f"{project}_judge-gui-output"),
+                    ("image", invocation.get("gui_image")),
+                }
+            )
+        if before != required:
+            raise ValueError("strict pass requires complete resource closure")
+    actions_value = owned.get("cleanup_actions")
+    if not isinstance(actions_value, list):
+        raise ValueError("cleanup actions must be a list")
+    actions = [
+        _strict_cleanup_action(
+            candidate,
+            invocation_id,
+            canonical_names,
+            name=f"cleanup action {index}",
+        )
+        for index, candidate in enumerate(actions_value)
+    ]
+    removed: set[tuple[object, object]] = set()
+    remove_positions: dict[tuple[object, object], list[int]] = {}
+    successful_remove_positions: dict[tuple[object, object], list[int]] = {}
+    failures: list[Mapping[str, object]] = []
+    for index, action in enumerate(actions):
+        if action.get("action_kind") != "remove":
+            if action.get("status") == "fail":
+                failures.append(action)
+            continue
+        identity = (action.get("resource_kind"), action.get("resource_name"))
+        remove_positions.setdefault(identity, []).append(index)
+        if (
+            action.get("status") == "fail"
+            and (not before_complete or identity not in before)
+        ):
+            raise ValueError(
+                "failed cleanup remove must target a complete before inventory"
+            )
+        if (
+            action.get("status") == "pass"
+            and (not before_complete or identity not in before)
+        ):
+            raise ValueError(
+                "successful cleanup remove must target a complete before inventory"
+            )
+        if identity in removed:
+            raise ValueError(
+                "cleanup chronology cannot remove an already removed resource"
+            )
+        if action.get("status") == "pass":
+            removed.add(identity)
+            successful_remove_positions.setdefault(identity, []).append(index)
+        else:
+            failures.append(action)
+    if len(failures) > 1 or (failures and actions[-1] is not failures[0]):
+        raise ValueError("cleanup failure must be one final terminal action")
+    stop_positions = {
+        identity: [
+            index
+            for index, action in enumerate(actions)
+            if action.get("action_kind") == "stop"
+            and action.get("status") == "pass"
+            and (action.get("resource_kind"), action.get("resource_name"))
+            == identity
+        ]
+        for identity in running_before.union(remove_positions)
+        if identity[0] == "container"
+    }
+    for identity, positions in remove_positions.items():
+        if identity[0] != "container":
+            continue
+        for remove_index in positions:
+            observations = [
+                (index, action)
+                for index, action in enumerate(actions[:remove_index])
+                if action.get("action_kind") == "inventory"
+                and action.get("status") == "pass"
+                and action.get("inventory_stage") in {"initial", "requery"}
+                and action.get("observed_present") is True
+                and (action.get("resource_kind"), action.get("resource_name"))
+                == identity
+            ]
+            if not observations:
+                raise ValueError(
+                    "container removal has no preceding inventory observation"
+                )
+            for observation_index, observation in observations:
+                if observation.get("observed_running") is True and not any(
+                    observation_index < stop_index < remove_index
+                    for stop_index in stop_positions.get(identity, [])
+                ):
+                    raise ValueError(
+                        "running inventory observation lacks a preceding stop"
+                    )
+    for identity in running_before:
+        positions = remove_positions.get(identity, [])
+        if positions:
+            if not any(
+                stop_index < positions[0]
+                for stop_index in stop_positions.get(identity, [])
+            ):
+                raise ValueError(
+                    "initial running container lacks a stop before removal"
+                )
+        elif not any(
+            action.get("action_kind") == "stop"
+            and (action.get("resource_kind"), action.get("resource_name"))
+            == identity
+            for action in actions
+        ):
+            raise ValueError("every running owned container requires a stop action")
+    proven_removed: set[tuple[object, object]] = set()
+    for identity, positions in successful_remove_positions.items():
+        for remove_index in positions:
+            if any(
+                action.get("action_kind") == "inventory"
+                and action.get("status") == "pass"
+                and action.get("inventory_stage") == "post_remove"
+                and action.get("observed_present") is False
+                and (action.get("resource_kind"), action.get("resource_name"))
+                == identity
+                for action in actions[remove_index + 1 :]
+            ):
+                proven_removed.add(identity)
+    if proven_removed.intersection(after):
+        raise ValueError("inventory-proven removal remains in after cleanup")
+    if after_complete:
+        if not before_complete:
+            raise ValueError("complete after cleanup requires complete before inventory")
+        for identity, positions in successful_remove_positions.items():
+            if not all(
+                any(
+                    action.get("action_kind") == "inventory"
+                    and action.get("status") == "pass"
+                    and action.get("inventory_stage") == "post_remove"
+                    and (action.get("resource_kind"), action.get("resource_name"))
+                    == identity
+                    for action in actions[remove_index + 1 :]
+                )
+                for remove_index in positions
+            ):
+                raise ValueError(
+                    "complete after cleanup lacks a post-remove observation"
+                )
+        if after != before - proven_removed:
+            raise ValueError(
+                "complete after cleanup does not close over inventory-proven removals"
+            )
+    cleanup = _strict_record("cleanup", payload.get("cleanup"), cleanup_phase=True)
+    status = cleanup.get("status")
+    if status == "not_run":
+        if not (before_complete and after_complete) or before or after or actions:
+            raise ValueError("cleanup not_run requires proven empty inventories")
+        return
+    if status == "pass":
+        successful = {
+            (action.get("resource_kind"), action.get("resource_name"))
+            for action in actions
+            if action.get("action_kind") == "remove"
+            and action.get("status") == "pass"
+        }
+        if (
+            not before_complete
+            or not after_complete
+            or not before
+            or after
+            or successful != before
+            or sum(
+                action.get("action_kind") == "remove"
+                for action in actions
+            )
+            != len(before)
+        ):
+            raise ValueError("cleanup pass requires complete exact removals")
+        terminal = next(
+            action
+            for action in reversed(actions)
+            if action.get("action_kind") != "inventory"
+        )
+    else:
+        if status != "fail" or not actions or actions[-1].get("status") != "fail":
+            raise ValueError("cleanup fail requires a terminal failed action")
+        terminal = actions[-1]
+    if terminal.get("action_kind") == "inventory":
+        stage = terminal.get("inventory_stage")
+        prior = actions[:-1]
+        prior_removes = {
+            (action.get("resource_kind"), action.get("resource_name"))
+            for action in prior
+            if action.get("action_kind") == "remove"
+            and action.get("status") == "pass"
+        }
+        if stage == "initial":
+            if terminal.get("execution") == "safety_refusal":
+                if (
+                    not before_complete
+                    or not after_complete
+                    or before != after
+                    or prior
+                ):
+                    raise ValueError(
+                        "initial cleanup ownership refusal inventory is out of chronology"
+                    )
+            elif (
+                before_complete
+                or after_complete
+                or prior
+                or before != after
+            ):
+                raise ValueError("initial cleanup inventory stage is out of chronology")
+        elif stage == "requery":
+            if not before_complete or after_complete:
+                raise ValueError("requery cleanup inventory stage is out of chronology")
+            if prior_removes == before and not after:
+                raise ValueError("requery cleanup inventory is terminally complete")
+        elif stage == "post_remove":
+            if not before_complete or after_complete or not prior_removes:
+                raise ValueError("post-remove cleanup inventory stage is out of chronology")
+        elif stage == "final":
+            if not before_complete or not before or after or prior_removes != before:
+                raise ValueError("final cleanup inventory stage is out of chronology")
+    if (
+        status == "fail"
+        and terminal.get("action_kind") == "remove"
+        and after_complete
+        and (
+            terminal.get("resource_kind"), terminal.get("resource_name")
+        ) not in after
+    ):
+        raise ValueError(
+            "failed remove cannot claim a complete after inventory without its retained identity"
+        )
+    if (
+        terminal.get("action_kind") == "inventory"
+        and terminal.get("inventory_stage") == "final"
+        and after_complete
+        and terminal.get("execution") not in {"internal_error", "interruption"}
+    ):
+        raise ValueError("final inventory terminal cannot claim completeness")
+    if terminal.get("action_kind") == "retained_postcondition":
+        identity = (terminal.get("resource_kind"), terminal.get("resource_name"))
+        if not after_complete or identity not in after:
+            raise ValueError("retained cleanup identity is absent from after inventory")
+        terminal_index = actions.index(terminal)
+        if not any(
+            action.get("action_kind") == "remove"
+            and action.get("status") == "pass"
+            and (action.get("resource_kind"), action.get("resource_name"))
+            == identity
+            for action in actions[:terminal_index]
+        ):
+            raise ValueError("retained cleanup identity lacks a prior remove")
+    missing = object()
+    for field in _STRICT_CLEANUP_PROJECTION:
+        if cleanup.get(field, missing) != terminal.get(field, missing):
+            raise ValueError("cleanup summary projection mismatches terminal action")
+
+
+def _strict_resource_inventories(
+    payload: Mapping[str, object],
+    invocation_id: str,
+    invocation: Mapping[str, object],
+) -> None:
+    collisions = _require_mapping(
+        payload.get("name_collisions"), "name collisions"
+    )
+    _require_allowed_keys(collisions, _COLLISION_KEYS, "name collisions")
+    expected = _require_mapping(
+        collisions.get("expected_resources"), "expected resources"
+    )
+    _require_allowed_keys(expected, _EXPECTED_RESOURCE_KEYS, "expected resources")
+    project = invocation.get("compose_project")
+    canonical = _canonical_resource_names(invocation)
+    expected_value = {
+        "compose_project": project,
+        "containers": [
+            f"{project}-judge-1",
+            f"{project}-judge-gui-1",
+            f"{project}-imported-judge-1",
+        ],
+        "networks": [f"{project}_default"],
+        "volumes": [
+            f"{project}_judge-output",
+            f"{project}_judge-gui-output",
+        ],
+        "images": [
+            invocation.get("headless_image"),
+            invocation.get("gui_image"),
+            invocation.get("imported_image"),
+        ],
+    }
+    if expected != expected_value:
+        raise ValueError("expected resource inventory is not canonical")
+    before = collisions.get("before")
+    if not isinstance(before, list):
+        raise ValueError("collision inventory must be a list")
+    if payload.get("status") == "pass" and before:
+        raise ValueError("strict pass requires an empty collision preflight")
+    if before and (
+        payload.get("status") != "fail"
+        or payload.get("reason") != "collision_failed"
+    ):
+        raise ValueError("collision preflight must terminate the live workflow")
+    identities: set[tuple[str, str]] = set()
+    for index, candidate in enumerate(before):
+        entry = _require_mapping(candidate, f"collision entry {index}")
+        if set(entry) != _OWNED_RESOURCE_ENTRY_KEYS:
+            raise ValueError("collision entry keys are invalid")
+        kind = entry.get("kind")
+        name = entry.get("name")
+        if kind not in canonical or name not in canonical[kind]:
+            raise ValueError("collision entry is not canonical")
+        identity = (str(kind), str(name))
+        if identity in identities:
+            raise ValueError("collision entries are duplicated")
+        identities.add(identity)
+        labels = entry.get("labels")
+        if labels not in ({}, {OWNERSHIP_LABEL_KEY: invocation_id}):
+            raise ValueError("collision labels are not privacy projected")
+    static_contract = _require_mapping(
+        payload.get("static_contract"), "static contract"
+    )
+    failure_proof = static_contract.get("failure_proof")
+    if (
+        isinstance(failure_proof, Mapping)
+        and failure_proof.get("kind") == "collision_detected"
+    ):
+        if not before or failure_proof.get("collisions") != before:
+            raise ValueError("collision proof does not match inventory")
+        terminal = _require_mapping(before[-1], "terminal collision entry")
+        expected_argv = [
+            "docker",
+            terminal.get("kind"),
+            "inspect",
+            terminal.get("name"),
+        ]
+        if static_contract.get("argv") != expected_argv:
+            raise ValueError("collision evidence command is not canonical")
+
+
+def _strict_save_load(
+    payload: Mapping[str, object],
+    invocation: Mapping[str, object],
+) -> None:
+    value = payload.get("save_load_proof")
+    if value is None:
+        outer = payload.get("save_load")
+        if isinstance(outer, Mapping) and outer.get("status") in {"pass", "fail"}:
+            raise ValueError("save/load proof is required for reached stage")
+        if invocation.get("config_digest") is not None:
+            raise ValueError("save/load config digest is premature")
+        return
+    proof = _require_mapping(value, "save/load proof")
+    _require_allowed_keys(proof, _STRICT_SAVE_LOAD_KEYS, "save/load proof")
+    base_keys = {"tar_path", "imported_image", "imported_container", *_STRICT_SAVE_STAGE_NAMES}
+    if not base_keys.issubset(proof):
+        raise ValueError("save/load proof is incomplete")
+    invocation_id = invocation.get("id")
+    project = invocation.get("compose_project")
+    expected_tar = f"output/evidence/docker/live/{invocation_id}/headless-image.tar"
+    if (
+        proof.get("tar_path") != expected_tar
+        or proof.get("imported_image") != invocation.get("imported_image")
+        or proof.get("imported_container") != f"{project}-imported-judge-1"
+    ):
+        raise ValueError("save/load planned identity is invalid")
+    stages = []
+    for stage in _STRICT_SAVE_STAGE_NAMES:
+        stage_record = _strict_record(stage, proof.get(stage))
+        if stage_record.get("status") != "not_run":
+            _validate_strict_command_identity(payload, stage, stage_record)
+        stages.append(stage_record)
+    project = invocation.get("compose_project")
+    primary_container = f"{project}-judge-1"
+    imported_container = f"{project}-imported-judge-1"
+    expected_commands = {
+        "controlled_stop": ["docker", "container", "stop", primary_container],
+        "image_save": [
+            "docker",
+            "image",
+            "save",
+            "--output",
+            expected_tar,
+            invocation.get("headless_image"),
+        ],
+        "image_load": ["docker", "image", "load", "--input", expected_tar],
+        "image_retag": [
+            "docker",
+            "image",
+            "tag",
+            invocation.get("headless_image"),
+            invocation.get("imported_image"),
+        ],
+        "imported_container_create": [
+            "docker",
+            "container",
+            "create",
+            "--name",
+            imported_container,
+            "--label",
+            f"{OWNERSHIP_LABEL_KEY}={invocation_id}",
+            invocation.get("imported_image"),
+        ],
+        "imported_container_start": [
+            "docker",
+            "container",
+            "start",
+            imported_container,
+        ],
+        "imported_docker_health": [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.State.Health.Status}}",
+            imported_container,
+        ],
+    }
+    for stage_name, stage in zip(_STRICT_SAVE_STAGE_NAMES, stages):
+        expected_argv = expected_commands.get(stage_name)
+        command_bound = stage.get("execution", "command") in {
+            "command",
+            "command_exception",
+            "local_operation",
+            "verifier_result",
+        }
+        if (
+            expected_argv is not None
+            and stage.get("status") != "not_run"
+            and command_bound
+            and stage.get("argv") != expected_argv
+        ):
+            raise ValueError(f"{stage_name} command is not canonical")
+        if stage_name == "imported_api_health" and stage.get("status") != "not_run":
+            argv = stage.get("argv")
+            if (
+                not isinstance(argv, list)
+                or argv[:3] != ["docker", "exec", imported_container]
+                or "api-health" not in argv
+            ):
+                raise ValueError("imported API health command is not canonical")
+        if (
+            stage_name == "imported_docker_health"
+            and stage.get("status") == "pass"
+            and stage.get("stdout_sha256") != _HEALTHY_STDOUT_SHA256
+        ):
+            raise ValueError("imported Docker health stdout is not canonical")
+        if (
+            stage_name == "imported_api_health"
+            and stage.get("status") == "pass"
+            and stage.get("stdout_sha256") != _API_HEALTH_OK_STDOUT_SHA256
+        ):
+            raise ValueError("imported API health stdout is not canonical")
+    failed = [index for index, stage in enumerate(stages) if stage.get("status") == "fail"]
+    if len(failed) > 1:
+        raise ValueError("save/load proof has multiple failed stages")
+    outer = _require_mapping(payload.get("save_load"), "save/load outer record")
+    if outer.get("status") == "fail" and not failed:
+        raise ValueError("save/load outer failure has no nested failed stage")
+    if failed:
+        selected = failed[0]
+        if any(stage.get("status") != "pass" for stage in stages[:selected]) or any(
+            stage.get("status") != "not_run" for stage in stages[selected + 1 :]
+        ):
+            raise ValueError("save/load failure is not an exact stage prefix")
+        selected_name = _STRICT_SAVE_STAGE_NAMES[selected]
+        if proof[selected_name].get("boundary") != selected_name:
+            raise ValueError("save/load failed stage boundary is invalid")
+        if dict(payload.get("save_load", {})) != dict(stages[selected]):
+            raise ValueError("save/load outer failure is not selected stage")
+    elif stages[0].get("status") == "not_run":
+        if any(stage.get("status") != "not_run" for stage in stages):
+            raise ValueError("save/load untouched stages are inconsistent")
+    else:
+        if any(stage.get("status") != "pass" for stage in stages):
+            raise ValueError("save/load pass requires every stage")
+        if dict(payload.get("save_load", {})) != dict(stages[1]):
+            raise ValueError("save/load pass must project image save")
+    archive_reached = stages[1].get("status") == "pass" or (
+        failed and failed[0] > 1
+    )
+    archive_keys = {"tar_sha256", "tar_byte_length"}
+    if archive_reached:
+        if not archive_keys.issubset(proof):
+            raise ValueError("save/load archive metadata is required")
+        _require_sha256(proof.get("tar_sha256"), "saved image tar")
+        length = proof.get("tar_byte_length")
+        if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
+            raise ValueError("saved image tar length is invalid")
+        if invocation.get("config_digest") != invocation.get("headless_image_id"):
+            raise ValueError("saved image config does not bind inspected image")
+    else:
+        if invocation.get("config_digest") is not None:
+            raise ValueError("save/load config digest is premature")
+        if archive_keys.intersection(proof):
+            raise ValueError("save/load archive metadata is premature")
+    imported_smoke = stages[-1]
+    if imported_smoke.get("status") == "pass":
+        scope, _ = _strict_api_proof(
+            imported_smoke.get("api_proof"), invocation, name="imported API proof"
+        )
+        if scope != "imported":
+            raise ValueError("imported API proof uses wrong scope")
+
+
+def _strict_export(
+    payload: Mapping[str, object],
+    invocation: Mapping[str, object],
+    api_proofs: Mapping[str, Mapping[str, object]],
+) -> None:
+    exported = _require_mapping(payload.get("exported_evidence"), "exported evidence")
+    _require_allowed_keys(exported, _STRICT_EXPORT_KEYS, "exported evidence")
+    status = exported.get("status")
+    if status not in {"pass", "fail"}:
+        raise ValueError("strict exported evidence status is invalid")
+    invocation_id = invocation.get("id")
+    expected_root = f"output/evidence/docker/live/{invocation_id}"
+    if exported.get("path") != expected_root:
+        raise ValueError("exported evidence root is invalid")
+    contents_value = exported.get("contents")
+    if not isinstance(contents_value, list):
+        raise ValueError("exported contents must be a list")
+    contents: dict[str, Mapping[str, object]] = {}
+    identities: set[str] = set()
+    paths: list[str] = []
+    for index, candidate in enumerate(contents_value):
+        entry = _require_mapping(candidate, f"exported content {index}")
+        if set(entry) != _EXPORTED_CONTENT_KEYS:
+            raise ValueError("exported content keys are invalid")
+        path = _require_canonical_relative_path(entry.get("path"), "exported content")
+        identity = path.casefold()
+        length = entry.get("byte_length")
+        if (
+            identity in identities
+            or isinstance(length, bool)
+            or not isinstance(length, int)
+            or length <= 0
+        ):
+            raise ValueError("exported content identity or length is invalid")
+        _require_sha256(entry.get("sha256"), "exported content")
+        identities.add(identity)
+        paths.append(path)
+        contents[path] = entry
+    if paths != sorted(paths) or "docker-status.json" in contents:
+        raise ValueError("exported contents are not canonical and sorted")
+
+    units_value = exported.get("export_units")
+    if not isinstance(units_value, list):
+        raise ValueError("export units must be a list")
+    gui_expected = "gui" in api_proofs
+    expected_units = [
+        ("saved_image_tar", "shared"),
+        ("run_tree", "headless"),
+        ("launcher_diagnostics", "headless"),
+        ("run_tree", "imported"),
+        ("launcher_diagnostics", "imported"),
+        *((
+            ("run_tree", "gui"),
+            ("launcher_diagnostics", "gui"),
+            ("gui_frame", "gui"),
+            ("gui_frame", "gui"),
+        ) if gui_expected else ()),
+    ]
+    described: list[str] = []
+    passed_run_scopes: list[str] = []
+    for index, candidate in enumerate(units_value):
+        unit = _require_mapping(candidate, f"export unit {index}")
+        _require_allowed_keys(unit, _STRICT_EXPORT_UNIT_KEYS, f"export unit {index}")
+        if index >= len(expected_units) or (
+            unit.get("kind"), unit.get("scope")
+        ) != expected_units[index]:
+            raise ValueError("export unit order is invalid")
+        if unit.get("status") != "pass":
+            raise ValueError("recorded export units must be completed prefixes")
+        destination = _require_canonical_relative_path(
+            unit.get("destination"), f"export unit {index} destination"
+        )
+        content_paths = unit.get("content_paths")
+        if not isinstance(content_paths, list) or not content_paths:
+            raise ValueError("export unit content paths are invalid")
+        for path in content_paths:
+            canonical = _require_canonical_relative_path(path, "export unit content")
+            if canonical not in contents or not (
+                canonical == destination or canonical.startswith(destination + "/")
+            ):
+                raise ValueError("export unit content is not under destination")
+            described.append(canonical)
+        kind, scope = expected_units[index]
+        if kind != "launcher_diagnostics" and "observed_content" in unit:
+            raise ValueError("non-launcher export unit carries launcher evidence")
+        if kind == "saved_image_tar":
+            if (
+                unit.get("source") != "headless-image.tar"
+                or destination != "headless-image.tar"
+                or content_paths != ["headless-image.tar"]
+                or "record" in unit
+            ):
+                raise ValueError("saved image export unit is invalid")
+            save_proof = _require_mapping(payload.get("save_load_proof"), "save/load proof")
+            tar_entry = contents.get("headless-image.tar")
+            if tar_entry is None or (
+                tar_entry.get("sha256") != save_proof.get("tar_sha256")
+                or tar_entry.get("byte_length") != save_proof.get("tar_byte_length")
+            ):
+                raise ValueError("saved image export content is mismatched")
+        elif kind in {"run_tree", "launcher_diagnostics"}:
+            record = _strict_record(f"export unit {index} record", unit.get("record"))
+            if (
+                record.get("status") != "pass"
+                or record.get("execution", "command") != "command"
+                or record.get("exit_code") != 0
+                or "boundary" in record
+                or "failure_proof" in record
+            ):
+                raise ValueError(
+                    f"export unit {index} record is not a successful copy command"
+                )
+            proof = api_proofs.get(scope)
+            if proof is None:
+                raise ValueError("export unit scope has no API proof")
+            container = proof.get("container")
+            run_path = _require_mapping(proof.get("output"), "API output").get("path")
+            if kind == "run_tree":
+                source = f"{container}:/app/output/{run_path}/."
+                expected_destination = f"{scope}/{run_path}"
+                passed_run_scopes.append(scope)
+                expected_contents = sorted(
+                    path
+                    for path in contents
+                    if path.startswith(expected_destination + "/")
+                )
+                if (
+                    unit.get("source") != source
+                    or destination != expected_destination
+                    or content_paths != expected_contents
+                    or record.get("argv")
+                    != [
+                        "docker",
+                        "cp",
+                        source,
+                        f"{expected_root}/{expected_destination}",
+                    ]
+                ):
+                    raise ValueError("export copy unit is not canonical")
+            else:
+                source = f"{container}:/app/output/evidence/docker/launcher.json"
+                expected_destination = f"{scope}/diagnostics/launcher.json"
+                if (
+                    unit.get("source") != source
+                    or destination != expected_destination
+                    or content_paths != [expected_destination]
+                    or record.get("argv")
+                    != ["docker", "cp", source, f"{expected_root}/{expected_destination}"]
+                ):
+                    raise ValueError("export copy unit is not canonical")
+                observed = _require_mapping(
+                    unit.get("observed_content"),
+                    f"export unit {index} observed launcher content",
+                )
+                if set(observed) != _EXPORTED_CONTENT_KEYS:
+                    raise ValueError("launcher observed content keys are invalid")
+                if observed != contents.get(expected_destination):
+                    raise ValueError("launcher observed content is not bound")
+        elif kind == "gui_frame":
+            frame_index = index - 7
+            expected_destination = f"gui/frames/frame-000{frame_index + 1}.png"
+            if (
+                unit.get("source") != f"captured_gui_frame_{frame_index}"
+                or destination != expected_destination
+                or content_paths != [expected_destination]
+                or "record" in unit
+            ):
+                raise ValueError("GUI frame export unit is invalid")
+        else:
+            raise ValueError("unknown export unit kind")
+    if len(described) != len(set(described)):
+        raise ValueError("export unit content paths overlap")
+    if status == "pass":
+        if (
+            len(units_value) != len(expected_units)
+            or set(described) != set(contents)
+            or "attempt" in exported
+        ):
+            raise ValueError("export pass does not close over every unit")
+    else:
+        if len(units_value) >= len(expected_units) or "attempt" not in exported:
+            raise ValueError("export fail requires the first incomplete unit")
+        attempt = _strict_record("export attempt", exported.get("attempt"))
+        if attempt.get("status") != "fail" or attempt.get("boundary") != "evidence_export":
+            raise ValueError("export attempt boundary is invalid")
+        partial_value = attempt.get("partial_contents")
+        if not isinstance(partial_value, list):
+            raise ValueError("failed export requires observed partial contents")
+        partial_digest = attempt.get("partial_contents_sha256")
+        _require_sha256(partial_digest, "export partial contents manifest")
+        if partial_digest != _canonical_json_sha256(partial_value):
+            raise ValueError("export partial contents manifest is not producer-bound")
+        partial: dict[str, Mapping[str, object]] = {}
+        partial_paths: list[str] = []
+        for index, candidate in enumerate(partial_value):
+            entry = _require_mapping(candidate, f"export partial content {index}")
+            if set(entry) != _EXPORTED_CONTENT_KEYS:
+                raise ValueError("export partial content keys are invalid")
+            path = _require_canonical_relative_path(
+                entry.get("path"), "export partial content"
+            )
+            if path in partial or path in described:
+                raise ValueError("export partial content overlaps a completed unit")
+            length = entry.get("byte_length")
+            if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
+                raise ValueError("export partial content length is invalid")
+            _require_sha256(entry.get("sha256"), "export partial content")
+            if contents.get(path) != entry:
+                raise ValueError("export partial content is not observed")
+            partial[path] = entry
+            partial_paths.append(path)
+        if partial_paths != sorted(partial_paths):
+            raise ValueError("export partial contents are not sorted")
+        next_kind, next_scope = expected_units[len(units_value)]
+        failed_destination: str | None = None
+        execution = attempt.get("execution", "command")
+        if next_kind in {"run_tree", "launcher_diagnostics"}:
+            proof = api_proofs.get(next_scope)
+            if proof is None:
+                raise ValueError("export attempt scope has no API proof")
+            container = proof.get("container")
+            run_path = _require_mapping(proof.get("output"), "API output").get("path")
+            if next_kind == "run_tree":
+                source = f"{container}:/app/output/{run_path}/."
+                destination = f"{next_scope}/{run_path}"
+            else:
+                source = f"{container}:/app/output/evidence/docker/launcher.json"
+                destination = f"{next_scope}/diagnostics/launcher.json"
+            failed_destination = destination
+            expected_argv = [
+                "docker",
+                "cp",
+                source,
+                f"{expected_root}/{destination}",
+            ]
+            if (
+                execution in {"command", "command_exception", "verifier_result"}
+                and attempt.get("argv") != expected_argv
+            ):
+                raise ValueError("export attempt command is not the next exact copy")
+            if execution == "verifier_result":
+                proof = _require_mapping(
+                    attempt.get("failure_proof"), "export verifier result"
+                )
+                if proof != {
+                    "kind": "postcondition_mismatch",
+                    "expected": "valid_boundary_postcondition",
+                    "observed": "invalid_boundary_result",
+                }:
+                    raise ValueError("export verifier result postcondition is invalid")
+            if execution in {"interruption", "internal_error"} and attempt.get("argv"):
+                raise ValueError("commandless export attempt claims argv")
+        elif next_kind == "gui_frame":
+            frame_index = len(units_value) - 7
+            failed_destination = f"gui/frames/frame-000{frame_index + 1}.png"
+            if execution not in {"local_operation", "interruption", "internal_error"}:
+                raise ValueError("local export unit has an invalid attempt execution")
+        elif execution not in {"local_operation", "interruption", "internal_error"}:
+            raise ValueError("local export unit has an invalid attempt execution")
+        described_set = set(described)
+        if set(contents) != described_set.union(partial):
+            raise ValueError("failed export contents do not match observed units")
+        for path in partial:
+            if failed_destination is None or not (
+                path == failed_destination
+                or path.startswith(failed_destination + "/")
+            ):
+                raise ValueError("failed export partial contents are outside the unit")
+
+    run_exports_value = exported.get("run_exports")
+    if not isinstance(run_exports_value, list):
+        raise ValueError("run exports must be a list")
+    if len(run_exports_value) != len(passed_run_scopes):
+        raise ValueError("run exports do not match passed run-tree units")
+    for index, (candidate, scope) in enumerate(zip(run_exports_value, passed_run_scopes)):
+        run_export = _require_mapping(candidate, f"run export {index}")
+        if set(run_export) != _STRICT_RUN_EXPORT_KEYS:
+            raise ValueError("run export keys are invalid")
+        proof = api_proofs[scope]
+        run_path = _require_mapping(proof.get("output"), "API output").get("path")
+        prefix = f"{scope}/{run_path}"
+        if run_export != {
+            "scope": scope,
+            "container": proof.get("container"),
+            "image": proof.get("image"),
+            "run_id": proof.get("run_id"),
+            "output_path": run_path,
+            "host_prefix": prefix,
+            "sealed": True,
+        }:
+            raise ValueError("run export does not match API proof")
+        completion = _require_mapping(proof.get("observed_completion"), "completion")
+        if (
+            contents.get(f"{prefix}/simulation_log.csv", {}).get("sha256")
+            != completion.get("step_log_sha256")
+            or contents.get(f"{prefix}/hashes.json", {}).get("sha256")
+            != completion.get("hashes_sha256")
+        ):
+            raise ValueError("sealed run export hashes do not match source")
+
+    frame_proof_value = payload.get("gui_frame_proof")
+    if gui_expected:
+        frame_proof = _require_mapping(frame_proof_value, "GUI frame proof")
+        if set(frame_proof) != _GUI_FRAME_PROOF_KEYS:
+            raise ValueError("GUI frame proof keys are invalid")
+        gui_api = api_proofs["gui"]
+        if (
+            frame_proof.get("run_id") != gui_api.get("run_id")
+            or frame_proof.get("container") != gui_api.get("container")
+            or frame_proof.get("image") != gui_api.get("image")
+        ):
+            raise ValueError("GUI frame proof identity is invalid")
+        active = _require_mapping(
+            frame_proof.get("active_observation"),
+            "GUI active observation",
+        )
+        _require_allowed_keys(
+            active, _STRICT_API_TERMINAL_KEYS, "GUI active observation"
+        )
+        if (
+            set(active) != _STRICT_API_TERMINAL_KEYS
+            or active.get("method") != "GET"
+            or active.get("path") != f"/api/runs/{gui_api.get('run_id')}"
+            or active.get("status") != 200
+            or active.get("run_id") != gui_api.get("run_id")
+            or active.get("state") not in _GUI_NONTERMINAL_STATES
+            or active.get("run_dir")
+            != (
+                "/app/output/"
+                + str(
+                    _require_mapping(
+                        gui_api.get("output"), "GUI API output"
+                    ).get("path")
+                )
+            )
+        ):
+            raise ValueError("GUI active observation is invalid")
+        if active.get("body_sha256") != _canonical_json_sha256(
+            {
+                "run_id": active.get("run_id"),
+                "run_dir": active.get("run_dir"),
+                "status": active.get("state"),
+            }
+        ):
+            raise ValueError("GUI active observation body hash is not canonical")
+        frames = frame_proof.get("frames")
+        if not isinstance(frames, list) or len(frames) != 2:
+            raise ValueError("GUI frame proof requires exactly two frames")
+        previous_sequence = -1
+        previous_time = -1.0
+        for index, candidate in enumerate(frames):
+            frame = _require_mapping(candidate, f"GUI frame {index}")
+            if set(frame) != _GUI_FRAME_KEYS:
+                raise ValueError("GUI frame keys are invalid")
+            path = f"gui/frames/frame-000{index + 1}.png"
+            sequence = frame.get("sequence")
+            simulation_time = frame.get("simulation_time")
+            byte_length = frame.get("byte_length")
+            _require_sha256(frame.get("sha256"), f"GUI frame {index}")
+            if (
+                frame.get("path") != path
+                or isinstance(sequence, bool)
+                or not isinstance(sequence, int)
+                or sequence <= previous_sequence
+                or isinstance(simulation_time, bool)
+                or not isinstance(simulation_time, (int, float))
+                or not math.isfinite(float(simulation_time))
+                or float(simulation_time) <= previous_time
+                or isinstance(byte_length, bool)
+                or not isinstance(byte_length, int)
+                or byte_length <= 0
+            ):
+                raise ValueError("GUI frame proof is invalid")
+            if path in described:
+                content = contents.get(path)
+                if content is None or (
+                    content.get("sha256") != frame.get("sha256")
+                    or content.get("byte_length") != byte_length
+                ):
+                    raise ValueError("GUI frame proof does not match exported bytes")
+            previous_sequence = sequence
+            previous_time = float(simulation_time)
+    elif frame_proof_value is not None:
+        raise ValueError("GUI frame proof requires a GUI API proof")
+
+
+def _validate_strict_successful_phase(
+    payload: Mapping[str, object], phase: str
+) -> None:
+    """Validate one strict pass predecessor without using legacy proof grammar."""
+    record = _require_mapping(payload.get(phase), phase)
+    if phase == "static_contract":
+        invocation_id, invocation = _validate_invocation(payload)
+        gui_scope = _validate_static_contract_scope(payload, invocation)
+        facts = _validate_render_command(
+            payload, invocation, gui_scope=gui_scope, strict=True
+        )
+        _validate_render_facts(
+            facts,
+            invocation_id,
+            invocation,
+            gui_scope=gui_scope,
+            strict=True,
+        )
+    elif phase in {"headless_build", "headless_health", "gui_build"}:
+        _validate_phase_command_identity(payload, phase, record)
+    elif phase in {"headless_smoke", "gui_smoke"}:
+        invocation_id, invocation = _validate_invocation(payload)
+        del invocation_id
+        scope, _proof = _strict_api_proof(
+            record.get("api_proof"),
+            invocation,
+            name=f"{phase} API proof",
+        )
+        expected_scope = "headless" if phase == "headless_smoke" else "gui"
+        if scope != expected_scope:
+            raise ValueError(f"{phase} API proof scope is invalid")
+    elif phase == "save_load":
+        _, invocation = _validate_invocation(payload)
+        _strict_save_load(payload, invocation)
+
+
+def _validate_strict_failure_prefix(
+    payload: Mapping[str, object], phase: str
+) -> None:
+    """Require the strict phase ledger to stop exactly at its failed owner."""
+    order = list(NON_CLEANUP_PHASES)
+    selected = order.index(phase)
+    for index, name in enumerate(order):
+        record = _require_mapping(payload.get(name), name)
+        status = record.get("status")
+        if index < selected:
+            if status != "pass":
+                raise ValueError("strict failure predecessor must pass")
+            _validate_strict_successful_phase(payload, name)
+        elif index == selected:
+            if status != "fail":
+                raise ValueError("strict failure owner must fail")
+        elif status != "not_run":
+            raise ValueError("strict failure successor must remain not_run")
+
+    if selected >= order.index("headless_health"):
+        cleanup = _require_mapping(payload.get("cleanup"), "cleanup")
+        if cleanup.get("status") == "not_run":
+            raise ValueError("strict reached failure requires cleanup evidence")
+
+
+_STRICT_CAPABILITY_FAILURE_REASONS = frozenset(
+    {"docker_cli_failed", "docker_daemon_failed"}
+)
+_STRICT_NESTED_LIVE_KEYS = frozenset(
+    {
+        "invocation_id",
+        "invocation",
+        "quick_smoke",
+        "save_load_proof",
+        "gui_frame_proof",
+        "name_collisions",
+        "owned_resources",
+        "exported_evidence",
+    }
+)
+
+
+def _validate_strict_not_run_envelope(
+    document: Mapping[str, object], reason: str
+) -> None:
+    """Validate the exact capability-only early return profile."""
+    if any(key in document for key in _STRICT_NESTED_LIVE_KEYS):
+        raise ValueError("strict not-run evidence cannot contain nested live claims")
+    if any(
+        _require_mapping(document.get(name), name).get("status") != "not_run"
+        for name in PHASES
+    ):
+        raise ValueError("strict not-run phases must remain untouched")
+    cli = _require_mapping(document.get("cli"), "cli")
+    daemon = _require_mapping(document.get("daemon"), "daemon")
+    expected_cli = ["docker", "--version"]
+    expected_daemon = ["docker", "info", "--format", "{{json .ServerVersion}}"]
+    if reason == "docker_cli_unavailable":
+        if cli.get("status") != "not_run" or daemon.get("status") != "not_run":
+            raise ValueError("CLI-unavailable capability matrix is invalid")
+        if (
+            cli.get("detail") != "Docker CLI unavailable"
+            or daemon.get("detail") != "Docker daemon has not been checked"
+            or "version" in cli
+            or "version" in daemon
+        ):
+            raise ValueError("CLI-unavailable capability metadata is invalid")
+        if daemon.get("argv") or daemon.get("exit_code") is not None:
+            raise ValueError("daemon must remain untouched after CLI failure")
+        if cli.get("argv") != expected_cli:
+            raise ValueError("CLI-unavailable query is not canonical")
+        return
+    if reason == "docker_daemon_unavailable":
+        if cli.get("status") != "pass" or cli.get("argv") != expected_cli:
+            raise ValueError("daemon-unavailable CLI capability is invalid")
+        if cli.get("detail") != "Docker CLI detected":
+            raise ValueError("daemon-unavailable CLI metadata is invalid")
+        _require_strict_version(cli.get("version"), "cli")
+        if daemon.get("status") != "not_run" or daemon.get("argv") != expected_daemon:
+            raise ValueError("daemon-unavailable query is not canonical")
+        if (
+            daemon.get("detail") != "Docker daemon unavailable"
+            or "version" in daemon
+        ):
+            raise ValueError("daemon-unavailable capability metadata is invalid")
+        if daemon.get("exit_code") == 0:
+            raise ValueError("daemon-unavailable query cannot pass")
+        return
+    if reason == "live_verification_not_run":
+        for name, expected in (("cli", expected_cli), ("daemon", expected_daemon)):
+            record = _require_mapping(document.get(name), name)
+            if record.get("status") != "pass" or record.get("argv") != expected:
+                raise ValueError(f"{name} capability matrix is invalid")
+            expected_detail = (
+                "Docker CLI detected"
+                if name == "cli"
+                else "Docker daemon responded"
+            )
+            if record.get("detail") != expected_detail:
+                raise ValueError(f"{name} capability metadata is invalid")
+            _require_strict_version(record.get("version"), name)
+        return
+    raise ValueError("strict not-run reason is not canonical")
+
+
+def _validate_strict_capability_failure(
+    document: Mapping[str, object], reason: str
+) -> None:
+    """Validate a stable fail-closed unexpected capability exception."""
+    if any(key in document for key in _STRICT_NESTED_LIVE_KEYS):
+        raise ValueError("capability failure cannot claim live evidence")
+    for name in PHASES:
+        record = _require_mapping(document.get(name), name)
+        if record.get("status") != "not_run":
+            raise ValueError("capability failure phases must remain untouched")
+    if reason == "docker_cli_failed":
+        failed_name = "cli"
+    elif reason == "docker_daemon_failed":
+        failed_name = "daemon"
+    else:
+        raise ValueError("capability failure reason is invalid")
+    other_name = "daemon" if failed_name == "cli" else "cli"
+    failed = _require_mapping(document.get(failed_name), failed_name)
+    if failed.get("status") != "fail" or failed.get("boundary") != "capability":
+        raise ValueError("capability exception carrier is invalid")
+    if "version" in failed:
+        raise ValueError("failed capability cannot claim a version")
+    if failed.get("execution") == "internal_error":
+        if failed.get("failure_proof") != {"kind": "internal_error"}:
+            raise ValueError("capability exception carrier is invalid")
+    elif failed.get("execution") == "command":
+        expected = (
+            ["docker", "--version"]
+            if failed_name == "cli"
+            else ["docker", "info", "--format", "{{json .ServerVersion}}"]
+        )
+        if failed.get("argv") != expected or not isinstance(
+            failed.get("exit_code"), int
+        ) or failed.get("exit_code") == 0:
+            raise ValueError("capability command carrier is invalid")
+    else:
+        raise ValueError("capability exception carrier is invalid")
+    other = _require_mapping(document.get(other_name), other_name)
+    if failed_name == "cli":
+        if (
+            other.get("status") != "not_run"
+            or other.get("detail") != "Docker daemon has not been checked"
+            or other.get("argv")
+            or other.get("exit_code") is not None
+            or other.get("stdout_sha256") != _EMPTY_STREAM_SHA256
+            or other.get("stderr_sha256") != _EMPTY_STREAM_SHA256
+            or "version" in other
+        ):
+            raise ValueError("capability failure must leave the daemon untouched")
+    elif (
+        other.get("status") != "pass"
+        or other.get("argv")
+        != ["docker", "--version"]
+    ):
+        raise ValueError("daemon capability failure must retain CLI probe")
+    else:
+        _require_strict_version(other.get("version"), other_name)
+
+
+def _validate_strict_export_prefix(document: Mapping[str, object]) -> None:
+    """Require every non-export phase that precedes an export failure."""
+    for phase in (
+        "static_contract",
+        "headless_build",
+        "headless_health",
+        "headless_smoke",
+        "save_load",
+    ):
+        record = _require_mapping(document.get(phase), phase)
+        if record.get("status") != "pass":
+            raise ValueError("evidence export failure lost its success prefix")
+        _validate_strict_successful_phase(document, phase)
+    gui_statuses = (
+        _require_mapping(document.get("gui_build"), "gui_build").get("status"),
+        _require_mapping(document.get("gui_smoke"), "gui_smoke").get("status"),
+    )
+    if gui_statuses == ("pass", "pass"):
+        _validate_strict_successful_phase(document, "gui_build")
+        _validate_strict_successful_phase(document, "gui_smoke")
+    elif gui_statuses != ("not_run", "not_run"):
+        raise ValueError("GUI prefix is incomplete before export failure")
+    cleanup = _require_mapping(document.get("cleanup"), "cleanup")
+    if cleanup.get("status") == "not_run":
+        raise ValueError("evidence export failure requires cleanup evidence")
+
+
+def _validate_strict_cleanup_failure_prefix(
+    document: Mapping[str, object],
+) -> None:
+    """Require the complete workflow prefix before a cleanup-only failure."""
+    for phase in (
+        "static_contract",
+        "headless_build",
+        "headless_health",
+        "headless_smoke",
+        "save_load",
+    ):
+        record = _require_mapping(document.get(phase), phase)
+        if record.get("status") != "pass":
+            raise ValueError("cleanup failure lost its reached success prefix")
+        _validate_strict_successful_phase(document, phase)
+    gui_statuses = (
+        _require_mapping(document.get("gui_build"), "gui_build").get("status"),
+        _require_mapping(document.get("gui_smoke"), "gui_smoke").get("status"),
+    )
+    if gui_statuses == ("pass", "pass"):
+        _validate_strict_successful_phase(document, "gui_build")
+        _validate_strict_successful_phase(document, "gui_smoke")
+    elif gui_statuses != ("not_run", "not_run"):
+        raise ValueError("cleanup failure has an incomplete GUI prefix")
+
+
+def _validate_strict_evidence(document: Mapping[str, object]) -> None:
     _require_allowed_keys(document, _EVIDENCE_KEYS, "Docker evidence")
-    if document.get("schema") != SCHEMA:
-        raise ValueError("invalid Docker evidence schema")
+    if "gui_requested" in document and type(document.get("gui_requested")) is not bool:
+        raise ValueError("strict GUI request marker is invalid")
+    _reject_private_values(document, strict=True)
     _require_timestamp(document.get("checked_at"), "Docker evidence")
     status = _require_status(document.get("status"), "Docker evidence")
     reason = document.get("reason")
     if not isinstance(reason, str) or len(reason) > MAX_DETAIL_LENGTH:
         raise ValueError("Docker evidence reason is invalid")
+    platform_data = _require_mapping(document.get("platform"), "platform")
+    _require_allowed_keys(platform_data, _PLATFORM_KEYS, "platform")
+    if not all(
+        isinstance(platform_data.get(key), str) and platform_data.get(key)
+        for key in _PLATFORM_KEYS
+    ):
+        raise ValueError("Docker evidence platform is invalid")
+    capabilities: dict[str, Mapping[str, object]] = {}
+    for name in ("cli", "daemon"):
+        capabilities[name] = _strict_record(name, document.get(name))
+    records: dict[str, Mapping[str, object]] = {}
+    for name in PHASES:
+        record = _strict_record(
+            name, document.get(name), cleanup_phase=name == "cleanup"
+        )
+        records[name] = record
+    _validate_strict_lifecycle_chronology(document, capabilities, records)
+
+    if reason in REASONS and status == "not_run":
+        _validate_strict_not_run_envelope(document, reason)
+        return
+    if status == "fail" and reason in _STRICT_CAPABILITY_FAILURE_REASONS:
+        _validate_strict_capability_failure(document, reason)
+        return
+    for name, record in records.items():
+        if name != "cleanup" and record.get("status") != "not_run":
+            _validate_strict_command_identity(document, name, record)
+    invocation_id, invocation = _validate_invocation(document)
+    _validate_strict_primary_health(records["headless_health"], invocation)
+    _strict_resource_inventories(document, invocation_id, invocation)
+    _strict_cleanup(document, invocation_id, invocation)
+
+    api_proofs: dict[str, Mapping[str, object]] = {}
+    for phase_name in ("headless_smoke", "gui_smoke"):
+        phase = _require_mapping(document.get(phase_name), phase_name)
+        if phase.get("status") == "pass":
+            scope, proof = _strict_api_proof(
+                phase.get("api_proof"), invocation, name=f"{phase_name} API proof"
+            )
+            if scope in api_proofs:
+                raise ValueError("strict API proof scopes are duplicated")
+            api_proofs[scope] = proof
+    quick = document.get("quick_smoke")
+    if "headless" in api_proofs:
+        quick_map = _require_mapping(quick, "quick smoke")
+        if set(quick_map) != _STRICT_API_PROOF_KEYS | {"evidence_class"}:
+            raise ValueError("strict quick-smoke keys are invalid")
+        if quick_map.get("evidence_class") != "quick_smoke" or {
+            key: value for key, value in quick_map.items() if key != "evidence_class"
+        } != dict(api_proofs["headless"]):
+            raise ValueError("strict quick smoke mismatches headless proof")
+    elif quick is not None:
+        raise ValueError("quick smoke cannot exist before headless API pass")
+
+    _strict_save_load(document, invocation)
+    save_proof_value = document.get("save_load_proof")
+    if isinstance(save_proof_value, Mapping):
+        imported = save_proof_value.get("imported_api_smoke")
+        if isinstance(imported, Mapping) and imported.get("status") == "pass":
+            scope, proof = _strict_api_proof(
+                imported.get("api_proof"), invocation, name="imported API proof"
+            )
+            if scope != "imported":
+                raise ValueError("imported API proof scope is invalid")
+            api_proofs[scope] = proof
+    run_ids = [proof.get("run_id") for proof in api_proofs.values()]
+    if len(run_ids) != len(set(run_ids)):
+        raise ValueError("strict API run IDs must be pairwise distinct")
+
+    exported = document.get("exported_evidence")
+    if exported is not None:
+        _strict_export(document, invocation, api_proofs)
+        _validate_strict_export_before_cleanup(
+            _require_mapping(exported, "exported evidence"), records["cleanup"]
+        )
+        if status == "fail" and reason == "evidence_export_failed":
+            _validate_strict_export_prefix(document)
+    if document.get("static_contract", {}).get("status") == "pass":
+        static_record = _require_mapping(
+            document.get("static_contract"), "static_contract"
+        )
+        render = _require_mapping(
+            static_record.get("render_proof"), "static contract render proof"
+        )
+        render_facts = _require_mapping(
+            render.get("selected_facts"), "render selected facts"
+        )
+        gui_scope = render_facts.get("profiles") == ["gui"]
+        validated_gui_scope = _validate_static_contract_scope(document, invocation)
+        if gui_scope != validated_gui_scope:
+            raise ValueError("strict Compose profile scope is inconsistent")
+        facts = _validate_render_command(
+            document,
+            invocation,
+            gui_scope=validated_gui_scope,
+            strict=True,
+        )
+        _validate_render_facts(
+            facts,
+            invocation_id,
+            invocation,
+            gui_scope=validated_gui_scope,
+            strict=True,
+        )
+    _validate_pass_build_projects(document, invocation)
+
+    if status == "pass":
+        if reason != LIVE_PASS_REASON:
+            raise ValueError("strict pass reason is invalid")
+        if platform_data != {"os": "linux", "architecture": "amd64"}:
+            raise ValueError("strict pass must target linux/amd64")
+        expected_capabilities = {
+            "cli": ["docker", "--version"],
+            "daemon": ["docker", "info", "--format", "{{json .ServerVersion}}"],
+        }
+        for name, expected_argv in expected_capabilities.items():
+            record = _require_mapping(document.get(name), name)
+            version = record.get("version")
+            if (
+                record.get("status") != "pass"
+                or record.get("argv") != expected_argv
+            ):
+                raise ValueError(f"strict pass {name} capability is not canonical")
+            _require_strict_version(version, name)
+        required_pass = {
+            "static_contract",
+            "headless_build",
+            "headless_health",
+            "headless_smoke",
+            "save_load",
+            "cleanup",
+        }
+        if any(document.get(name, {}).get("status") != "pass" for name in required_pass):
+            raise ValueError("strict pass has incomplete required phases")
+        if exported is None or exported.get("status") != "pass":
+            raise ValueError("strict pass requires complete evidence export")
+        gui_statuses = (
+            document.get("gui_build", {}).get("status"),
+            document.get("gui_smoke", {}).get("status"),
+        )
+        if gui_statuses not in {("pass", "pass"), ("not_run", "not_run")}:
+            raise ValueError("strict GUI phase statuses are inconsistent")
+        return
+    if status != "fail" or not isinstance(reason, str) or not reason.endswith("_failed"):
+        raise ValueError("strict evidence terminal status is invalid")
+    boundary = reason[: -len("_failed")]
+    if boundary == "image_identity":
+        cleanup_record = records["cleanup"]
+        owned = _require_mapping(document.get("owned_resources"), "owned resources")
+        before_entries = owned.get("before_cleanup")
+        if cleanup_record.get("status") == "not_run" or not isinstance(
+            before_entries, list
+        ):
+            raise ValueError(
+                "image identity failure requires truthful owned-image cleanup"
+            )
+        headless_identity = ("image", invocation.get("headless_image"))
+        before_identities = {
+            (entry.get("kind"), entry.get("name"))
+            for entry in before_entries
+            if isinstance(entry, Mapping)
+        }
+        if owned.get("before_cleanup_complete") is True:
+            if headless_identity not in before_identities:
+                identity_failure = records["headless_build"]
+                truthful_ownership_refusal = (
+                    cleanup_record.get("status") == "fail"
+                    and cleanup_record.get("execution") == "safety_refusal"
+                    and cleanup_record.get("action_kind") == "inventory"
+                    and cleanup_record.get("inventory_stage") == "initial"
+                    and (
+                        cleanup_record.get("resource_kind"),
+                        cleanup_record.get("resource_name"),
+                    )
+                    == headless_identity
+                    and identity_failure.get("status") == "fail"
+                    and identity_failure.get("execution") == "verifier_result"
+                    and identity_failure.get("exit_code") == 0
+                    and identity_failure.get("failure_proof")
+                    == {
+                        "kind": "postcondition_mismatch",
+                        "expected": "four_real_digests_and_current_label",
+                        "observed": "incomplete_or_unowned_image_identity",
+                    }
+                )
+                if not truthful_ownership_refusal:
+                    raise ValueError(
+                        "image identity failure cleanup does not establish the headless image"
+                    )
+        else:
+            actions = owned.get("cleanup_actions")
+            if not isinstance(actions, list) or not actions:
+                raise ValueError("image identity cleanup inventory failure is absent")
+            terminal = _require_mapping(actions[-1], "image identity cleanup terminal")
+            if (
+                terminal.get("action_kind") != "inventory"
+                or terminal.get("inventory_stage") != "initial"
+                or terminal.get("execution") == "safety_refusal"
+            ):
+                raise ValueError(
+                    "image identity cleanup must retain its initial inventory terminal"
+                )
+    if boundary == "evidence_export":
+        carrier = _require_mapping(
+            _require_mapping(exported, "exported evidence").get("attempt"),
+            "export attempt",
+        )
+    else:
+        owner = FAILURE_BOUNDARY_OWNERS.get(boundary)
+        if owner is None:
+            raise ValueError("strict failure boundary is invalid")
+        carrier = _require_mapping(document.get(owner), owner)
+    if carrier.get("status") != "fail" or carrier.get("boundary") != boundary:
+        raise ValueError("strict failure boundary carrier is invalid")
+    if boundary not in {
+        "collision",
+        "compose_contract",
+        "headless_build",
+        "image_identity",
+    }:
+        _require_observed_image_identity(invocation, strict=True)
+    if boundary == "cleanup":
+        _validate_strict_cleanup_failure_prefix(document)
+    elif boundary != "evidence_export" and owner != "cleanup":
+        _validate_strict_failure_prefix(document, owner)
+        if boundary in {"collision", "container_health", "headless_start"}:
+            _validate_amended_failed_record(document, owner, boundary)
+
+
+def _validate_legacy_evidence(document: Mapping[str, object]) -> None:
+    """Validate the frozen discriminator-free v1 profile."""
+    _require_timestamp(document.get("checked_at"), "Docker evidence")
+    status = _require_status(document.get("status"), "Docker evidence")
+    reason = document.get("reason")
+    if not isinstance(reason, str) or len(reason) > MAX_DETAIL_LENGTH:
+        raise ValueError("Docker evidence reason is invalid")
+
+    # Capability classifications are the first observable boundary in a
+    # not-run document.  Validate that envelope before generic record shape so
+    # a claimed successful CLI probe without its version is reported as a CLI
+    # capability defect, rather than being hidden behind a later daemon
+    # record-shape error.
+    if status == "not_run":
+        _validate_not_run_requirements(document)
 
     platform_data = _require_mapping(document.get("platform"), "platform")
     _require_allowed_keys(platform_data, _PLATFORM_KEYS, "platform")
@@ -2899,10 +6132,7 @@ def validate_evidence(payload: object) -> None:
                 _validate_untouched_not_run_phase(name, record)
     gui_smoke = _require_mapping(document.get("gui_smoke"), "gui_smoke")
     gui_build = _require_mapping(document.get("gui_build"), "gui_build")
-    if (
-        gui_smoke.get("status") == "pass"
-        and gui_build.get("status") != "pass"
-    ):
+    if gui_smoke.get("status") == "pass" and gui_build.get("status") != "pass":
         raise ValueError("GUI smoke pass requires a GUI build pass")
     _reject_private_values(document)
     _validate_present_api_results(document)
@@ -2913,8 +6143,35 @@ def validate_evidence(payload: object) -> None:
         _validate_nonpass_successful_build_claims(document)
         if status == "fail":
             _validate_fail_requirements(document)
-        else:
-            _validate_not_run_requirements(document)
+
+
+def validate_evidence(
+    payload: object,
+    *,
+    required_producer_contract: str | None = None,
+) -> None:
+    """Dispatch once to the frozen legacy or strict live profile."""
+    document = _require_mapping(payload, "Docker evidence")
+    if document.get("schema") != SCHEMA:
+        raise ValueError("invalid Docker evidence schema")
+    producer_contract_present = "producer_contract" in document
+    producer_contract = document.get("producer_contract")
+    if required_producer_contract is not None and producer_contract != required_producer_contract:
+        raise ValueError("required Docker evidence producer contract is missing")
+    if not producer_contract_present:
+        _require_allowed_keys(document, _LEGACY_EVIDENCE_KEYS, "Docker evidence")
+        _validate_legacy_evidence(document)
+        return
+    if producer_contract != LIVE_VERIFIER_CONTRACT:
+        raise ValueError("Docker evidence producer contract is invalid")
+    _validate_strict_evidence(document)
+
+
+def validate_live_verifier_evidence(payload: object) -> None:
+    """Validate one document as the strict Task 19.C live producer."""
+    validate_evidence(
+        payload, required_producer_contract=LIVE_VERIFIER_CONTRACT
+    )
 
 
 def _is_reparse_point(path: Path) -> bool:
