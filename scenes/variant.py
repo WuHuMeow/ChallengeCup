@@ -174,10 +174,30 @@ class VariantGenerator:
             raise ValueError(f"unknown vehicle type override: {names}")
 
     @staticmethod
+    def _resolve_signal_phases(
+        scene_meta: SceneMeta,
+    ) -> tuple[list[tuple[float, str]], str] | None:
+        """Resolve the validated timing plan; None keeps the net fallback."""
+        try:
+            from algorithms.fixed_time_plan import FixedTimePlanResolver
+            from core.types import Scene
+
+            resolved = FixedTimePlanResolver().resolve(
+                Scene(meta=scene_meta, config={})
+            )
+        except Exception:
+            return None
+        return (
+            [(phase.duration, phase.state) for phase in resolved.phases],
+            str(resolved.program_id),
+        )
+
+    @staticmethod
     def _write_signal_additional(
         scene_meta: SceneMeta,
         scale: float,
         output_file: Path,
+        phases: list[tuple[float, str]] | None = None,
     ) -> None:
         source_root = ET.parse(scene_meta.sumo_net).getroot()
         output_root = ET.Element("additional")
@@ -188,16 +208,30 @@ class VariantGenerator:
             logic_attributes = dict(source_logic.attrib)
             logic_attributes["programID"] = f"variant_x{scale:g}"
             logic = ET.SubElement(output_root, "tlLogic", logic_attributes)
-            for source_phase in source_logic.findall("phase"):
-                attributes = dict(source_phase.attrib)
-                state = attributes.get("state", "")
+            if phases is None:
+                for source_phase in source_logic.findall("phase"):
+                    attributes = dict(source_phase.attrib)
+                    state = attributes.get("state", "")
+                    if any(value in state for value in "Gg") and not any(
+                        value in state for value in "yY"
+                    ):
+                        attributes["duration"] = (
+                            f"{float(attributes['duration']) * scale:g}"
+                        )
+                    ET.SubElement(logic, "phase", attributes)
+                continue
+            # Phases come from the validated timing plan so the mandatory
+            # all-red clearance between service greens survives the variant.
+            for duration, state in phases:
                 if any(value in state for value in "Gg") and not any(
                     value in state for value in "yY"
                 ):
-                    attributes["duration"] = (
-                        f"{float(attributes['duration']) * scale:g}"
-                    )
-                ET.SubElement(logic, "phase", attributes)
+                    duration = duration * scale
+                ET.SubElement(
+                    logic,
+                    "phase",
+                    {"duration": f"{duration:g}", "state": state},
+                )
         ET.ElementTree(output_root).write(
             output_file,
             encoding="utf-8",
@@ -323,10 +357,12 @@ class VariantGenerator:
         )
 
         signal_file = output_dir / "signal_program.add.xml"
+        resolved_phases = self._resolve_signal_phases(scene_meta)
         self._write_signal_additional(
             scene_meta,
             variant.signal_duration_scale,
             signal_file,
+            phases=resolved_phases[0] if resolved_phases else None,
         )
         additional_files = [signal_file]
 

@@ -45,7 +45,7 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
     signal_root = ET.parse(bundle.additional_files[0]).getroot()
     assert signal_root.find("tlLogic").get("programID") == "variant_x1.1"
     phases = signal_root.findall("./tlLogic/phase")
-    assert float(phases[0].get("duration")) == pytest.approx(42 * 1.1)
+    assert float(phases[0].get("duration")) == pytest.approx(38 * 1.1)
     assert float(phases[1].get("duration")) == 3.0
 
 
@@ -80,6 +80,7 @@ def test_variant_generator_uses_seconds_first_high_level_fallback(monkeypatch):
 
     assert generator.levels[TrafficLevel.NORMAL] == 1.0
     assert generator.levels[TrafficLevel.HIGH] == 1.25
+
 
 def test_lane_closure_additional_is_bounded_and_reproducible(tmp_path):
     meta = SceneRegistry().get_scene("1").meta
@@ -138,3 +139,25 @@ def test_bundle_rejects_invalid_closure_window(tmp_path):
             ),
             tmp_path,
         )
+
+
+def test_variant_signal_program_preserves_all_red_clearance(tmp_path):
+    meta = SceneRegistry().get_scene("1").meta
+    bundle = VariantGenerator().generate_bundle(
+        meta, 1.0, VariantSpec(signal_duration_scale=1.0), tmp_path
+    )
+    signal_root = ET.parse(bundle.additional_files[0]).getroot()
+    phases = signal_root.findall("./tlLogic/phase")
+    greens = [
+        i for i, p in enumerate(phases)
+        if "G" in p.get("state") and "y" not in p.get("state")
+    ]
+    assert len(greens) >= 2
+    for a, b in zip(greens, greens[1:]):
+        between = phases[a + 1 : b]
+        all_red = [
+            p for p in between
+            if p.get("state") and set(p.get("state")) <= {"r"}
+        ]
+        assert all_red, f"no all-red clearance between green phases {a}->{b}"
+        assert sum(float(p.get("duration")) for p in all_red) >= 1.0
