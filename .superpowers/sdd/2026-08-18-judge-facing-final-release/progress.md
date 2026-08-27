@@ -1203,3 +1203,19 @@
   派发）。全量回归见下一条记录。
 - 影响：quick 中路口 11 的 12 个失败 run 与 formal 中相应 run 将以新 run id
   重试；Task 22 协议保持 20 路口全量口径。
+
+## Task 23 执行 checkpoint (2026-08-28)
+
+- 提交 `e099278` (`feat: layer startup validation for plan-derived signal
+  programs`)：启动校验分层落地；全量回归 **1926 passed, 1 skipped, exit 0**。
+- quick 档（Task 22 Step 1）**54/54 completed, 0 failed**（42 skipped +
+  1 retried；密封证据完整）。预检（Step 2）20/20 PASS。
+- 提交 `495fd95` (`feat: verify clean judge release package`)：发布副本构建
+  （411 项，含官方场景数据与 docs 公开文档）、verify_package 十项检查
+  （9 pass；official_source_archive 因受保护归档未随包转移如实 fail）、
+  指南层旧矩阵口径清理（7 文档）、发布副本目的地策略修正（output/ 内
+  gitignored 路径允许，拷贝源树内部拒绝）。
+- formal 分区暂停后续跑中（completed 272 / 540；39 个 pre-fix 失败将由
+  续跑按新 run id 自动重试）；0.1s 步长场景单 run 约 20-35 分钟，预计
+  6-12 小时完成。完成后：t22_merge 合并 → analyze_matrix → 冻结元数据
+  提交（Task 22 Step 3-5）。
