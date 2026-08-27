@@ -331,6 +331,7 @@ class TraCIBridge:
                     candidate_tls_id,
                     "set_program",
                     {
+                        "source": "plan_derived",
                         "program_id": program_id,
                         "phases": [
                             {

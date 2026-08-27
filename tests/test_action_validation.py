@@ -109,3 +109,56 @@ def test_action_is_stale_at_its_exact_expiry_boundary():
     )
 
     assert action_validation.validate_action_window(action, 5.0)[0] == "stale_action"
+
+
+def test_plan_mode_accepts_multistage_official_plan():
+    program = {
+        "source": "plan_derived",
+        "phases": [
+            {"duration": 50, "state": "GGGGrGrrrGGGGrGrrr"},
+            {"duration": 3, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 23, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 3, "state": "GrrrYGrrrGrrrYGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 52, "state": "GrrrrGrrrGrrrrGrrr"},
+            {"duration": 3, "state": "GrrrrGYYrGrrrrGYYr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 25, "state": "GrrrGGrrrGrrrGGrrr"},
+            {"duration": 3, "state": "GrrrrGrrYGrrrrGrrY"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+        ],
+    }
+    reason, detail = action_validation.validate_plan_program_safety(program)
+    assert reason is None and detail is None
+
+
+def test_plan_mode_rejects_missing_service_green():
+    program = {"phases": [{"duration": 10, "state": "rrrrrrrr"}]}
+    reason, detail = action_validation.validate_plan_program_safety(program)
+    assert reason == "unsafe_startup_program"
+    assert "no service green" in detail
+
+
+def test_plan_mode_rejects_invalid_duration():
+    program = {
+        "phases": [
+            {"duration": 0, "state": "GGGG"},
+            {"duration": 5, "state": "yyyy"},
+        ]
+    }
+    reason, detail = action_validation.validate_plan_program_safety(program)
+    assert reason == "unsafe_startup_program"
+    assert "duration=0" in detail
+
+
+def test_plan_mode_rejects_inconsistent_state_widths():
+    program = {
+        "phases": [
+            {"duration": 10, "state": "GGGG"},
+            {"duration": 3, "state": "yy"},
+        ]
+    }
+    reason, detail = action_validation.validate_plan_program_safety(program)
+    assert reason == "unsafe_startup_program"
+    assert "widths" in detail

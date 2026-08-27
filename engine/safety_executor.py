@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from core.movements import PhaseMovementState
@@ -13,6 +13,7 @@ from engine.action_validation import (
     validate_clearance_duration,
     validate_control_action,
     validate_phase_change_timing,
+    validate_plan_program_safety,
     validate_startup_program_safety,
 )
 
@@ -125,12 +126,26 @@ class SafetyExecutor:
                 )
                 continue
             if action.action_type == "set_program":
-                reason_code, detail = validate_startup_program_safety(
-                    value,
-                    min_green_seconds=min_green_seconds,
-                    yellow_seconds=self.yellow_seconds,
-                    all_red_seconds=self.all_red_seconds,
+                # Provenance is read from the raw action: normalization may
+                # strip marker keys from the normalized program value.
+                raw_value = action.value
+                plan_derived = isinstance(raw_value, Mapping) and (
+                    raw_value.get("source") == "plan_derived"
                 )
+                if plan_derived:
+                    # Official-plan programs (fixed-time baseline and flow
+                    # variants) are validated structurally: multi-stage plans
+                    # legitimately keep some groups green while other groups
+                    # clear, so the strict per-transition yellow/all-red
+                    # policy applies only to algorithm-authored programs.
+                    reason_code, detail = validate_plan_program_safety(value)
+                else:
+                    reason_code, detail = validate_startup_program_safety(
+                        value,
+                        min_green_seconds=min_green_seconds,
+                        yellow_seconds=self.yellow_seconds,
+                        all_red_seconds=self.all_red_seconds,
+                    )
                 if detail is not None:
                     results[index] = ActionResult(
                         action,

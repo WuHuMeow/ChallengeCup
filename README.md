@@ -42,6 +42,10 @@ Web 控制台，诊断写入 `output/evidence/judge-launch/launcher.json`。完�
 # 540-run 形式矩阵（Task 22 执行并冻结前保持 not_run）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile formal `
   --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal
+
+# 结构化校验（20 场景配置与 100 步真实运行）
+python scripts/validate_all.py --output-root output/runs/validate-original
+python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
 ```
 
 实验协议与统计判定：[`docs/release/experiment-protocol.md`](docs/release/experiment-protocol.md)。

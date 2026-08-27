@@ -157,6 +157,7 @@ def test_start_defers_variant_signal_program_to_the_safety_boundary(tmp_path):
     assert actions[0].tls_id == "new_tls"
     assert actions[0].action_type == "set_program"
     assert actions[0].value == {
+        "source": "plan_derived",
         "program_id": "variant_x1.1",
         "phases": [{"duration": "10", "state": "G"}],
     }

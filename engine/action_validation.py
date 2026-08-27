@@ -156,6 +156,56 @@ def validate_startup_program_safety(
     return None, None
 
 
+def validate_plan_program_safety(
+    program: Mapping[str, object],
+) -> tuple[str | None, str | None]:
+    """Structural validation for startup programs derived from official plans.
+
+    Official multi-stage plans legitimately keep some signal groups green
+    while other groups clear, and may go green-to-all-red without yellow, so
+    the strict algorithm-program policy (min green / yellow / all-red per
+    transition) does not apply to them.  What must still hold: executable
+    structure — numeric positive durations, at least one service green
+    phase, and a consistent signal-state width.
+    """
+    phases = program["phases"]
+    if not isinstance(phases, list) or not phases:
+        return "unsafe_startup_program", "startup program has no phases"
+    widths: set[int] = set()
+    total_duration = 0.0
+    service_greens = 0
+    for index, phase in enumerate(phases):
+        if not isinstance(phase, Mapping):
+            return "unsafe_startup_program", f"startup program phase={index} is malformed"
+        state = str(phase.get("state", ""))
+        try:
+            duration = float(phase.get("duration"))
+        except (TypeError, ValueError):
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={index} duration is not numeric",
+            )
+        if not math.isfinite(duration) or duration <= 0:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={index} duration={duration:g} is invalid",
+            )
+        total_duration += duration
+        widths.add(len(state))
+        if any(signal in state for signal in "Gg"):
+            service_greens += 1
+    if len(widths) > 1:
+        return (
+            "unsafe_startup_program",
+            "startup program phases have inconsistent signal-state widths",
+        )
+    if service_greens == 0:
+        return "unsafe_startup_program", "startup program has no service green phase"
+    if total_duration <= 0:
+        return "unsafe_startup_program", "startup program cycle is empty"
+    return None, None
+
+
 def validate_phase_change_timing(
     action: ControlAction,
     *,

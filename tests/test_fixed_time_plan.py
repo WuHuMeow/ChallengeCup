@@ -119,6 +119,7 @@ def test_fixed_time_step_installs_the_frozen_program_once(tmp_path):
     assert len(actions) == 1
     assert actions[0].action_type == "set_program"
     assert actions[0].value == {
+        "source": "plan_derived",
         "program_id": "standardized",
         "phases": [
             {"duration": 31.0, "state": "Gr"},

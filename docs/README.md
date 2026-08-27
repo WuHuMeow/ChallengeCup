@@ -20,6 +20,8 @@
 ```powershell
 python scripts/run_pdf_matrix.py --profile smoke --output-root output/runs/matrix-smoke
 python scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
+python scripts/validate_all.py --output-root output/runs/validate-original
+python scripts/batch_validate.py --output-root output/runs/validate-enhanced --no-report
 ```
 
 ## 参考资料

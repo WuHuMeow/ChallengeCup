@@ -33,6 +33,7 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
                 state.tls_id,
                 "set_program",
                 {
+                    "source": "plan_derived",
                     "program_id": self.resolved_timing_plan.program_id,
                     "phases": [
                         {"duration": phase.duration, "state": phase.state}

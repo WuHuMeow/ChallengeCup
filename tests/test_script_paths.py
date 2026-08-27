@@ -23,8 +23,12 @@ def test_config_resolves_repository_root_from_flat_core():
 def test_active_docs_reference_current_verification_commands():
     deployment = (REPOSITORY_ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")
     scripts = (REPOSITORY_ROOT / "scripts" / "README.md").read_text(encoding="utf-8")
-    assert "scripts/verify_ia_ib.py" in deployment
-    assert "output/verification" in deployment
+    # Task 20 boundary: the public deployment guide references the
+    # seconds-based matrix pipeline; internal acceptance scripts live in
+    # scripts/README.md only.
+    assert "scripts/run_pdf_matrix.py" in deployment
+    assert "output/evidence" in deployment
+    assert "scripts/verify_ia_ib.py" not in deployment
     assert "scripts/verify_ia_ib.py" in scripts
 
 

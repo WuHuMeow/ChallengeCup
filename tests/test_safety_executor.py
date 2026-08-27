@@ -700,3 +700,71 @@ def test_apply_is_the_public_boundary_for_the_private_bridge_sink():
 def test_executor_rejects_an_invalid_minimum_green_configuration(minimum):
     with pytest.raises(ValueError, match="min_green_seconds"):
         importlib.import_module("engine.safety_executor").SafetyExecutor(minimum)
+
+
+def test_plan_derived_startup_program_is_validated_structurally():
+    """Official multi-stage plans install; strict policy targets algorithm
+    programs, not the frozen official baseline."""
+    plan_program = {
+        "source": "plan_derived",
+        "program_id": "excel:早高峰",
+        "phases": [
+            {"duration": 50, "state": "GGGGrGrrrGGGGrGrrr"},
+            {"duration": 3, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 23, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 3, "state": "GrrrYGrrrGrrrYGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 52, "state": "GrrrrGrrrGrrrrGrrr"},
+            {"duration": 3, "state": "GrrrrGYYrGrrrrGYYr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 25, "state": "GrrrGGrrrGrrrGGrrr"},
+            {"duration": 3, "state": "GrrrrGrrYGrrrrGrrY"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+        ],
+    }
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        phase_movements=_phases(),
+        legal_phase_transitions=((0, 1), (1, 2), (2, 3)),
+    )
+    action = ControlAction("tls", "set_program", plan_program, "install plan")
+
+    results = _executor().apply([action], state, _bridge())
+
+    assert results[0].accepted is True, results[0].detail
+
+
+def test_unmarked_startup_program_stays_strict():
+    multistage = {
+        "program_id": "manual",
+        "phases": [
+            {"duration": 50, "state": "GGGGrGrrrGGGGrGrrr"},
+            {"duration": 3, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+            {"duration": 23, "state": "GYYYrGrrrGYYYrGrrr"},
+            {"duration": 3, "state": "GrrrYGrrrGrrrYGrrr"},
+            {"duration": 2, "state": "rrrrrrrrrrrrrrrrrr"},
+        ]
+    }
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        phase_movements=_phases(),
+        legal_phase_transitions=((0, 1), (1, 2), (2, 3)),
+    )
+    action = ControlAction("tls", "set_program", multistage, "install plan")
+
+    results = _executor().apply([action], state, _bridge())
+
+    assert results[0].accepted is False
+    assert results[0].reason_code == "unsafe_startup_program"
