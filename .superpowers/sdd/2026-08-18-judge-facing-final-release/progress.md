@@ -980,3 +980,158 @@
   focused `90 passed`、PowerShell health/stop/cleanup、frontend build、static/protected gates 通过。
 - Global Task 19-24: not started by this closeout；Docker live/second-machine、540-run formal
   matrix、release packaging and final materials remain deferred to their respective global tasks。
+
+## 换机恢复续作 checkpoint (2026-08-27 晚, 新工作机)
+
+- 换机恢复完成：续作包 SHA256SUMS 380/380 通过；自 Gitee 克隆 `codex/judge-final-release`
+  （HEAD `816ed27cf736b7faa06b17339ab2fd1db444675f` 与快照一致）；以 `core.autocrlf=false`
+  重建工作树，把 253 个仅换行符差异文件逐个验证零内容差异后恢复为仓库规范字节，
+  未触碰 `data/intersection_data` 与三个未提交候选；工作树最终状态
+  `M scripts/release/docker_status.py`、`M tests/test_docker_release.py`、
+  `?? scripts/release/docker_verify.py`，与原机 git-state.txt 完全一致；
+  working-tree.patch 反向校验（ignore-whitespace）与 blob 哈希
+  （4b1f57b→d2c2d1e、71850f2→0361e2f）均匹配。原包完整备份于
+  `challenge-cup_原包备份/`（字节级 SHA 校验保留）。换行符语义说明：原机工作树为
+  autocrlf=true 的 CRLF 检出，恢复树统一为 LF 规范字节，内容零差异。
+- 新机 venv 重建（Python 3.12.7），requirements-dev.txt 全部安装成功
+  （pytest 8.4.2、traci/sumolib 1.27.1、fastapi 0.141、httpx2 2.12 等）。
+- 离线基线回归：`tests/test_docker_release.py` 902 passed, 1 skipped，与上一轮
+  记录完全一致（唯一 skip 为 Windows symlink 权限的环境性跳过）。执行规则遵守：
+  未运行 Docker、WSL 或 `--execute-live`；Docker live 状态保持 `not_run`。
+- Task 19.C 复审 4 项 Important 的 RED→GREEN 修复（全部 test-first，测试节点
+  `test_task19c_r6_i1/i2/i3/i4_*`）：
+  - I1 `_strict_export()`：pass 的 run_tree/launcher_diagnostics unit 的 nested
+    record 必须是成功 command（status=pass、execution=command、exit_code=0、
+    无 boundary/failure_proof），报错 "not a successful copy command"。
+  - I2 `_reject_private_values()`：整段豁免改为 token 级——仅完整
+    `<name>:/app/output[/…]`（或边界裸 `/app/output[/…]`）与完整 `/api/runs[/id]?`
+    token 被豁免，其余文本继续 POSIX absolute path 检查；
+    `judge:/app/output/evidence /Users/alice` 现被拒绝。
+  - I3 `_cleanup_owned()`：入口采样 `cleanup_started_at` 并贯穿全部 10 处
+    phase 投影（正常/early-return/terminal/最终 fallback），state 记录
+    `cleanup_started_at`；export-before-cleanup 现比较真实 teardown 起点。
+  - I4 `_validate_strict_lifecycle_chronology()`：pass 的 nested
+    `headless_health.api_health` 串入 serial chronology 链（nested.started ≥
+    outer.finished，predecessor 传递为 nested.finished）。
+- 替代只读复审（本环境无 Terra/Sol 模型路由，使用独立只读代理，正式 Terra/max
+  复审仍待补）：首轮判定 4 项修复 ADDRESSED，同时提出 2 项新 Important 与 2 Minor：
+  - i3 测试效力不足（伪造值 anchor+2s 在回退世界里也会被拒绝）→ 已重构：
+    模块级 `_Task19cR6PinnedCleanupClock` + `_task19c_r6_pinned_cleanup()`；
+    `TickingCleanupRunner` 在 cleanup 区间每次命令推进 50 tick，伪造值改为
+    anchor+90s，落在真实 teardown 区间内；回退世界构造戳在累积 tick 之后
+    （接受→测试失败），修复世界入口戳 anchor+1（拒绝→测试通过）。
+  - `_unexpected_cleanup_failure` 同类残留 → 已修复：读 `state["cleanup_started_at"]`
+    （缺失时才回退现采 `_timestamp()`），三条投影路径全部继承入口戳；
+    新增 `test_task19c_r6_i3b_interrupted_cleanup_export_respects_real_start`
+    （强制 headless 容器 Running、stop 处 KeyboardInterrupt，伪造 anchor+90s）。
+  - 死常量 `_PUBLIC_CONTAINER_PATH_PATTERN` → 已删除（仅 TOKEN 模式保留）。
+- 本轮门禁（exact head 未变，候选未暂存未提交）：`tests/test_docker_release.py`
+  全文件 908 passed, 1 skipped；venv 3.12.7 与系统 3.13.2 compileall exit 0；
+  flake8 `--ignore=E501,W503,E203` exit 0；`git diff --check` exit 0；
+  ungated CLI `--repo-root .` exit 2；生产脚本 forbidden-command 扫描 0 命中。
+- 保护边界：`data/intersection_data` 163 tracked = 163 disk，worktree/index diff
+  均为空。`赛题资料.7z` 未随续作包转移、本机不存在，其哈希门禁如实记为
+  not_run（archive_not_present_on_machine）；用户将受保护归档放回后必须重验
+  `12A6F2FD69ACBCBF38C286A84232C4BE64000EDAF06C61FF6D3B3E09F8995C0F`。
+- 复审闭环状态：增量复审（仅针对 2 项 Important 的 delta）已回派原复审代理，
+  结果 CLEAN 前不暂存、不提交；正式 Terra/max 复审在本环境不可用，需用户明确
+  恢复该工作流后补齐，或接受替代复审记录并在下一环境完成正式复审。
+- 增量复审闭环（替代复审代理三轮）：第 2 轮确认 i3 重构 RESOLVED，但发现 i3b
+  未命中 catch-all 路径（stop 处 KI 被 `_cleanup_owned` 内部守护捕获）→ 重写为在
+  无守护的 `_cleanup_inventory_action` 构造点注入 KeyboardInterrupt，并把
+  `_unexpected_cleanup_failure` 纳入 pinned-clock 包裹；第 3 轮发现 tick 饥饿
+  （普通 runner 使回退世界构造戳仅 anchor+2）→ 将 `_Task19cR6TickingCleanupRunner`
+  提升到模块级供 i3/i3b 共用；第 4 轮判定 **CLEAN**：四个原始 Important 全部
+  ADDRESSED，i3/i3b 在忠实回退下都会失败（判别裕度 ≥5x，确定性），死常量已删，
+  informational Minor 已由 wrapper 解决，无新增 Critical/Important。
+- Task 19.C implementation commit：`e871c38` (`feat: add safe Docker live verifier`)；
+  暂存仅含 `scripts/release/docker_status.py`、`scripts/release/docker_verify.py`、
+  `tests/test_docker_release.py` 三个候选（+21481/−5217），progress/scratch/保护输入
+  未进入提交；暂存后 `git diff --cached --check`、protected-path staged diff 均干净。
+- Task 19.C post-commit gate（exact HEAD `e871c38`）：`tests/test_docker_release.py`
+  fresh rerun 908 passed, 1 skipped（60.51s）；venv 3.12.7 + 系统 3.13.2 compileall
+  exit 0；flake8 `--ignore=E501,W503,E203` exit 0；`git diff --check` exit 0；
+  ungated CLI exit 2；forbidden-command 扫描 0 命中；保护路径 worktree/index diff 为空。
+- Task 19.C: complete（offline 实现 + 替代复审 CLEAN + 提交 `e871c38`）。声明边界：
+  本轮复审由独立只读代理完成（本环境无 Terra/Sol 模型路由），正式 Terra/max 复审
+  待用户在具备该工作流的环境补做；Docker live 状态仍为 `not_run`，从未运行 Docker、
+  WSL 或 `--execute-live`，所有 pytest 均为 Python + injected fake runner 离线验证。
+  下一步为 19.D（依赖锁定与 headless 镜像构建契约），其 Docker live 部分同样保持
+  not_run 直到用户明确恢复。
+
+## Task 19.D closeout (2026-08-28, 换机续作)
+
+- 19.D 静态契约测试 RED：重写 `tests/test_docker_static.py`（13 失败 + 1 skip 的
+  干净 RED），锁定 digest 基础镜像、`--platform=linux/amd64`、npm ci/build、
+  `--require-hashes --only-binary :all:`、SUMO 1.27.1 门禁、UID/GID 10001、
+  严格 headless 启动参数、builder-only Web 资产、Compose judge 契约、
+  invocation label 全覆盖与 requirements.in/lock 结构。
+- lock 生成：`uv pip compile docker/requirements.in --python-version 3.12
+  --python-platform x86_64-manylinux_2_28 --only-binary :all: --generate-hashes
+  --exclude-newer 2026-08-24T00:00:00Z`（官方 PyPI；阿里云镜像对 traci 元数据
+  缺失、不可用于解析）。确定性验证：--no-header 双跑字节相等，且 tracked 文件
+  去头后与 no-header 输出逐行相等；46 包全部带哈希（按目标平台过滤）。
+- pip 跨平台 dry-run（supplemental，计划明示可 not_run）：直连 PyPI 首跑暴露
+  pip `--platform` 精确标签匹配限制（nvidia-nccl-cu13 wheel 为
+  manylinux_2_18，uv 按 glibc 兼容正确解析；lock 本身正确）。扩展标签后下载
+  至 nccl 252MB 处停滞，按计划记 not_run（supplemental resolver/download-plan
+  check stalled on direct-PyPI download; uv platform-constrained dry-run
+  通过 + 确定性 lock 提供等效证据）。
+- 实现提交：多阶段 Dockerfile（web-builder → python-builder → runtime）与
+  Compose `judge` 服务（named volume、read_only、tmpfs /tmp、init、restart
+  "no"、30s grace、精确 JSON healthcheck、`${JUDGE_HOST:-127.0.0.1}:8000:8000`）。
+- 替代复审第 1 轮（直接解析 eclipse-sumo wheel 的 ELF 头）：发现 Critical C1
+  —— wheel 内 sumo/sumo-gui 依赖 libX11/libXext/libXrender/libGL，而
+  slim-bookworm 不带，版本门禁与运行必然失败。test-first 修复：runtime 在
+  门禁前经 snapshot.debian.org `20260824T000000Z` 安装
+  libx11-6/libxext6/libxrender1/libgl1；同时强化门禁机制断言（M1）与
+  lock 对 requirements.txt 的覆盖断言（M2）。
+- 替代复审第 2 轮：**CLEAN**（3 Minor 全部修复或采纳：RUN 块排序断言、快照
+  钉定、死常量删除；M3 .dockerignore 按计划移交 19.E；M4 nccl 体积记录为
+  已知限制）。
+- 19.D implementation commit：`9255a59` (`feat: build reproducible headless
+  judge image`)；暂存仅含 requirements.in/requirements.lock/Dockerfile/
+  docker-compose.yml/test_docker_static.py；`git diff --cached --check` 与
+  protected-path staged diff 干净。静态套件 14 passed @ 提交前 HEAD。
+
+## Task 19.E closeout (2026-08-28)
+
+- 19.E 静态契约 RED：9 项新测试（Dockerfile.gui 快照钉定/精确 X 包/ldd 门禁、
+  compose judge-gui profile 与 additional_contexts、.dockerignore 排除与保留
+  双向断言、运维文档必含词与禁用 live-pass 声明扫描）+ services 断言扩为
+  双服务；实现 `docker/Dockerfile.gui`、compose `judge-gui` +
+  `judge-gui-output`、重写 `.dockerignore`/`docker/README.md`/
+  `docs/deployment.md` Docker 章节。
+- 替代复审第 1 轮：Dockerfile.gui/compose/.dockerignore COMPLIANT；F-1
+  （Important，GUI 直构建命令缺 `judge_base` 命名上下文，实际不可用）与
+  F-2/F-3 Minor test-first 修复（每 bracket check-valid-until=no、
+  dockerignore 前缀守卫扩展 + api 特例白名单）；F-4 按计划原样保留并记录
+  理由（set -eux + ldd 前置使负向 grep 边缘不可达）。第 2 轮：**CLEAN**，
+  仅余 M-1 覆盖缺口 → 多行感知断言补齐后入提交。
+- 工具事项：python write_text 在 Windows 的换行翻译导致 CRLF 复发，已全部
+  以 write_bytes 归一 LF；`git diff --check` 干净。
+- 19.E implementation commit：`2a03f64` (`feat: add optional container GUI
+  deployment`)；暂存仅含计划六文件；staged protected diff 干净；静态+launcher
+  套件 80 passed。
+
+## Task 19.F closeout (verification_pending, 2026-08-28)
+
+- 19.F Step1-3 门禁（exact HEAD `5059dc5`）：focused 988 passed, 1 skipped；
+  affected 145 passed；全量 Python **1889 passed, 1 skipped, exit 0**（默认
+  basetemp，619.96s；首跑 5 failed 的双归因与处置如实记录于 task-19-report.md）；
+  typecheck/build/Playwright 15 passed；compileall 双 Python；flake8；
+  placeholder 扫描零命中。实施提交 `e871c38`/`9255a59`/`2a03f64`，
+  便携性修复 `5059dc5`。
+- Step4 detector：`output/evidence/docker/docker-status.json` = overall
+  `not_run` / reason `docker_daemon_unavailable`（CLI 29.6.2 pass；daemon
+  未运行）。未执行 `--execute-live`。
+- Step5 保护门禁：`赛题资料.7z` 本机不存在 → 哈希门禁 not_run（回位后重验
+  `12A6F2FD…C0F`）；`data/intersection_data` 163 tracked = 163 disk（原机
+  232-disk 含 69 个未入库文件），worktree/index 保护 diff 空。
+- Step6：task-19-report.md 写为 `verification_pending`；Task 19.F 状态同为
+  verification_pending，双轴复审 CLEAN 前不改 complete。
+- Step7：双轴独立复审（standards 轴 + spec 轴，两个独立只读代理）已并行派出。
+- Step7/8 结果：standards 轴 1 Important（台账缺 19.E 小节）+4 Minor → 全部
+  修复/采纳 → **CLEAN**；spec 轴 1 Important（5059dc5 allowlist 修正案未记录）
+  +5 Minor → 全部修复/采纳（含 `ENV LIBGL_ALWAYS_SOFTWARE=1` test-first、
+  allowlist 归属按 git 实证修正）→ **CLEAN**。状态保持 verification_pending。
