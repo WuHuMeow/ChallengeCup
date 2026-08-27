@@ -121,11 +121,13 @@ def export_contracts(output_dir: Path = Path("docs/api")) -> tuple[Path, Path]:
         json.dumps(openapi, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     postman_path.write_text(
         json.dumps(_postman_collection(), ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     return openapi_path, postman_path
 
