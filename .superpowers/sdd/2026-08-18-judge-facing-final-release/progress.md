@@ -1254,3 +1254,10 @@
   frame not_run（headless 设计）。verify_runtime 的 `ok` 语义修正为
   "无 fail"（三态口径）。
 - formal 分区续跑中（F:，219GB 可用空间；284 completed 起步）。
+
+## Task 23 冻结 (2026-08-28)
+
+- `output/evidence/final/release-manifest.json` + README 冻结提交：发布副本
+  412 项、关键文件哈希、运行时验证（native 发布副本 headless：8 pass +
+  frame not_run）、环境版本、测试命令结果、Docker not_run、未执行 live 轴
+  全清单。Task 23: complete（第二环境/Docker live 保持 not_run）。
