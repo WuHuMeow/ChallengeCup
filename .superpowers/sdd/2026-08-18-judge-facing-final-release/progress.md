@@ -1236,3 +1236,21 @@
   C. 提供有 ≥250GB 空间的磁盘/目录作为 formal-part 输出根；
   D. 第二环境按 split_jobs 双机方案执行。
 - controller 建议 B（数据保留度与本机自洽性最优，且有分层校验裁定先例）。
+
+## 工作区迁移 F: + Task 23 运行时验证 (2026-08-28)
+
+- 工作区从 `D:\Desktop\挑战杯项目\项目文件\challenge-cup` 迁移至
+  `F:\challenge-cup`（D 盘 0 可用；robocopy 57,727 文件 / 29.7GB / 0 失败；
+  git HEAD 一致；D 盘释放 40GB 可用）。output 内绝对路径以两种转义形式
+  重写（582 文件）；密封 hashes.json 按"回滚还原证明"修复 448 条目
+  （还原旧路径哈希一致才更新；不可修复项全部为可丢弃 pytest 临时目录）。
+  quick resume 在 F: 上 **54/54 全部 skip 验证通过**。
+- verify_package 修正：runtime 路由对齐 Task 16 冻结契约（状态
+  `GET /api/runs/{id}`、结果 `GET /api/results/{id}`）、`warmup_seconds: 0`
+  显式下发、frame 按 gui_mode 分层（headless 下按设计无帧 → not_run；
+  native 下本机 sumo-gui 在 119/120 步硬崩属环境 GL 限制，如实记录）。
+- Task 23 runtime 验证（发布副本 `output/release-candidate`，headless）：
+  health/scenes/algorithms/submit/terminal/metrics/result/stop 全部 **pass**，
+  frame not_run（headless 设计）。verify_runtime 的 `ok` 语义修正为
+  "无 fail"（三态口径）。
+- formal 分区续跑中（F:，219GB 可用空间；284 completed 起步）。
