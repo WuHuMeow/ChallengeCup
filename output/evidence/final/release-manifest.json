@@ -1,0 +1,81 @@
+{
+  "code_commit": "483f086ce0380346ad6a738e697f338ad98c8a93",
+  "docker_status": {
+    "detector_output": "output/evidence/docker/docker-status.json",
+    "overall": "not_run",
+    "reason": "docker_daemon_unavailable"
+  },
+  "environment": {
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "os": "Windows 11 (workstation, F: workspace)",
+    "python": "3.12.7 (venv)",
+    "sumo": "1.27.1"
+  },
+  "limitations": [
+    "formal 540-run matrix execution in progress (Task 22); statistics await its freeze",
+    "formal Terra/Sol reviews pending (substitute read-only reviewers used in this environment)"
+  ],
+  "live_axes_not_run": [
+    "docker live build",
+    "container health",
+    "container smoke",
+    "save/load",
+    "GUI frames",
+    "cleanup",
+    "second environment"
+  ],
+  "release_candidate": {
+    "entries": 412,
+    "key_file_sha256": {
+      "README.md": "1406521680c075d749a2f92cf5f13b91bd0dfbc3c1bffdcf779341dfdca8bc28",
+      "docker/Dockerfile": "b166b37d41e10a79c5f3b625408617cf87fa76ac1574ec3995c638912d1c999b",
+      "pyproject.toml": "246b7bb26390c2d7332d7de4ef46396d084546774f93175e47599194e2234141",
+      "scripts/run_judge.py": "6d60917653da455afc141ceca193ad2c8c39d2ccf5dcc6c2e4a59cec408771f3"
+    },
+    "manifest_sha256": "ca9457da79f09d13df59f71f6fc0d81891377ee711c1870ea1abae7f43cbc8ae",
+    "path": "output/release-candidate"
+  },
+  "runtime_verification": {
+    "base_url": "http://127.0.0.1:8801",
+    "checks": {
+      "algorithms": "pass",
+      "frame": "not_run (headless gui mode captures no frames; native sumo-gui crashed on this host at step 119/120 - environment GL limitation, recorded honestly)",
+      "health": "pass",
+      "metrics": "pass",
+      "quick_run_submit": "pass",
+      "quick_run_terminal": "pass",
+      "result": "pass",
+      "scenes": "pass",
+      "stop_after_completion": "pass"
+    },
+    "profile": "native (release copy, headless gui mode)"
+  },
+  "schema": "challenge-cup-final-release-manifest",
+  "schema_version": 1,
+  "test_commands": {
+    "compileall_312_313": {
+      "result": "exit 0"
+    },
+    "flake8_ignore_E501_W503_E203": {
+      "result": "exit 0"
+    },
+    "full_python_suite": {
+      "command": "pytest tests -q",
+      "result": "1926 passed, 1 skipped, exit 0 @ e099278"
+    },
+    "playwright_judge_flow": {
+      "command": "npx playwright test tests/judge-flow.spec.ts --project=chromium",
+      "result": "15 passed"
+    },
+    "protected_input_gates": {
+      "result": "163 tracked = 163 disk, worktree/index diffs empty; 赛题资料.7z not transferred to this machine - hash gate not_run"
+    },
+    "web_build": {
+      "result": "exit 0"
+    },
+    "web_typecheck": {
+      "result": "exit 0"
+    }
+  }
+}
