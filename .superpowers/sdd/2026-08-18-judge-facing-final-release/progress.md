@@ -1219,3 +1219,20 @@
   续跑按新 run id 自动重试）；0.1s 步长场景单 run 约 20-35 分钟，预计
   6-12 小时完成。完成后：t22_merge 合并 → analyze_matrix → 冻结元数据
   提交（Task 22 Step 3-5）。
+
+## Task 22 磁盘空间阻塞裁定请求 (2026-08-28, controller 暂停)
+
+- formal 10 分区续跑至 completed 284 / failed 42（pre-fix 失败待重试）后
+  **D 盘空间耗尽**（Errno 28，D: 196G 全满）。根因：0.1s 步长场景（约 9 个）
+  的 fcd 全轨迹 traj.xml 单 run 达 ~1GB，全量 540 需约 150–200GB，本机 D 盘
+  无此空间；C 盘仅 47GB 亦不足。所有 worker/SUMO 已停止，284 个完成 run 的
+  密封证据完整保留，resume 可无损续跑。
+- 待裁定选项：
+  A. 用户清理 D 盘 ≥250GB → resume（协议零改动）；
+  B. 协议修正案：traj.xml（fcd 轨迹）不被任何分析消费，将 RAW_SUMO_OUTPUT
+     中的 traj.xml 改为 seal 后即时 gzip 存档（哈希记录压缩前摘要）或降级为
+     可选产物（需 TDD 修改 Task 14 冻结的 artifacts 契约 + 全量回归 + 复审；
+     空间需求降至 ~15–30GB，本机可自洽完成）；
+  C. 提供有 ≥250GB 空间的磁盘/目录作为 formal-part 输出根；
+  D. 第二环境按 split_jobs 双机方案执行。
+- controller 建议 B（数据保留度与本机自洽性最优，且有分层校验裁定先例）。
