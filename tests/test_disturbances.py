@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from api.models import DisturbanceSpecModel
-from core.run_models import DisturbanceSpec, RunRequest, VariantSpec
+from core.run_models import DisturbanceSpec, RunRequest
 from core.types import SceneMeta
 from scenes.disturbances import validate_variant
 from scenes.registry import SceneRegistry
@@ -369,6 +369,7 @@ def test_validate_variant_rejects_configured_additional_files(tmp_path):
 def test_variant_manifest_excludes_workspace_absolute_paths(tmp_path):
     scene = _scene(tmp_path)
     bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "bundle")
+    assert bundle.manifest["flow_multiplier"] == 1.0
     serialized = (tmp_path / "bundle" / "variant_manifest.json").read_text(encoding="utf-8")
     assert str(scene.sumo_flow.parent) not in serialized
     assert "data/intersection_data/1" in serialized
@@ -518,3 +519,35 @@ def test_disturbance_rejects_unknown_lane_and_invalid_bundle(tmp_path):
     bundle = VariantGenerator().generate_bundle(scene, 1.0, None, tmp_path / "ok")
     bundle.manifest["additional_files"] = ["same.xml", "same.xml"]
     assert any("conflict" in issue for issue in validate_variant(bundle))
+
+
+def test_construction_rerouter_covers_all_network_edges(tmp_path):
+    """Rerouting must be active on every edge, or vehicles that enter the
+    network upstream of a closed lane keep an invalid route and SUMO quits
+    with 'no valid route' at the disturbance onset (observed at t=600)."""
+    source = tmp_path / "source"
+    source.mkdir()
+    scene = _scene(source)
+    bundle = VariantGenerator().generate_bundle(
+        scene,
+        1.0,
+        DisturbanceSpec("construction", 600, 1200, "E0_0", 1.0),
+        tmp_path / "bundle",
+    )
+    closure = Path(bundle.additional_files[-1])
+    root = ET.parse(closure).getroot()
+    rerouter = root.find("rerouter")
+    assert rerouter is not None
+    covered = set(rerouter.get("edges").split())
+
+    network_edges = {
+        edge.get("id")
+        for edge in ET.parse(scene.sumo_net).getroot().findall("edge")
+        if edge.get("function") != "internal"
+    }
+    # The closed edge itself is where affected vehicles already are; every
+    # other edge must host the rerouter so upstream traffic is redirected.
+    assert network_edges - covered <= {""}, (
+        f"rerouter misses edges: {sorted(network_edges - covered)[:8]}"
+    )
+    assert "E0" in covered

@@ -49,8 +49,21 @@ def write_disturbance(
         "end": f"{effective_end:g}",
     }
     if spec.kind == "construction":
-        edge, _, _ = _network_context(network_file, spec.target)
-        rerouter = ET.SubElement(root, "rerouter", {"id": "construction_rerouter", "edges": edge})
+        _network_context(network_file, spec.target)
+        # The rerouter must be active on EVERY network edge: vehicles that
+        # enter the network upstream of the closed lane keep their derived
+        # route, and a rerouter limited to the closed edge alone lets them
+        # depart with no valid route (SUMO quits on error at the onset).
+        network_edges = sorted(
+            node.get("id")
+            for node in ET.parse(network_file).getroot().findall("edge")
+            if node.get("function") != "internal" and node.get("id")
+        )
+        rerouter = ET.SubElement(
+            root,
+            "rerouter",
+            {"id": "construction_rerouter", "edges": " ".join(network_edges)},
+        )
         window = ET.SubElement(rerouter, "interval", scaled_interval)
         ET.SubElement(window, "closingLaneReroute", {"id": spec.target, "allow": "authority"})
     elif spec.kind == "event_demand":
