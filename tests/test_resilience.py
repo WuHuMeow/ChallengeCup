@@ -11,8 +11,9 @@ from engine.runner import SimulationRunner
 from engine.safety_executor import SafetyExecutor
 
 
-_VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
 from engine.traci_bridge import TraCIBridge, traci
+
+_VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
 
 
 def _bridge(max_restarts: int = 0) -> TraCIBridge:
@@ -353,3 +354,24 @@ def test_runner_exits_cleanly_on_fatal_error(tmp_path, caplog):
         history = runner.run(10)  # 不应抛出未捕获异常
     assert history == []  # 第一步即断开，无快照
     assert any("closing gracefully" in r.message for r in caplog.records)
+
+
+def test_build_cmd_enables_route_error_tolerance_for_disturbance_runs(tmp_path):
+    """Lane-closure disturbances reroute traffic; vehicles that cannot be
+    rerouted are discarded instead of crashing SUMO at the onset step."""
+
+    disturbance_add = tmp_path / "disturbance_construction.add.xml"
+    disturbance_add.write_text("<additional/>", encoding="utf-8")
+    disturbance_bridge = TraCIBridge(
+        sumo_cfg=Path("demo_1.sumocfg"),
+        additional_files=[disturbance_add],
+    )
+    cmd = disturbance_bridge._build_cmd()
+    assert "--ignore-route-errors" in cmd
+    assert cmd[cmd.index("--ignore-route-errors") + 1] == "true"
+
+    plain_bridge = TraCIBridge(
+        sumo_cfg=Path("demo_1.sumocfg"),
+        additional_files=[tmp_path / "signal_program.add.xml"],
+    )
+    assert "--ignore-route-errors" not in plain_bridge._build_cmd()

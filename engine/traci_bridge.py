@@ -188,6 +188,15 @@ class TraCIBridge:
             cmd += ["--seed", str(self.seed)]
         if self.additional_files:
             cmd += ["-a", ",".join(str(f) for f in self.additional_files)]
+            # Lane-closure disturbances reroute traffic at the onset step;
+            # vehicles that cannot be rerouted must be discarded (the
+            # construction semantics) instead of crashing SUMO with a
+            # fatal "no valid route" error.
+            if any(
+                Path(file).name.startswith("disturbance_")
+                for file in self.additional_files
+            ):
+                cmd += ["--ignore-route-errors", "true"]
         if self.artifacts is not None:
             cmd.extend([
                 "--tripinfo-output",
