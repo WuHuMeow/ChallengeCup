@@ -112,11 +112,11 @@ def render_report(analysis: dict[str, object]) -> str:
     parts = [
         "# 实验评估报告（全部数字生成自冻结分析）",
         "",
-        f"- 分析清单：`output/evidence/formal/analysis_manifest.json`（SHA-256 "
+        "- 分析清单：`output/evidence/formal/analysis_manifest.json`（SHA-256 "
         f"`{_sha256(FORMAL / 'analysis_manifest.json')[:16]}…`）",
         f"- 矩阵：`output/runs/formal/matrix.csv` 540 run（SHA-256 "
         f"`{manifest['matrix_sha256'][:16]}…`）",
-        f"- 分析产码：`scripts/analyze_matrix.py`（冻结合同），生成时间见分析清单",
+        "- 分析产码：`scripts/analyze_matrix.py`（冻结合同），生成时间见分析清单",
         "",
         "## 描述性统计（normal strata）",
         "",

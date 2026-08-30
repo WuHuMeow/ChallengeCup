@@ -1,7 +1,6 @@
 """Generate the defense PPT from frozen analysis artifacts (Task 24)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from pptx import Presentation
@@ -31,7 +30,6 @@ def _add_table(slide, rows: list[list[str]], left: float, top: float,
 
 
 def main() -> int:
-    selection = json.loads((FORMAL / "selection.json").read_text(encoding="utf-8"))
     paired = _read_csv(FORMAL / "paired_tests.csv")
     desc = _read_csv(FORMAL / "descriptive_stats.csv")
 
