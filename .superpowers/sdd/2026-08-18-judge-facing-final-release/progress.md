@@ -1261,3 +1261,23 @@
   412 项、关键文件哈希、运行时验证（native 发布副本 headless：8 pass +
   frame not_run）、环境版本、测试命令结果、Docker not_run、未执行 live 轴
   全清单。Task 23: complete（第二环境/Docker live 保持 not_run）。
+
+## Formal matrix 540/540 executed (2026-08-30)
+
+- 形式矩阵 540/540 全部执行完成（sealed evidence）。执行期间跨机迁移
+  （D:→F:，29.7GB，密封哈希按回滚还原证明修复）与多轮断点续跑。
+- 合并：37 个执行根按 run_key 去重合并至规范根 `output/runs/formal/`
+  （540 行 CSV + canonical manifest；15 行 CSV 因 worker 被中断未落盘，
+  从其密封 summary 机械重建；16 行 safety 计数列从密封 summary 回填）。
+- 执行与合并期发现并修复的缺陷（全部 test-first）：
+  - `b0f500b` 变体信号程序缺全红清空（quick 36/54 失败暴露）；
+  - `e099278` 启动校验分层（官方多阶段配时计划与单窗口模型冲突的裁定）；
+  - `458e02d` construction 扰动 rerouter 只覆盖被关边 → 新车 no-valid-route
+    → SUMO 退出（60 个 construction 中 36 个从未能完成——系统性缺陷）；
+  - `47e3df7` 扰动运行启用 `--ignore-route-errors`（无法重路由车辆按施工
+    阻断语义移除；SUMO 官方推荐做法）。
+- 本轮资源教训：15.3GB RAM 机器上 12 路并发 0.1s 仿真 + 校验导致提交内存
+  耗尽（commit 33.6/38.4GB）→ SUMO 被杀（"disconnected @ t=600"假象）；
+  降为 5 路后稳定。机器休眠多次中断计算，靠 sealed resume 无损续跑。
+- analyze_matrix 首跑在 safety 列校验处失败（合并期 16 行空 safety 列），
+  回填后重跑中。完成即冻结 Task 22。
