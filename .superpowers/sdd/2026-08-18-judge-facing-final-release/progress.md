@@ -1281,3 +1281,34 @@
   降为 5 路后稳定。机器休眠多次中断计算，靠 sealed resume 无损续跑。
 - analyze_matrix 首跑在 safety 列校验处失败（合并期 16 行空 safety 列），
   回填后重跑中。完成即冻结 Task 22。
+
+## Task 22/23/24 closeout (2026-08-30)
+
+- analyze_matrix 第二次运行 **exit 0**：5 个产物落盘
+  （analysis_manifest / descriptive_stats / paired_tests /
+  disturbance_resilience / selection）。首跑失败于 safety 列校验
+  （合并期 16 行空 safety 列），已从密封 summary 回填（int 口径）。
+- **选择门判定（冻结协议，如实声明）**：
+  - capacity_aware_max_pressure：CI [-4.85, -0.91] 全负 ✓；
+    改善单元 25/30 ≥ 21 ✓；safety_eligible = **False**。
+  - classic_max_pressure：改善单元 18/30 < 21 ✗；safety_eligible = False。
+  - 默认选择保守回退 `fixed_time`，改进声明 False。
+  - 原因：场景 11（0.1s 步长）存在**跨算法**碰撞 run
+    （fixed_time 4 / classic 5 / CA-MP 3，CA-MP 最少）——官方多阶段配时下
+    路口穿越冲突属场景固有数据现实；冻结门要求候选 180 run 绝对零碰撞，
+    场景 11 使任何候选都无法满足。门的修订属协议变更，本轮不做。
+  - CA-MP 的诚实结论：旅行时间显著改善（-3.65%，CI 全负）、平均排队全场
+    最低（3.84m）、扰动韧性最优（施工占道 -7.2%、三类扰动排队全最低）、
+    碰撞记录三者最少——数据支持其优势，但不做选择性声明。
+- Task 22 freeze commit：`a007211`
+  (`chore: freeze formal experiment evidence`)：evidence/formal 7 文件
+  （-f）+ quick-demo README + 协议执行状态 + generate_deliverables.py +
+  report/实验评估报告.tables.md。
+- Task 23：output/evidence/final/release-manifest.json 已随 a007211 前的
+  `8fbff21`/`597758a` 冻结（运行时验证 8 pass + frame not_run）。
+- Task 24 交付物（output/deliverables/）：答辩PPT.pptx（7 页，
+  python-pptx 生成）、demo_video_script.md（6 分镜，数字回填）、
+  submission-manifest.json（关键结论 + SHA-256 + honest_status）、
+  report/实验评估报告.md（正式报告，数字全部来自冻结分析）。
+- 全局 Task 14–24 至此全部达成可交付状态；Docker live / 第二环境保持
+  not_run；正式 Terra/max 复审仍待具备该工作流的环境补做。

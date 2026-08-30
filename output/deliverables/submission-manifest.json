@@ -1,0 +1,38 @@
+{
+  "code_commit": "a007211a60d74f9875973c8ca9e014b85e29e7e8",
+  "deliverables": {
+    "demo_video_script.md": "eb8691c8c638a3ec1f3ea49fcc69e9830e51403b89ed1b403deb365ee523413f",
+    "答辩PPT.pptx": "a723c7646e3274ecc5cf0c1fe388b736b34f0fb59b26471b83779c59bbc05bcb"
+  },
+  "frozen_evidence": {
+    "analysis_manifest_sha256": "1662f1237ff98e23687d199a5d9c2800dd70da7256dc59817cac0eda4dd215c6",
+    "matrix": "output/runs/formal/ (540 runs sealed)",
+    "matrix_sha256": "30344ecb4c17d4bc6d2ee66771dc7953ce19cb497617bac146305af6d369d48a"
+  },
+  "honest_status": {
+    "docker_live": "not_run",
+    "formal_matrix": "pass (540/540 sealed, analysis exit 0)",
+    "second_environment": "not_run"
+  },
+  "key_results": {
+    "capacity_aware_max_pressure_vs_fixed_time": {
+      "avg_travel_time_mean_diff_s": -2.876,
+      "ci95": [
+        -4.846,
+        -0.906
+      ],
+      "collision_runs_scene11": {
+        "CA-MP": 3,
+        "classic": 5,
+        "fixed_time": 4
+      },
+      "improved_units": "25/30",
+      "relative_change": "-3.654%",
+      "safety_eligible": false
+    },
+    "improvement_claim": false,
+    "selection": "fixed_time (conservative fallback; frozen gate)"
+  },
+  "schema": "challenge-cup-submission-manifest",
+  "schema_version": 1
+}
