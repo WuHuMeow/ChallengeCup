@@ -56,5 +56,8 @@
 
 ## 执行状态
 
-形式矩阵由 Task 22 执行并冻结；执行前本协议声明的矩阵结果状态为
-`not_run`。
+形式矩阵已于 2026-08-28 在本机以原生 SUMO 1.27.1 全部执行并冻结
+（540/540 completed，规范根 `output/runs/formal/`，分析产物
+`output/evidence/formal/`）。执行期修复并记录的协议内缺陷见
+`output/evidence/formal/README.md`；本节此前声明的 `not_run` 状态已被
+冻结证据取代。

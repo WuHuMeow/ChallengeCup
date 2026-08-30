@@ -1,0 +1,31 @@
+{
+  "difference_direction": "candidate_minus_baseline",
+  "expected_rows": 540,
+  "matrix_path": "F:\\challenge-cup\\output\\runs\\formal\\matrix.csv",
+  "matrix_sha256": "30344ecb4c17d4bc6d2ee66771dc7953ce19cb497617bac146305af6d369d48a",
+  "outputs": {
+    "descriptive_stats": {
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\descriptive_stats.csv",
+      "sha256": "05501a3dd7ba4274c7e15e7b0d94a3020a7a3cf18b6d193bb1c7d454fc4fd145"
+    },
+    "disturbance_resilience": {
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\disturbance_resilience.csv",
+      "sha256": "16a20ea09b3a2856bf8c0836da5b259dd019496e59d57926b15dfd08dceb7648"
+    },
+    "paired_tests": {
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\paired_tests.csv",
+      "sha256": "366687cf4ad9c1aa9ea44113f2dcd78866d31e66bdc2853b66c1fb0d8535c72d"
+    },
+    "selection": {
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\selection.json",
+      "sha256": "4ef55fac6319c6288da870891767e2c0794cba685a585c8b36048d1fd43b54a6"
+    }
+  },
+  "pair_keys": [
+    "scene_id",
+    "flow_multiplier",
+    "seed"
+  ],
+  "schema": "challenge-cup-formal-matrix-analysis",
+  "schema_version": 1
+}
