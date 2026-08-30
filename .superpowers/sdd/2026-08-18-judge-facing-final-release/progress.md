@@ -1312,3 +1312,21 @@
   report/实验评估报告.md（正式报告，数字全部来自冻结分析）。
 - 全局 Task 14–24 至此全部达成可交付状态；Docker live / 第二环境保持
   not_run；正式 Terra/max 复审仍待具备该工作流的环境补做。
+
+## Final closeout (2026-08-30) — Global Task 14–24 deliverable-ready
+
+- 提交链（换机以来累计 28 个提交，全部经门禁）：47e3df7（扰动路由容错）→
+  a699861（540 里程碑）→ a007211（Task 22 冻结）→ e6a636e（Task 24 交付物）
+  → 5319086/11de3a0（生成器 lint + 再生成）。
+- 最终门禁：check_docs 0 违规；新脚本 flake8 清洁；deliverables 占位符扫描
+  零命中；git diff --check 干净；保护路径 worktree/index diff 为空。
+- 交付物清单：
+  - report/实验评估报告.md（数字全部来自冻结分析）
+  - report/实验评估报告.tables.md（生成器输出）
+  - output/deliverables/答辩PPT.pptx（7 页）
+  - output/deliverables/demo_video_script.md（6 分镜，数字回填）
+  - output/deliverables/submission-manifest.json
+  - output/evidence/formal/（5 个分析产物 + matrix-manifest）
+- 诚实状态：formal matrix = pass（540/540 sealed，分析 exit 0）；
+  Docker live / 第二环境 = not_run；正式 Terra/max 复审待补；
+  选择门保守回退 fixed_time 的原因与数据已完整记录（场景 11 跨算法碰撞）。
