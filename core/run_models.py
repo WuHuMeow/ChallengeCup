@@ -155,6 +155,7 @@ class RunRequest:
     # warmup unless the caller provides one explicitly.
     warmup_seconds: float | None = None
     step_length_override: float | None = None
+    gui_delay_ms: int = 100
     output_root: Path | None = None
     edge_delay_steps: int = 0
     edge_directions: tuple[str, ...] = ()
@@ -232,6 +233,9 @@ class RunRequest:
         if flow_multiplier <= 0:
             raise ValueError("flow_multiplier must be > 0")
         seed = _non_negative_int("seed", self.seed)
+        gui_delay_ms = _non_negative_int("gui_delay_ms", self.gui_delay_ms)
+        if gui_delay_ms > 2000:
+            raise ValueError("gui_delay_ms must be <= 2000")
         edge_delay_steps = _non_negative_int("edge_delay_steps", self.edge_delay_steps)
         if self.algorithm_params and algorithm != "capacity_aware_maxpressure":
             raise ValueError(
@@ -248,6 +252,7 @@ class RunRequest:
         object.__setattr__(self, "algorithm", algorithm)
         object.__setattr__(self, "flow_multiplier", flow_multiplier)
         object.__setattr__(self, "seed", seed)
+        object.__setattr__(self, "gui_delay_ms", gui_delay_ms)
         object.__setattr__(self, "edge_delay_steps", edge_delay_steps)
         object.__setattr__(self, "edge_directions", tuple(self.edge_directions))
         if self.disturbance is not None and not isinstance(self.disturbance, DisturbanceSpec):

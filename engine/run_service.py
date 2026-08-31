@@ -90,6 +90,28 @@ class RunService:
         """Return a snapshot for read-only judge result listings."""
         return self._states.list()
 
+    def set_gui_delay(self, run_id: str, delay_ms: int) -> int:
+        """Change wall-clock pacing for one active native GUI run."""
+        if isinstance(delay_ms, bool) or not isinstance(delay_ms, int):
+            raise ValueError("GUI delay must be an integer")
+        if not 0 <= delay_ms <= 2000:
+            raise ValueError("GUI delay must be in 0..2000 milliseconds")
+        current = self._states.get(run_id)
+        if current is None:
+            raise KeyError(run_id)
+        if current.status is not RunStatus.RUNNING:
+            raise RuntimeError("GUI delay is available only while a run is running")
+        with self._lock:
+            runner = self._runners.get(run_id)
+        if runner is None:
+            raise RuntimeError("GUI delay is unavailable for this run")
+        if not bool(getattr(runner, "gui_delay_supported", False)):
+            raise RuntimeError("GUI delay is unavailable for a headless run")
+        setter = getattr(runner, "set_gui_delay", None)
+        if not callable(setter):
+            raise RuntimeError("GUI delay control is unavailable for this runner")
+        return int(setter(delay_ms))
+
     def stop(self, run_id: str) -> bool:
         """Request one run to stop and wait for that run's owned work to finish."""
         current = self._states.get(run_id)
@@ -326,6 +348,7 @@ class RunService:
             "requested_steps": request.steps,
             "steps_origin": request.steps_origin,
             "step_length_override": request.step_length_override,
+            "gui_delay_ms": request.gui_delay_ms,
             "edge_delay_steps": request.edge_delay_steps,
             "edge_directions": list(request.edge_directions),
             "variant": asdict(request.variant),
@@ -450,6 +473,12 @@ class RunService:
                 state_channel=state_channel,
                 step_length=step_length,
             )
+            delay_setter = getattr(runner, "set_gui_delay", None)
+            if callable(delay_setter) and (
+                isinstance(runner, SimulationRunner)
+                or bool(getattr(runner, "gui_delay_supported", False))
+            ):
+                delay_setter(request.gui_delay_ms)
             if isinstance(runner, SimulationRunner):
                 runner.seal_evidence = False
                 runner.event_sink = lambda message: self._publish_runtime_event(
@@ -850,6 +879,7 @@ class RunService:
                 "duration_seconds": request.duration_seconds,
                 "warmup_seconds": request.warmup_seconds,
                 "step_length_override": request.step_length_override,
+                "gui_delay_ms": request.gui_delay_ms,
                 "algorithm_params": dict(request.algorithm_params),
             },
         )

@@ -43,6 +43,14 @@ class TimingPhase:
     state: str
 
 
+@dataclass(frozen=True)
+class _NetworkSignalModel:
+    green_states: tuple[str, ...]
+    yellow_states: tuple[str, ...]
+    state_length: int
+    approach_links: Mapping[str, tuple[int, ...]]
+
+
 class FixedTimePlanResolver:
     """Resolve a legal plan without mutating any source input."""
 
@@ -64,7 +72,7 @@ class FixedTimePlanResolver:
                 self._validate_excel_phases(timing.phases)
                 phases = self._excel_phases(
                     timing.phases,
-                    self._network_signal_states(Path(scene.meta.sumo_net)),
+                    self._network_signal_model(Path(scene.meta.sumo_net)),
                 )
                 self._validate_phases(phases, require_states=True)
                 return self._resolved(
@@ -149,8 +157,8 @@ class FixedTimePlanResolver:
         self._validate_phases(phases, require_states=True)
         return self._resolved("source_net_xml", path, str(program_id), phases)
 
-    def _network_signal_states(self, path: Path) -> tuple[list[str], list[str], int]:
-        """Read one source program's executable green/yellow states for Excel timing."""
+    def _network_signal_model(self, path: Path) -> _NetworkSignalModel:
+        """Read source signal states and map controlled links to each approach."""
         root = ET.parse(path).getroot()
         programs = sorted(
             root.findall("tlLogic"),
@@ -168,27 +176,172 @@ class FixedTimePlanResolver:
         yellows = [state for state in states if any(signal in state for signal in "Yy")]
         if not greens or not yellows:
             raise FixedTimePlanError("source network lacks green or yellow signal states")
-        return greens, yellows, state_lengths.pop()
+        state_length = state_lengths.pop()
+        return _NetworkSignalModel(
+            green_states=tuple(greens),
+            yellow_states=tuple(yellows),
+            state_length=state_length,
+            approach_links=self._approach_link_indices(
+                root,
+                tls_id=programs[0].get("id", ""),
+                state_length=state_length,
+            ),
+        )
+
+    @classmethod
+    def _approach_link_indices(
+        cls,
+        root: ET.Element,
+        *,
+        tls_id: str,
+        state_length: int,
+    ) -> dict[str, tuple[int, ...]]:
+        edge_approaches: dict[str, str] = {}
+        for edge in root.findall("edge"):
+            edge_id = edge.get("id", "")
+            if not edge_id or edge_id.startswith(":"):
+                continue
+            approach = cls._edge_approach(edge)
+            if approach is not None:
+                edge_approaches[edge_id] = approach
+
+        grouped: dict[str, set[int]] = {}
+        for connection in root.findall("connection"):
+            if connection.get("tl") != tls_id:
+                continue
+            approach = edge_approaches.get(connection.get("from", ""))
+            raw_index = connection.get("linkIndex")
+            if approach is None or raw_index is None:
+                continue
+            try:
+                link_index = int(raw_index)
+            except ValueError as exc:
+                raise FixedTimePlanError(
+                    f"source network has an invalid signal link index: {raw_index}"
+                ) from exc
+            if not 0 <= link_index < state_length:
+                raise FixedTimePlanError(
+                    f"source network signal link index {link_index} is out of range"
+                )
+            grouped.setdefault(approach, set()).add(link_index)
+
+        return {
+            approach: tuple(sorted(indices))
+            for approach, indices in grouped.items()
+            if indices
+        }
 
     @staticmethod
+    def _edge_approach(edge: ET.Element) -> str | None:
+        lane = edge.find("lane")
+        shape = lane.get("shape", "") if lane is not None else ""
+        try:
+            points = [
+                tuple(float(coordinate) for coordinate in point.split(",")[:2])
+                for point in shape.split()
+            ]
+        except ValueError:
+            return None
+        if len(points) < 2:
+            return None
+        dx = points[-1][0] - points[0][0]
+        dy = points[-1][1] - points[0][1]
+        if abs(dx) >= abs(dy) and dx != 0:
+            return "east" if dx < 0 else "west"
+        if dy != 0:
+            return "north" if dy < 0 else "south"
+        return None
+
+    @classmethod
     def _excel_phases(
+        cls,
         excel_phases: list[object],
-        signal_states: tuple[list[str], list[str], int],
+        signal_model: _NetworkSignalModel,
     ) -> tuple[TimingPhase, ...]:
         """Expand each Excel phase into green, yellow, and all-red SUMO phases."""
-        greens, yellows, state_length = signal_states
+        ordered = sorted(excel_phases, key=lambda item: getattr(item, "phase_index"))
+        coordinated = cls._coordinated_four_approach_phases(ordered, signal_model)
+        if coordinated is not None:
+            return coordinated
+
         expanded: list[TimingPhase] = []
-        for position, phase in enumerate(
-            sorted(excel_phases, key=lambda item: getattr(item, "phase_index"))
-        ):
+        for position, phase in enumerate(ordered):
             green = float(getattr(phase, "green_time"))
             yellow = float(getattr(phase, "yellow_time"))
             all_red = float(getattr(phase, "red_time"))
-            expanded.append(TimingPhase(green, greens[position % len(greens)]))
+            expanded.append(
+                TimingPhase(
+                    green,
+                    signal_model.green_states[
+                        position % len(signal_model.green_states)
+                    ],
+                )
+            )
             if yellow > 0:
-                expanded.append(TimingPhase(yellow, yellows[position % len(yellows)]))
+                expanded.append(
+                    TimingPhase(
+                        yellow,
+                        signal_model.yellow_states[
+                            position % len(signal_model.yellow_states)
+                        ],
+                    )
+                )
             if all_red > 0:
-                expanded.append(TimingPhase(all_red, "r" * state_length))
+                expanded.append(TimingPhase(all_red, "r" * signal_model.state_length))
+        return tuple(expanded)
+
+    @staticmethod
+    def _coordinated_four_approach_phases(
+        ordered_phases: list[object],
+        signal_model: _NetworkSignalModel,
+    ) -> tuple[TimingPhase, ...] | None:
+        required_approaches = ("east", "west", "north", "south")
+        if set(signal_model.approach_links) != set(required_approaches):
+            return None
+
+        east_west: list[object] = []
+        north_south: list[object] = []
+        for phase in ordered_phases:
+            phase_name = str(getattr(phase, "phase_name", "")).replace(" ", "")
+            if "东西" in phase_name:
+                east_west.append(phase)
+            elif "南北" in phase_name:
+                north_south.append(phase)
+            else:
+                return None
+        if len(east_west) != 2 or len(north_south) != 2:
+            return None
+
+        east_west_green = sum(
+            float(getattr(phase, "green_time")) for phase in east_west
+        ) / 2.0
+        north_south_green = sum(
+            float(getattr(phase, "green_time")) for phase in north_south
+        ) / 2.0
+        allocations = (
+            ("east", east_west[0], east_west_green),
+            ("west", east_west[1], east_west_green),
+            ("north", north_south[0], north_south_green),
+            ("south", north_south[1], north_south_green),
+        )
+
+        expanded: list[TimingPhase] = []
+        for approach, source_phase, green in allocations:
+            green_state = ["r"] * signal_model.state_length
+            yellow_state = ["r"] * signal_model.state_length
+            for link_index in signal_model.approach_links[approach]:
+                green_state[link_index] = "G"
+                yellow_state[link_index] = "y"
+            expanded.append(TimingPhase(green, "".join(green_state)))
+
+            yellow = float(getattr(source_phase, "yellow_time"))
+            all_red = float(getattr(source_phase, "red_time"))
+            if yellow > 0:
+                expanded.append(TimingPhase(yellow, "".join(yellow_state)))
+            if all_red > 0:
+                expanded.append(
+                    TimingPhase(all_red, "r" * signal_model.state_length)
+                )
         return tuple(expanded)
 
     @staticmethod

@@ -10,7 +10,7 @@ import time
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Event
+from threading import Condition, Event
 from typing import Callable, List, Optional
 
 from algorithms.base import BaseControlAlgorithm
@@ -32,7 +32,7 @@ from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.events import EventLogger
 from engine.safety import SafetyObservationCollector
 from engine.safety_executor import SafetyExecutor
-from engine.traci_bridge import TraCIBridge, traci
+from engine.traci_bridge import TraCIBridge, _is_sumo_gui_binary, traci
 from experiments.metrics import compute_metrics
 from experiments.summary import write_run_summary
 from experiments.evidence import EvidenceWriter
@@ -62,6 +62,7 @@ class SimulationRunner:
         seal_evidence: bool = True,
         event_sink: Callable[[dict[str, object]], None] | None = None,
         frame_interval_seconds: float = 0.1,
+        gui_delay_ms: int = 100,
     ) -> None:
         self.scene = scene
         self.algorithm = algorithm
@@ -83,6 +84,9 @@ class SimulationRunner:
             raise ValueError("frame_interval_seconds must be finite and >= 0")
         self.frame_interval_seconds = interval
         self.event_sink = event_sink
+        self._gui_delay_condition = Condition()
+        self._gui_delay_ms = 0
+        self.set_gui_delay(gui_delay_ms)
 
         if artifacts is not None:
             output_csv = artifacts.metrics
@@ -154,6 +158,46 @@ class SimulationRunner:
                 seed=self.seed,
                 event_callback=self._record_bridge_event,
             )
+
+    @property
+    def gui_delay_supported(self) -> bool:
+        """Whether this runner owns a native SUMO-GUI process."""
+        return _is_sumo_gui_binary(self.sumo_binary)
+
+    @property
+    def gui_delay_ms(self) -> int:
+        with self._gui_delay_condition:
+            return self._gui_delay_ms
+
+    def set_gui_delay(self, delay_ms: int) -> int:
+        """Update wall-clock pacing and wake an in-progress delay wait."""
+        if isinstance(delay_ms, bool) or not isinstance(delay_ms, int):
+            raise ValueError("gui delay must be an integer")
+        if not 0 <= delay_ms <= 2000:
+            raise ValueError("gui delay must be in 0..2000 milliseconds")
+        with self._gui_delay_condition:
+            self._gui_delay_ms = delay_ms
+            self._gui_delay_condition.notify_all()
+        return delay_ms
+
+    def _wait_for_gui_delay(self, stop_event: Event | None) -> bool:
+        """Wait between GUI steps while remaining responsive to updates/stops."""
+        if not self.gui_delay_supported:
+            return True
+        started_at = time.monotonic()
+        with self._gui_delay_condition:
+            while True:
+                if stop_event is not None and stop_event.is_set():
+                    return False
+                remaining = (
+                    self._gui_delay_ms / 1000.0
+                    - (time.monotonic() - started_at)
+                )
+                if remaining <= 0:
+                    return True
+                # The condition wakes immediately for live delay changes. A
+                # short upper bound also keeps a plain stop Event responsive.
+                self._gui_delay_condition.wait(timeout=min(remaining, 0.02))
 
     def _record_bridge_event(self, event_type: str, detail: str) -> None:
         if self.event_logger:
@@ -290,6 +334,7 @@ class SimulationRunner:
         body_exception = False
         last_step = 0
         last_frame_at = float("-inf")
+        last_deferred_frame_step = -2
 
         if self.artifacts is not None:
             self.artifacts.write_manifest({
@@ -337,35 +382,58 @@ class SimulationRunner:
                         status = RunStatus.INTERRUPTED
                         reason = "stop requested"
                         break
-                    tick_outcome = self._tick(step)
                     now = time.monotonic()
-                    if (
+                    request = getattr(self.bridge, "request_gui_frame", None)
+                    frame_due = (
                         frame_sink is not None
                         and now - last_frame_at >= self.frame_interval_seconds
-                    ):
+                        and (
+                            request is None
+                            or step - last_deferred_frame_step >= 2
+                        )
+                    )
+                    frame_allowed = False
+                    frame_deferred = False
+                    if frame_due:
                         try:
-                            if frame_ready is not None and not frame_ready():
-                                capture = None
-                            else:
+                            frame_allowed = frame_ready is None or frame_ready()
+                            if frame_allowed and request is not None:
+                                frame_allowed = request() is not False
+                                frame_deferred = frame_allowed
+                        except Exception:
+                            frame_allowed = False
+                            last_frame_at = time.monotonic()
+                            logger.warning(
+                                "runtime frame request failed",
+                                exc_info=True,
+                            )
+                    tick_outcome = self._tick(step)
+                    if frame_due:
+                        try:
+                            if frame_allowed:
                                 capture = getattr(
                                     self.bridge, "capture_gui_frame", None
                                 )
-                            if capture is not None:
-                                record = capture()
-                                if record is not None:
-                                    accepted = frame_sink(record)
-                                    if accepted is not False:
-                                        self._publish_event({
-                                            "type": "frame",
-                                            "sequence": int(record.sequence),
-                                            "simulation_time": float(
-                                                record.simulation_time
-                                            ),
-                                            "captured_at": float(record.captured_at),
-                                        })
-                            last_frame_at = now
+                                if capture is not None:
+                                    record = capture()
+                                    if record is not None:
+                                        accepted = frame_sink(record)
+                                        if accepted is not False:
+                                            self._publish_event({
+                                                "type": "frame",
+                                                "sequence": int(record.sequence),
+                                                "simulation_time": float(
+                                                    record.simulation_time
+                                                ),
+                                                 "captured_at": float(record.captured_at),
+                                             })
+                            last_frame_at = time.monotonic()
+                            if frame_deferred:
+                                last_deferred_frame_step = step
                         except Exception:
-                            last_frame_at = now
+                            last_frame_at = time.monotonic()
+                            if frame_deferred:
+                                last_deferred_frame_step = step
                             logger.warning(
                                 "runtime frame publication failed",
                                 exc_info=True,
@@ -388,6 +456,13 @@ class SimulationRunner:
                             reason = "SUMO exhausted before requested seconds"
                         else:
                             status = RunStatus.COMPLETED
+                        break
+                    if (
+                        step + 1 < target_steps
+                        and not self._wait_for_gui_delay(stop_event)
+                    ):
+                        status = RunStatus.INTERRUPTED
+                        reason = "stop requested"
                         break
                 else:
                     status = RunStatus.COMPLETED

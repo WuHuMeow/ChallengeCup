@@ -2,6 +2,7 @@ import csv
 import json
 from pathlib import Path
 import threading
+import time
 
 import pytest
 from unittest.mock import patch
@@ -319,6 +320,84 @@ def make_scene() -> Scene:
         sumo_net=_VALID_NET, sumo_rou="x.rou.xml", sumo_flow="x.flow.xml",
         sumo_turn="x.turn.xml", sumo_cfg="x.sumocfg", timing_xlsx="x.xlsx",
     ))
+
+
+class _FirstStepBridge(MockBridge):
+    def __init__(self, first_step: threading.Event):
+        super().__init__()
+        self.first_step = first_step
+
+    def step(self):
+        simulation_time = super().step()
+        if self._current_step == 1:
+            self.first_step.set()
+        return simulation_time
+
+
+def test_gui_delay_can_be_changed_while_runner_is_waiting(tmp_path):
+    first_step = threading.Event()
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=_FirstStepBridge(first_step),
+        sumo_binary="sumo-gui.exe",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=500,
+    )
+    worker = threading.Thread(target=lambda: runner.run(2), daemon=True)
+
+    worker.start()
+    assert first_step.wait(timeout=1)
+    assert worker.is_alive()
+    changed_at = time.monotonic()
+
+    assert runner.set_gui_delay(0) == 0
+    worker.join(timeout=0.3)
+
+    assert not worker.is_alive()
+    assert time.monotonic() - changed_at < 0.3
+
+
+def test_gui_delay_wait_is_interrupted_promptly_by_stop(tmp_path):
+    first_step = threading.Event()
+    stop_event = threading.Event()
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=_FirstStepBridge(first_step),
+        sumo_binary="sumo-gui",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=2000,
+    )
+    worker = threading.Thread(
+        target=lambda: runner.run(3, stop_event=stop_event),
+        daemon=True,
+    )
+
+    worker.start()
+    assert first_step.wait(timeout=1)
+    stopped_at = time.monotonic()
+    stop_event.set()
+    worker.join(timeout=0.3)
+
+    assert not worker.is_alive()
+    assert time.monotonic() - stopped_at < 0.3
+
+
+def test_headless_runner_ignores_gui_delay(tmp_path):
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=MockBridge(),
+        sumo_binary="sumo",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=2000,
+    )
+
+    started_at = time.monotonic()
+    runner.run(2)
+
+    assert time.monotonic() - started_at < 0.3
 
 
 def test_delayed_channel_waits_without_stopping_simulation(tmp_path):

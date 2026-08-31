@@ -89,6 +89,47 @@ def test_fixed_time_plan_uses_official_excel_before_network_plan(tmp_path):
     ]
 
 
+def test_four_direction_excel_plan_never_splits_a_shared_incoming_lane():
+    scene_root = Path("data/intersection_data/1")
+    sumo_root = scene_root / "sumo工程"
+    scene = Scene(
+        SceneMeta(
+            intersection_id="1",
+            name="demo_1",
+            sumo_net=sumo_root / "demo_1.net.xml",
+            sumo_rou=sumo_root / "demo_1.rou.xml",
+            sumo_flow=sumo_root / "demo_1.flow.xml",
+            sumo_turn=sumo_root / "demo_1.turn.xml",
+            sumo_cfg=sumo_root / "demo_1.sumocfg",
+            timing_xlsx=scene_root / "路口数据" / "demo_1流量和交叉口配时方案.xlsx",
+        )
+    )
+
+    resolved = FixedTimePlanResolver().resolve(scene)
+
+    phases = [(phase.duration, phase.state) for phase in resolved.phases]
+    assert phases == [
+        (35.0, "rrrrrGGGGrrrrrrrrr"),
+        (3.0, "rrrrryyyyrrrrrrrrr"),
+        (2.0, "rrrrrrrrrrrrrrrrrr"),
+        (35.0, "rrrrrrrrrrrrrrGGGG"),
+        (3.0, "rrrrrrrrrrrrrryyyy"),
+        (2.0, "rrrrrrrrrrrrrrrrrr"),
+        (35.0, "GGGGGrrrrrrrrrrrrr"),
+        (3.0, "yyyyyrrrrrrrrrrrrr"),
+        (2.0, "rrrrrrrrrrrrrrrrrr"),
+        (35.0, "rrrrrrrrrGGGGGrrrr"),
+        (3.0, "rrrrrrrrryyyyyrrrr"),
+        (2.0, "rrrrrrrrrrrrrrrrrr"),
+    ]
+    assert sum(phase.duration for phase in resolved.phases) == 160.0
+
+    shared_lane_link_groups = [(7, 8), (3, 4), (12, 13), (16, 17)]
+    for _, state in phases:
+        for first_link, second_link in shared_lane_link_groups:
+            assert state[first_link] == state[second_link]
+
+
 def test_fixed_time_step_installs_the_frozen_program_once(tmp_path):
     scene_plan = tmp_path / "standardized-timing.json"
     scene_plan.write_text(

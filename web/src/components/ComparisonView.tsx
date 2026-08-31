@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ResultListItem } from "../api/client";
+import { algorithmName, localizeMessage, unitName } from "../localization";
 
 interface ComparisonViewProps {
   results: ResultListItem[];
@@ -8,26 +9,19 @@ interface ComparisonViewProps {
   error: string | null;
 }
 
-const ALGORITHM_NAMES: Record<string, string> = {
-  fixed_time: "Fixed-time baseline",
-  actuated: "Actuated baseline",
-  classic_maxpressure: "Classic MaxPressure",
-  capacity_aware_maxpressure: "Capacity-aware MaxPressure",
-};
-
 const METRICS = [
-  { key: "avg_queue_length", label: "Average queue length", unit: "vehicles" },
-  { key: "throughput", label: "Throughput", unit: "vehicles" },
-  { key: "avg_delay", label: "Average delay", unit: "seconds" },
-  { key: "avg_travel_time", label: "Average travel time", unit: "seconds" },
-  { key: "fuel_ml", label: "Fuel", unit: "ml" },
-  { key: "co2_g", label: "CO2", unit: "g" },
-  { key: "collision_count", label: "Collisions", unit: "count" },
-  { key: "red_light_count", label: "Red-light violations", unit: "count" },
-  { key: "illegal_transition_count", label: "Illegal transitions", unit: "count" },
-  { key: "harsh_braking_count", label: "Harsh braking", unit: "count" },
-  { key: "teleport_count", label: "Teleports", unit: "count" },
-  { key: "potential_conflict_count", label: "Potential conflicts", unit: "count" },
+  { key: "avg_queue_length", label: "平均排队长度", unit: "辆" },
+  { key: "throughput", label: "通行量", unit: "辆" },
+  { key: "avg_delay", label: "平均延误", unit: "秒" },
+  { key: "avg_travel_time", label: "平均行程时间", unit: "秒" },
+  { key: "fuel_ml", label: "燃油消耗", unit: "毫升" },
+  { key: "co2_g", label: "二氧化碳排放", unit: "克" },
+  { key: "collision_count", label: "碰撞次数", unit: "次" },
+  { key: "red_light_count", label: "闯红灯次数", unit: "次" },
+  { key: "illegal_transition_count", label: "非法相位切换次数", unit: "次" },
+  { key: "harsh_braking_count", label: "急刹车次数", unit: "次" },
+  { key: "teleport_count", label: "车辆传送次数", unit: "次" },
+  { key: "potential_conflict_count", label: "潜在冲突次数", unit: "次" },
 ];
 
 function metricRecord(result: ResultListItem): Record<string, unknown> {
@@ -41,10 +35,10 @@ function unitRecord(result: ResultListItem): Record<string, unknown> {
 }
 
 function formatValue(value: unknown, unit: string): string {
-  if (value === null) return "Unavailable";
-  if (value === undefined) return "Not reported";
-  if (typeof value !== "number" || !Number.isFinite(value)) return "Not reported";
-  if (unit === "count") return String(value);
+  if (value === null) return "不可用";
+  if (value === undefined) return "未报告";
+  if (typeof value !== "number" || !Number.isFinite(value)) return "未报告";
+  if (unit === "count" || unit === "次") return String(value);
   return value.toFixed(2);
 }
 
@@ -61,7 +55,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
     rows: visibleResults.flatMap((result) => {
       const value = metricRecord(result)[metric.key];
       return typeof value === "number" && Number.isFinite(value)
-        ? [{ algorithm: ALGORITHM_NAMES[result.algorithm] ?? result.algorithm, value }]
+        ? [{ algorithm: algorithmName(result.algorithm), value }]
         : [];
     }),
   }));
@@ -69,52 +63,52 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
     <main className="judge-view comparison-view">
       <div className="view-heading">
         <div>
-          <p className="eyebrow">Verified result set</p>
-          <h2>Comparison</h2>
+          <p className="eyebrow">已验证结果集</p>
+          <h2>算法对比</h2>
         </div>
-        <span className="evidence-badge">Sealed run evidence</span>
+        <span className="evidence-badge">封存运行证据</span>
       </div>
-      <p className="evidence-note">These rows are sealed individual-run evidence, not a formal matrix conclusion. Missing metrics are never inferred.</p>
-      {results.length > 0 && <label className="comparison-filter">Comparison scene
-        <select aria-label="Comparison scene" value={effectiveScene} onChange={(event) => setSelectedScene(event.target.value)}>
+      <p className="evidence-note">这些记录是单次运行的封存证据，不代表正式矩阵结论；缺失指标不会被推断或补零。</p>
+      {results.length > 0 && <label className="comparison-filter">对比场景
+        <select aria-label="对比场景" value={effectiveScene} onChange={(event) => setSelectedScene(event.target.value)}>
           {sceneIds.map((sceneId) => <option key={sceneId} value={sceneId}>{sceneId}</option>)}
         </select>
       </label>}
-      {loading && <p role="status">Loading sealed run results...</p>}
-      {error && <p className="inline-error" role="alert">{error}</p>}
-      {!loading && !error && results.length === 0 && <p className="empty-state">No validated results available.</p>}
+      {loading && <p role="status">正在加载封存运行结果…</p>}
+      {error && <p className="inline-error" role="alert">{localizeMessage(error)}</p>}
+      {!loading && !error && results.length === 0 && <p className="empty-state">暂无已验证结果。</p>}
       {!loading && !error && visibleResults.length > 0 && (
         <section className="comparison-panel" aria-labelledby="comparison-table-title">
           <div className="panel-heading">
-            <h3 id="comparison-table-title">Individual-run metrics</h3>
-            <span>Lower is better for delay and queue; higher is better for throughput.</span>
+            <h3 id="comparison-table-title">单次运行指标</h3>
+            <span>延误和排队越低越好，通行量越高越好。</span>
           </div>
-          <p>Hard safety gates: collisions, red-light violations, and illegal transitions.</p>
-          <p>Observational safety: harsh braking, teleports, and potential conflicts.</p>
-          <div className="comparison-chart" data-testid="comparison-chart" role="region" aria-label="Sealed run result comparison">
+          <p>硬性安全门槛：碰撞、闯红灯和非法相位切换。</p>
+          <p>观测性安全指标：急刹车、车辆传送和潜在冲突。</p>
+          <div className="comparison-chart" data-testid="comparison-chart" role="region" aria-label="封存运行结果对比">
             <div className="chart-grid">
               {series.map((metric) => (
-                <section className="metric-chart" key={metric.key} aria-label={`${metric.label} chart`}>
-                  <h4>{metric.label} <small>{metric.unit}</small></h4>
+                <section className="metric-chart" key={metric.key} aria-label={`${metric.label}图表`}>
+                  <h4>{metric.label} <small>{unitName(metric.unit)}</small></h4>
                   {metric.rows.length > 0 ? (
                     <ResponsiveContainer width="100%" height={190}>
                       <BarChart data={metric.rows} margin={{ top: 8, right: 12, bottom: 30, left: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="algorithm" angle={-18} textAnchor="end" interval={0} height={55} tick={{ fontSize: 10 }} />
                         <YAxis width={52} tick={{ fontSize: 10 }} />
-                        <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} ${metric.unit}`, metric.label]} />
+                        <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} ${unitName(metric.unit)}`, metric.label]} />
                         <Bar dataKey="value" fill="#176b72" radius={[3, 3, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                  ) : <p>No numeric series available.</p>}
+                  ) : <p>暂无数值序列。</p>}
                 </section>
               ))}
             </div>
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Algorithm</th>
-                  {METRICS.map((metric) => <th key={metric.key} scope="col">{metric.label}<small>{metric.unit}</small></th>)}
+                  <th scope="col">算法</th>
+                  {METRICS.map((metric) => <th key={metric.key} scope="col">{metric.label}<small>{unitName(metric.unit)}</small></th>)}
                 </tr>
               </thead>
               <tbody>
@@ -123,7 +117,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
                   const units = unitRecord(result);
                   return (
                     <tr key={result.run_id}>
-                      <th scope="row">{ALGORITHM_NAMES[result.algorithm] ?? result.algorithm}<small>source: {result.run_id}</small></th>
+                      <th scope="row">{algorithmName(result.algorithm)}<small>来源：{result.run_id}</small></th>
                       {METRICS.map((metric) => {
                         const reportedUnit = units[metric.key];
                         const unit = typeof reportedUnit === "string" ? reportedUnit : metric.unit;
@@ -135,7 +129,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
               </tbody>
             </table>
           </div>
-          <p className="chart-footnote">Formal 95% CI has not yet been generated; it awaits Task 22&apos;s complete sealed 540-run matrix. Missing values remain explicit and are never converted to zero.</p>
+          <p className="chart-footnote">正式的 95% 置信区间尚未生成，需等待任务 22 完成并封存 540 次运行矩阵。缺失值会明确保留，绝不会转换为零。</p>
         </section>
       )}
     </main>

@@ -1429,6 +1429,33 @@ class BlockingRunner(RecordingRunner):
         return super().run(window, stop_event=stop_event)
 
 
+class GuiDelayBlockingRunner(BlockingRunner):
+    gui_delay_supported = True
+    delay_calls: list[int] = []
+
+    def set_gui_delay(self, delay_ms):
+        type(self).delay_calls.append(delay_ms)
+        return delay_ms
+
+
+def test_run_service_updates_delay_on_the_active_gui_runner(tmp_path):
+    GuiDelayBlockingRunner.release.clear()
+    GuiDelayBlockingRunner.started.clear()
+    GuiDelayBlockingRunner.delay_calls = []
+    service = RunService(output_root=tmp_path, runner_factory=GuiDelayBlockingRunner)
+    queued = service.submit(
+        RunRequest("1", "fixed_time", steps=10, gui_delay_ms=150)
+    )
+    assert GuiDelayBlockingRunner.started.wait(timeout=2)
+
+    try:
+        assert service.set_gui_delay(queued.run_id, 300) == 300
+        assert GuiDelayBlockingRunner.delay_calls[-1] == 300
+    finally:
+        GuiDelayBlockingRunner.release.set()
+        service.shutdown(wait=True)
+
+
 class ShutdownRaceRunner(RecordingRunner):
     release = threading.Event()
     started = threading.Event()

@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 from collections import Counter, deque
+from io import BytesIO
 from pathlib import Path
 from typing import Callable, List, Optional
 from uuid import uuid4
@@ -83,6 +84,74 @@ def _request_gui_window_close(
         return bool(user32.PostMessageW(matches[0], 0x0010, 0, 0))
     except (AttributeError, OSError, TypeError, ValueError):
         return False
+
+
+def _capture_gui_window_png(
+    pid: int,
+    *,
+    platform_name: str = sys.platform,
+    user32: object | None = None,
+    image_grab: Callable[..., object] | None = None,
+) -> bytes | None:
+    """Capture the exact owned SUMO-GUI window without issuing a TraCI command."""
+    if platform_name != "win32" or not isinstance(pid, int) or pid <= 0:
+        return None
+    try:
+        import ctypes
+
+        if image_grab is None:
+            from PIL import ImageGrab
+
+            image_grab = ImageGrab.grab
+        user32 = user32 or ctypes.windll.user32
+        pid_value = ctypes.c_ulong()
+        matches: list[object] = []
+
+        def callback(hwnd, _lparam):
+            if not bool(user32.IsWindowVisible(hwnd)):
+                return True
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+            if int(pid_value.value) == pid:
+                matches.append(hwnd)
+                return False
+            return True
+
+        callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        callback_pointer = callback_type(
+            ctypes.c_bool,
+            ctypes.c_void_p,
+            ctypes.c_long,
+        )(callback)
+        user32.EnumWindows(callback_pointer, 0)
+        if not matches:
+            return None
+
+        class WindowRect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        rect = WindowRect()
+        if not bool(user32.GetWindowRect(matches[0], ctypes.byref(rect))):
+            return None
+        bbox = (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            return None
+        image = image_grab(bbox=bbox, all_screens=True)
+        if not hasattr(image, "save"):
+            return None
+        if hasattr(image, "thumbnail"):
+            image.thumbnail((960, 540))
+        output = BytesIO()
+        image.save(output, format="PNG")
+        png = output.getvalue()
+        return png or None
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        logger.debug("native SUMO GUI window capture unavailable", exc_info=True)
+        return None
 
 
 # 兼容本地 SUMO 安装：若通过 pip 安装 traci 则无需 SUMO_HOME。
@@ -156,6 +225,8 @@ class TraCIBridge:
         self._connection: object | None = None
         self._connection_label: str | None = None
         self._frame_sequence = 0
+        self._pending_frame_path: Path | None = None
+        self._pending_native_frame = False
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -183,7 +254,7 @@ class TraCIBridge:
         cmd = [self.binary, "-c", str(self.sumo_cfg), "--no-step-log", "true"]
         if _is_sumo_gui_binary(self.binary):
             # SUMO-GUI waits for an explicit GUI start before accepting TraCI init.
-            cmd.append("--start")
+            cmd.extend(["--start", "--quit-on-end", "--delay", "0"])
         if self.seed is not None:
             cmd += ["--seed", str(self.seed)]
         if self.additional_files:
@@ -838,13 +909,52 @@ class TraCIBridge:
     def get_controlled_links(self, tls_id: str) -> object:
         return traci.trafficlight.getControlledLinks(tls_id)
 
-    def capture_gui_frame(self, view_id: str = "View #0") -> FrameRecord | None:
-        """Capture one run-scoped GUI frame without retaining a temp file."""
+    def request_gui_frame(self, view_id: str = "View #0") -> bool:
+        """Schedule a GUI screenshot for the next SUMO simulation step."""
         if self.artifacts is None:
-            return None
+            return False
+        if (
+            sys.platform == "win32"
+            and _is_sumo_gui_binary(self.binary)
+            and isinstance(self._owned_pid, int)
+            and self._owned_pid > 0
+        ):
+            if self._pending_native_frame:
+                return False
+            self._pending_native_frame = True
+            return True
+        if self._pending_frame_path is not None:
+            return False
         temporary = self.artifacts.run_dir / f".frame-{uuid4().hex}.png"
         try:
             traci.gui.screenshot(view_id, str(temporary))
+            self._pending_frame_path = temporary
+            return True
+        except Exception:
+            logger.debug("SUMO GUI frame request unavailable", exc_info=True)
+            temporary.unlink(missing_ok=True)
+            return False
+
+    def capture_gui_frame(self, view_id: str = "View #0") -> FrameRecord | None:
+        """Collect the screenshot produced by the preceding simulation step."""
+        if self._pending_native_frame:
+            self._pending_native_frame = False
+            png = _capture_gui_window_png(int(self._owned_pid or 0))
+            if not png:
+                return None
+            self._frame_sequence += 1
+            return FrameRecord(
+                self.artifacts.run_id,
+                self._frame_sequence,
+                float(traci.simulation.getTime()),
+                png,
+                time.time(),
+            )
+        temporary = self._pending_frame_path
+        self._pending_frame_path = None
+        if temporary is None:
+            return None
+        try:
             png = temporary.read_bytes()
             if not png:
                 return None
@@ -925,6 +1035,10 @@ class TraCIBridge:
                             process.kill()
                             process.wait(timeout=5)
             finally:
+                if self._pending_frame_path is not None:
+                    self._pending_frame_path.unlink(missing_ok=True)
+                    self._pending_frame_path = None
+                self._pending_native_frame = False
                 self._owned_process = None
                 self._owned_pid = None
                 self._connection = None

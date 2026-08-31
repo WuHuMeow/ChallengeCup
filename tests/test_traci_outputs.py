@@ -4,13 +4,14 @@ from unittest.mock import call, patch
 
 import pytest
 
+import engine.traci_bridge as traci_bridge
 from core.movements import MovementKey, MovementState, PhaseMovementState
 from core.types import CollisionRecord, ControlAction, SafetyVehicleState
 from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
 from engine.mock_bridge import MockBridge
 from engine.safety import ConflictDefinition
-from engine.traci_bridge import TraCIBridge, traci
+from engine.traci_bridge import TraCIBridge, _capture_gui_window_png, traci
 from scenes.registry import SceneRegistry
 from scenes.variant import VariantGenerator
 
@@ -88,18 +89,23 @@ def test_build_cmd_redirects_all_sumo_outputs(tmp_path):
     assert cmd[cmd.index("--emissions.volumetric-fuel") + 1] == "true"
 
 
-def test_capture_gui_frame_is_run_scoped_and_removes_temp_png(tmp_path):
+def test_gui_frame_is_requested_before_step_and_collected_afterward(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     bridge = TraCIBridge(Path("demo_1.sumocfg"), artifacts=artifacts)
+    requested: list[Path] = []
 
-    def write_screenshot(view_id, path):
+    def request_screenshot(view_id, path):
         assert view_id == "View #0"
-        Path(path).write_bytes(b"png-bytes")
+        requested.append(Path(path))
 
     with (
-        patch.object(traci.gui, "screenshot", side_effect=write_screenshot),
+        patch.object(traci.gui, "screenshot", side_effect=request_screenshot),
         patch.object(traci.simulation, "getTime", return_value=12.5),
     ):
+        assert bridge.request_gui_frame() is True
+        assert len(requested) == 1
+        assert not requested[0].exists()
+        requested[0].write_bytes(b"png-bytes")
         record = bridge.capture_gui_frame()
 
     assert record is not None
@@ -110,6 +116,77 @@ def test_capture_gui_frame_is_run_scoped_and_removes_temp_png(tmp_path):
     assert not list(artifacts.run_dir.glob(".frame-*.png"))
 
 
+def test_native_windows_gui_frame_capture_does_not_use_traci_screenshot(tmp_path):
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    bridge = TraCIBridge(
+        Path("demo_1.sumocfg"),
+        binary="sumo-gui.exe",
+        artifacts=artifacts,
+    )
+    bridge._owned_pid = 1234
+
+    with (
+        patch.object(traci_bridge.sys, "platform", "win32"),
+        patch(
+            "engine.traci_bridge._capture_gui_window_png",
+            return_value=b"native-window-png",
+            create=True,
+        ) as capture_window,
+        patch.object(traci.gui, "screenshot") as screenshot,
+        patch.object(traci.simulation, "getTime", return_value=7.0),
+    ):
+        assert bridge.request_gui_frame() is True
+        record = bridge.capture_gui_frame()
+
+    screenshot.assert_not_called()
+    capture_window.assert_called_once_with(1234)
+    assert record is not None
+    assert record.sequence == 1
+    assert record.simulation_time == 7.0
+    assert record.png == b"native-window-png"
+
+
+def test_native_window_capture_reads_screen_pixels_for_opengl_content():
+    class FakeUser32:
+        def EnumWindows(self, callback, _lparam):
+            callback(55, 0)
+
+        def IsWindowVisible(self, _hwnd):
+            return True
+
+        def GetWindowThreadProcessId(self, _hwnd, pid_pointer):
+            pid_pointer._obj.value = 1234
+
+        def GetWindowRect(self, _hwnd, rect_pointer):
+            rect = rect_pointer._obj
+            rect.left, rect.top, rect.right, rect.bottom = 10, 20, 1010, 620
+            return True
+
+    class FakeImage:
+        def thumbnail(self, size):
+            assert size == (960, 540)
+
+        def save(self, output, *, format):
+            assert format == "PNG"
+            output.write(b"screen-pixel-png")
+
+    grab_calls = []
+
+    def grab(**kwargs):
+        grab_calls.append(kwargs)
+        return FakeImage()
+
+    png = _capture_gui_window_png(
+        1234,
+        platform_name="win32",
+        user32=FakeUser32(),
+        image_grab=grab,
+    )
+
+    assert png == b"screen-pixel-png"
+    assert grab_calls == [{"bbox": (10, 20, 1010, 620), "all_screens": True}]
+
+
 def test_capture_gui_frame_returns_none_when_gui_is_unavailable(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     bridge = TraCIBridge(Path("demo_1.sumocfg"), artifacts=artifacts)
@@ -117,8 +194,10 @@ def test_capture_gui_frame_returns_none_when_gui_is_unavailable(tmp_path):
     with patch.object(
         traci.gui, "screenshot", side_effect=Exception("headless SUMO")
     ):
+        requested = bridge.request_gui_frame()
         record = bridge.capture_gui_frame()
 
+    assert requested is False
     assert record is None
     assert not list(artifacts.run_dir.glob(".frame-*.png"))
 

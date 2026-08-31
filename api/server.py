@@ -14,6 +14,8 @@ from algorithms.registry import get_algorithm_registry
 from api.models import (
     ControlActionModel,
     ControlActionsModel,
+    GuiDelayRequestModel,
+    GuiDelayResponseModel,
     LegacyRunRequestModel,
     NativeGuiResponseModel,
     PredictionResultModel,
@@ -284,6 +286,29 @@ def create_app(
         if not service.stop(run_id):
             raise HTTPException(status_code=409, detail="run cannot be stopped")
         return RunResultModel.from_domain(_result_or_404(service, run_id))
+
+    @application.put(
+        "/api/runs/{run_id}/gui-delay",
+        response_model=GuiDelayResponseModel,
+        responses={
+            404: {"description": "unknown run_id"},
+            409: {"description": "GUI delay unavailable"},
+        },
+    )
+    def set_gui_delay(
+        run_id: str,
+        payload: GuiDelayRequestModel,
+    ) -> GuiDelayResponseModel:
+        service = application.state.run_service
+        try:
+            delay_ms = service.set_gui_delay(run_id, payload.delay_ms)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="unknown run_id") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return GuiDelayResponseModel(delay_ms=delay_ms)
 
     @application.post(
         "/api/runs/{run_id}/native-gui",

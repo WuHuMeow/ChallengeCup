@@ -45,7 +45,7 @@ def test_bundle_scales_flow_vehicle_and_signal_without_touching_source(tmp_path)
     signal_root = ET.parse(bundle.additional_files[0]).getroot()
     assert signal_root.find("tlLogic").get("programID") == "variant_x1.1"
     phases = signal_root.findall("./tlLogic/phase")
-    assert float(phases[0].get("duration")) == pytest.approx(38 * 1.1)
+    assert float(phases[0].get("duration")) == pytest.approx(35 * 1.1)
     assert float(phases[1].get("duration")) == 3.0
 
 

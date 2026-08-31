@@ -51,6 +51,7 @@ class RunRequestModel(BaseModel):
     duration_seconds: float = Field(default=3600.0, gt=0)
     warmup_seconds: float = Field(default=600.0, ge=0)
     step_length_override: float | None = Field(default=None, gt=0)
+    gui_delay_ms: int = Field(default=100, ge=0, le=2000)
     edge_delay_steps: int = Field(default=0, ge=0)
     edge_directions: list[str] = Field(default_factory=list)
     variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
@@ -67,6 +68,7 @@ class RunRequestModel(BaseModel):
             duration_seconds=self.duration_seconds,
             warmup_seconds=self.warmup_seconds,
             step_length_override=self.step_length_override,
+            gui_delay_ms=self.gui_delay_ms,
             output_root=output_root,
             edge_delay_steps=self.edge_delay_steps,
             edge_directions=tuple(self.edge_directions),
@@ -157,6 +159,14 @@ class ResultDetailModel(ResultListItemModel):
 
 class NativeGuiResponseModel(BaseModel):
     status: Literal["shown"]
+
+
+class GuiDelayRequestModel(BaseModel):
+    delay_ms: int = Field(ge=0, le=2000)
+
+
+class GuiDelayResponseModel(BaseModel):
+    delay_ms: int = Field(ge=0, le=2000)
 
 
 class SafetyModel(BaseModel):

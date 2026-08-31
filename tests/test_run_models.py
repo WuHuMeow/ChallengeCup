@@ -24,8 +24,19 @@ def test_run_request_defaults_to_seconds_without_hidden_step_count():
     assert request.steps is None
     assert request.flow_multiplier == 1.0
     assert request.seed == 42
+    assert request.gui_delay_ms == 100
     assert request.output_root is None
     assert request.variant == VariantSpec()
+
+
+@pytest.mark.parametrize("gui_delay_ms", [-1, 2001, True, 1.5])
+def test_run_request_rejects_invalid_gui_delay(gui_delay_ms):
+    with pytest.raises(ValueError, match="gui_delay_ms"):
+        RunRequest(
+            intersection_id="1",
+            algorithm="fixed_time",
+            gui_delay_ms=gui_delay_ms,
+        )
 
 
 def test_run_request_derives_compatibility_steps_only_from_explicit_step_length():
