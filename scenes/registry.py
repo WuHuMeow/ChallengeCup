@@ -84,9 +84,20 @@ class SceneRegistry:
             description=f"雄安新区路口 {intersection_id} 的 SUMO 仿真场景",
         )
 
-    def list_scenes(self) -> List[SceneMeta]:
-        """返回所有已注册场景的元数据列表。"""
-        return list(self._scenes.values())
+    def list_scenes(self, formal_only: bool = False) -> List[SceneMeta]:
+        """返回已注册场景的元数据列表。
+
+        formal_only=True 时仅保留正式编号路口（1..20 的纯数字编号），
+        供冻结实验矩阵的组装 fail-closed 使用。
+        """
+        scenes = list(self._scenes.values())
+        if formal_only:
+            scenes = [
+                meta
+                for meta in scenes
+                if str(meta.intersection_id).isdigit()
+            ]
+        return scenes
 
     def get_scene(self, intersection_id: str) -> Scene:
         """根据路口 ID 获取运行时场景对象。"""

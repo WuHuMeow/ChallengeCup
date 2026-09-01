@@ -14,6 +14,7 @@ import sys
 from collections import deque
 from pathlib import Path
 from typing import Callable, List, Optional
+from uuid import uuid4
 
 from defusedxml import ElementTree as ET
 
@@ -43,6 +44,39 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 
+def _request_gui_window_close(pid: int) -> bool:
+    """Best-effort WM_CLOSE to the sumo-gui main window owning ``pid``.
+
+    Lets sumo-gui persist its window layout before the process is reaped.
+    Returns False when no matching window is found or the platform does not
+    support the request.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        WM_CLOSE = 0x0010
+        found: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _callback(hwnd, _lparam):
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value == pid and user32.IsWindowVisible(hwnd):
+                found.append(hwnd)
+                return False
+            return True
+
+        user32.EnumWindows(_callback, 0)
+        if not found:
+            return False
+        user32.PostMessageW(found[0], WM_CLOSE, 0, 0)
+        return True
+    except Exception:  # noqa: BLE001 - 关窗失败不影响进程收割
+        return False
+
+
 class TraCIBridge:
     """SUMO 仿真与算法之间的桥接器。
 
@@ -70,6 +104,7 @@ class TraCIBridge:
         max_restarts: int = 0,
         vehicle_sample_rate: int = 1,
         event_callback: Optional[Callable[[str, str], None]] = None,
+        process_factory: Optional[Callable[..., object]] = None,
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.configured_end_time = self._read_configured_end_time()
@@ -80,6 +115,7 @@ class TraCIBridge:
         self.seed = seed
         self.max_restarts = max(0, int(max_restarts))
         self._restarts = 0
+        self._process_factory = process_factory or self._launch_sumo_process
         self.tls_id: Optional[str] = None
         self._controlled_lanes: List[str] = []
         self._inbound_lanes: Optional[List[str]] = None  # edge_mapping 进口道筛选结果
@@ -87,6 +123,12 @@ class TraCIBridge:
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
+        # 进程与连接所有权：close() 只清理本桥接器启动的进程/连接，
+        # 不触碰全局 traci registry 中属于其他所有者的连接。
+        self.process_id: Optional[int] = None
+        self._owned_process: Optional[object] = None
+        self._connection: Optional[object] = None
+        self._connection_label: Optional[str] = None
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -143,13 +185,36 @@ class TraCIBridge:
             return False
         return any(node.tag == "queue-output" for node in root.iter())
 
+    def _launch_sumo_process(self, cmd: List[str], **kwargs) -> object:
+        """Launch the SUMO binary as an owned child process."""
+        import subprocess
+
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **kwargs,
+        )
+
+    def _connection_scope(self) -> str:
+        """Stable unique TraCI connection label owned by this bridge."""
+        scope = self.artifacts.run_id if self.artifacts is not None else None
+        suffix = uuid4().hex[:8]
+        return f"bridge-{scope or 'anon'}-{suffix}"
+
     def start(self) -> None:
-        """启动 SUMO 仿真进程。
+        """启动 SUMO 仿真进程并建立专属 TraCI 连接。
+
+        本桥接器拥有它启动的进程与连接；start 失败时回收已创建的资源，
+        绝不触碰全局 traci registry 中属于其他所有者的连接。
 
         Raises:
             FileNotFoundError: sumo_cfg 配置文件不存在。
-            RuntimeError: 场景中没有信号灯，无法运行交通控制算法。
+            RuntimeError: 已有活动连接、场景中没有信号灯，或连接失败。
         """
+        if traci.isLoaded():
+            raise RuntimeError("TraCI connection already active")
+
         # Clear discovery state before every start so reconnects cannot retain
         # identifiers or lane mappings from the previous SUMO process.
         self.tls_id = None
@@ -160,18 +225,40 @@ class TraCIBridge:
         if not self.sumo_cfg.exists():
             raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
 
-        cmd = self._build_cmd()
+        port = traci.getFreeSocketPort()
+        cmd = self._build_cmd() + ["--remote-port", str(port)]
         logger.info("启动 SUMO: %s", " ".join(cmd))
-        traci.start(cmd)
+        process = self._process_factory(cmd)
+        self._owned_process = process
+        self.process_id = getattr(process, "pid", None)
+        label = self._connection_scope()
+        try:
+            traci.init(port, label=label)
+            self._connection = traci.getConnection(label)
+            self._connection_label = label
+        except BaseException:
+            # Failure during connection setup: close our partial connection
+            # (never other owners') and reap the process we just created.
+            self._close_partial_connection(label, wait=False)
+            self._reap_owned_process()
+            raise
 
-        tls_ids = traci.trafficlight.getIDList()
-        if not tls_ids:
-            raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
-        self._activate_additional_signal_programs(set(tls_ids))
-        self.tls_id = tls_ids[0]
-        self._controlled_lanes = list(traci.trafficlight.getControlledLanes(self.tls_id))
-        logger.info("控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes))
-        self._load_edge_mapping()
+        try:
+            tls_ids = traci.trafficlight.getIDList()
+            if not tls_ids:
+                raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+            self._activate_additional_signal_programs(set(tls_ids))
+            self.tls_id = tls_ids[0]
+            self._controlled_lanes = list(
+                traci.trafficlight.getControlledLanes(self.tls_id)
+            )
+            logger.info(
+                "控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes)
+            )
+            self._load_edge_mapping()
+        except BaseException:
+            self.close()
+            raise
 
     def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
         """Activate deterministic variant programs loaded from additional files."""
@@ -223,10 +310,81 @@ class TraCIBridge:
         else:
             logger.warning("edge_mapping 无进口边命中，回退 getControlledLanes")
 
+    def _close_partial_connection(self, label: str, wait: bool = True) -> None:
+        """Close a partially-established connection by label, best effort."""
+        try:
+            traci.getConnection(label).close(wait=wait)
+        except Exception as exc:  # noqa: BLE001 - 无此连接或关闭失败都继续收割
+            logger.debug("partial connection %s close skipped: %s", label, exc)
+
+    def _close_owned_connection(self, wait: bool = True) -> None:
+        """Close only the connection recorded by this bridge, best effort."""
+        connection = self._connection
+        if connection is None:
+            return
+        try:
+            connection.close(wait=wait)
+        except Exception as exc:  # noqa: BLE001 - 记录但继续收割进程
+            logger.warning("owned connection close failed: %s", exc)
+
+    def _reap_owned_process(self) -> None:
+        """Terminate then reap the process this bridge launched."""
+        process = self._owned_process
+        self._owned_process = None
+        self.process_id = None
+        self._connection = None
+        self._connection_label = None
+        if process is None:
+            return
+        try:
+            terminate = getattr(process, "terminate", None)
+            if callable(terminate):
+                terminate()
+            try:
+                process.wait(timeout=5)
+            except Exception:  # noqa: BLE001 - 再给一次宽限期
+                try:
+                    process.wait(timeout=10)
+                except Exception:  # noqa: BLE001 - 仍存活才强杀
+                    kill = getattr(process, "kill", None)
+                    if callable(kill):
+                        kill()
+                    try:
+                        process.wait(timeout=5)
+                    except Exception:  # noqa: BLE001
+                        pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("owned process reap failed: %s", exc)
+
     def close(self) -> None:
-        """关闭 SUMO 仿真进程；可重复调用，未加载时为 no-op。"""
-        if traci.isLoaded():
-            traci.close()
+        """关闭本桥接器拥有的连接与 SUMO 进程；可重复调用。
+
+        对 sumo-gui 先请求窗口关闭（保存布局）再以非等待方式关闭连接。
+        KeyboardInterrupt 从连接关闭传播，但进程收割始终执行。
+        """
+        connection = self._connection
+        owned = self._owned_process
+        gui_close = owned is not None and str(self.binary).startswith("sumo-gui")
+        interrupted: BaseException | None = None
+        if connection is not None:
+            if gui_close:
+                pid = getattr(owned, "pid", None)
+                if pid is not None:
+                    _request_gui_window_close(pid)
+            try:
+                connection.close(wait=not gui_close)
+            except KeyboardInterrupt:
+                interrupted = KeyboardInterrupt()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("owned connection close failed: %s", exc)
+        self._close_owned_connection_cleanup()
+        self._reap_owned_process()
+        if interrupted is not None:
+            raise interrupted
+
+    def _close_owned_connection_cleanup(self) -> None:
+        self._connection = None
+        self._connection_label = None
 
     def step(self) -> Optional[float]:
         """推进一个仿真步。
@@ -459,7 +617,28 @@ class TraCIBridge:
             elif action.action_type == "set_phase_duration":
                 traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
-                traci.trafficlight.setProgram(action.tls_id, value)
+                if isinstance(value, dict):
+                    # Structured programs install a complete definition and
+                    # then switch to it; setProgram alone cannot take a dict.
+                    program_id = str(value.get("program_id", "plan_derived"))
+                    phases = [
+                        traci.trafficlight.Phase(
+                            float(phase["duration"]), str(phase["state"])
+                        )
+                        for phase in value.get("phases", [])
+                    ]
+                    logic = traci.trafficlight.Logic(
+                        programID=program_id,
+                        type=0,
+                        currentPhaseIndex=0,
+                        phases=phases,
+                    )
+                    traci.trafficlight.setCompleteRedYellowGreenDefinition(
+                        action.tls_id, logic
+                    )
+                    traci.trafficlight.setProgram(action.tls_id, program_id)
+                else:
+                    traci.trafficlight.setProgram(action.tls_id, value)
             results.append(ActionResult(action, True, "applied"))
         return results
 

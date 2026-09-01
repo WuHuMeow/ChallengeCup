@@ -9,6 +9,22 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+# Canonical safety-event CSV schema shared by writers and strict readers.
+EVENT_FIELDS = (
+    "run_id",
+    "intersection_id",
+    "algorithm",
+    "step",
+    "simulation_seconds",
+    "type",
+    "entity_ids",
+    "source",
+    "confidence",
+    "detail",
+    "accepted",
+    "action_value",
+)
+
 
 class EventLogger:
     """Buffer and write ``step,type,detail`` event rows."""

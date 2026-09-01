@@ -27,9 +27,19 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
     def __init__(self, use_excel_timing: bool = False) -> None:
         self.use_excel_timing = use_excel_timing
         self.scene: Scene | None = None
+        self._resolved_plan = None
+        self._program_installed = False
 
     def init(self, scene: Scene) -> None:
         self.scene = scene
+        self._program_installed = False
+        try:
+            from algorithms.fixed_time_plan import FixedTimePlanResolver
+
+            self._resolved_plan = FixedTimePlanResolver().resolve(scene)
+        except Exception as exc:  # noqa: BLE001 - 无合法方案时回退网络程序
+            logger.warning("冻结配时方案不可用，回退 SUMO 网络程序: %s", exc)
+            self._resolved_plan = None
         if self.use_excel_timing:
             self._apply_excel_timing(scene)
 
@@ -106,11 +116,42 @@ class FixedTimeAlgorithm(BaseControlAlgorithm):
         logger.info("已将 Excel 配时写入信号灯 %s", tls_id)
 
     def step(self, state) -> List:
-        """固定配时不输出控制动作，完全依赖 SUMO 当前程序。"""
-        return []
+        """首个仿真步安装一次冻结配时程序，此后完全交给 SUMO。"""
+        if (
+            self._resolved_plan is None
+            or self._program_installed
+            or state.step != 0
+        ):
+            return []
+        self._program_installed = True
+        program = {
+            "source": "plan_derived",
+            "program_id": self._resolved_plan.program_id,
+            "phases": [
+                {"duration": float(phase.duration), "state": phase.state}
+                for phase in self._resolved_plan.phases
+            ],
+        }
+        return [
+            __import__("core.types", fromlist=["ControlAction"]).ControlAction.for_simulation_time(
+                state.tls_id,
+                "set_program",
+                program,
+                f"frozen_timing plan={self._resolved_plan.program_id}",
+                state.timestamp,
+                expires_at=state.timestamp + 60.0,
+            )
+        ]
 
     def reset(self) -> None:
-        pass
+        self._program_installed = False
+
+    @property
+    def manifest(self) -> dict:
+        timing_plan = (
+            self._resolved_plan.as_manifest() if self._resolved_plan else None
+        )
+        return {"timing_plan": timing_plan}
 
     @property
     def name(self) -> str:

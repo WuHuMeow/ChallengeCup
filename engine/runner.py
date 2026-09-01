@@ -11,7 +11,8 @@ from typing import List, Optional
 
 from algorithms.base import BaseControlAlgorithm
 from core.config import get_config
-from core.run_models import RunStatus
+from core.run_models import RunResult, RunStatus
+from core.timebase import SimulationWindow, steps_for_seconds
 from core.types import ControlAction, Scene
 from engine.artifacts import RunArtifacts
 from engine.collector import MetricsCollector, StepLogger
@@ -100,11 +101,38 @@ class SimulationRunner:
 
     def run(
         self,
+        window: "SimulationWindow | int | None" = None,
+        stop_event: Optional[Event] = None,
+        frame_sink: Optional[object] = None,
+        *,
         steps: Optional[int] = None,
+    ) -> "List[dict] | RunResult":
+        """Run the simulation and persist one truthful terminal state.
+
+        Accepts either a :class:`SimulationWindow` (seconds-first contract,
+        returns a ``RunResult``) or a legacy integer step count (returns the
+        collected metrics history list).
+        """
+        if window is not None and isinstance(window, SimulationWindow):
+            return self._run_window(window, stop_event, frame_sink)
+        if isinstance(window, bool) or not isinstance(window, (int, type(None))):
+            raise TypeError("window must be a SimulationWindow or an int step count")
+        if window is not None and steps is not None:
+            raise ValueError("pass either window or steps, not both")
+        legacy_steps = steps if steps is not None else window
+        self._run_legacy(
+            legacy_steps if legacy_steps else
+            get_config().get("sumo.default_simulation_steps", 36000),
+            stop_event,
+        )
+        return self.metrics_history
+
+    def _run_legacy(
+        self,
+        steps: int,
         stop_event: Optional[Event] = None,
     ) -> List[dict]:
-        """Run the simulation and persist one truthful terminal state."""
-        steps = steps or get_config().get("sumo.default_simulation_steps", 36000)
+        """Legacy integer-step loop retained for old callers."""
         self.collector = MetricsCollector(self.output_csv)
         self.metrics_history = []
         started_at = datetime.now(timezone.utc).isoformat()
@@ -127,7 +155,7 @@ class SimulationRunner:
             for step in range(steps):
                 last_step = step
                 if stop_event is not None and stop_event.is_set():
-                    status = RunStatus.STOPPED
+                    status = RunStatus.INTERRUPTED
                     reason = "stop requested"
                     break
                 tick_outcome = self._tick(step)
@@ -158,94 +186,210 @@ class SimulationRunner:
             body_exception = True
             raise
         finally:
-            cleanup_errors: list[Exception] = []
-            for save in (
-                self.collector.save if self.collector else None,
-                self.step_logger.save if self.step_logger else None,
-            ):
-                if save is None:
-                    continue
-                try:
-                    save()
-                except Exception as exc:
-                    cleanup_errors.append(exc)
-            try:
-                self.bridge.close()
-            except Exception as exc:
-                cleanup_errors.append(exc)
-
-            if (
-                not cleanup_errors
-                and self.artifacts is not None
-                and status in (RunStatus.COMPLETED, RunStatus.ENDED_EARLY)
-            ):
-                core_outputs = (
-                    self.artifacts.tripinfo,
-                    self.artifacts.stats,
-                    self.artifacts.trajectory,
-                )
-                if all(
-                    path.exists() and path.stat().st_size > 0
-                    for path in core_outputs
-                ):
-                    try:
-                        write_run_summary(self.artifacts)
-                    except Exception as exc:
-                        cleanup_errors.append(exc)
-
-            if cleanup_errors and not body_exception:
-                status = RunStatus.FAILED
-                reason = str(cleanup_errors[0]) or type(cleanup_errors[0]).__name__
-
-            if self.event_logger:
-                try:
-                    self.event_logger.log(last_step, "terminal", status.value)
-                    self.event_logger.save()
-                except Exception as exc:
-                    cleanup_errors.append(exc)
-                    if not body_exception:
-                        status = RunStatus.FAILED
-                        reason = str(exc) or type(exc).__name__
-
-            if self.artifacts is not None:
-                generated_files = [
-                    self.artifacts.metrics,
-                    self.artifacts.step_log,
-                    self.artifacts.events,
-                    self.artifacts.tripinfo,
-                    self.artifacts.stats,
-                    self.artifacts.trajectory,
-                    self.artifacts.queues,
-                    self.artifacts.summary,
-                ]
-                try:
-                    self.artifacts.write_metadata(
-                        status.value,
-                        reason,
-                        generated_files,
-                        started_at=started_at,
-                        ended_at=datetime.now(timezone.utc).isoformat(),
-                        sumo_version=self._sumo_version_value,
-                        requested_steps=steps,
-                        final_simulation_time=self._last_simulation_time,
-                        step_length=getattr(self.bridge, "step_length", None),
-                        configured_end_time=getattr(
-                            self.bridge,
-                            "configured_end_time",
-                            None,
-                        ),
-                    )
-                except Exception as exc:
-                    cleanup_errors.append(exc)
-                    if not body_exception:
-                        status = RunStatus.FAILED
-                        reason = str(exc) or type(exc).__name__
+            cleanup_errors, status, reason = self._finalize(
+                status, reason, body_exception, last_step, started_at,
+            )
             if cleanup_errors and not body_exception:
                 raise cleanup_errors[0]
 
         return self.metrics_history
 
-    def _tick(self, step: int) -> str:
+    def _run_window(
+        self,
+        window: "SimulationWindow",
+        stop_event: Optional[Event] = None,
+        frame_sink: Optional[object] = None,
+    ) -> RunResult:
+        """Seconds-first formal run: derive steps from the bridge step length."""
+        self.collector = MetricsCollector(self.output_csv)
+        self.metrics_history = []
+        started_at = datetime.now(timezone.utc).isoformat()
+        status = RunStatus.RUNNING
+        reason = ""
+        body_exception = False
+        last_step = 0
+        derived_steps = 0
+        warmup_steps = 0
+
+        try:
+            self.bridge.start()
+            self._sumo_version_value = self._sumo_version()
+            step_length = self._step_length()
+            derived_steps = steps_for_seconds(window.duration_seconds, step_length)
+            warmup_steps = steps_for_seconds(window.warmup_seconds, step_length)
+            self.algorithm.init(self.scene)
+            if self.event_logger:
+                self.event_logger.log(
+                    0,
+                    "run_start",
+                    f"intersection={self.scene.meta.intersection_id}"
+                    f" algorithm={self.algorithm.name}",
+                )
+            for step in range(derived_steps):
+                last_step = step
+                if stop_event is not None and stop_event.is_set():
+                    status = RunStatus.INTERRUPTED
+                    reason = "stop requested"
+                    break
+                tick_outcome = self._tick(step, record=step >= warmup_steps)
+                if tick_outcome == "disconnected":
+                    status = RunStatus.DISCONNECTED
+                    reason = self._terminal_reason
+                    break
+                if tick_outcome == "configured_end":
+                    status = RunStatus.COMPLETED
+                    break
+                if tick_outcome == "exhausted":
+                    if step + 1 < derived_steps:
+                        status = RunStatus.ENDED_EARLY
+                        reason = "SUMO exhausted before target steps"
+                    else:
+                        status = RunStatus.COMPLETED
+                    break
+            else:
+                status = RunStatus.COMPLETED
+        except KeyboardInterrupt:
+            status = RunStatus.INTERRUPTED
+            reason = "KeyboardInterrupt"
+            body_exception = True
+            raise
+        except Exception as exc:
+            status = RunStatus.FAILED
+            reason = str(exc) or type(exc).__name__
+            body_exception = True
+            raise
+        finally:
+            cleanup_errors, status, reason = self._finalize(
+                status, reason, body_exception, last_step, started_at,
+                requested_seconds=window.duration_seconds,
+                warmup_seconds=window.warmup_seconds,
+                derived_steps=derived_steps,
+            )
+            if cleanup_errors and not body_exception:
+                raise cleanup_errors[0]
+
+        return RunResult(
+            self.artifacts.run_id if self.artifacts else "",
+            status,
+            reason,
+            self.artifacts.run_dir if self.artifacts else Path("."),
+            algorithm=self.artifacts.algorithm if self.artifacts else self.algorithm.name,
+        )
+
+    def _step_length(self) -> float:
+        length = getattr(self.bridge, "step_length", None)
+        if length is None:
+            length = get_config().get("sumo.step_length", 1.0)
+        return float(length)
+
+    def _finalize(
+        self,
+        status: RunStatus,
+        reason: str,
+        body_exception: bool,
+        last_step: int,
+        started_at: str,
+        requested_seconds: float | None = None,
+        warmup_seconds: float | None = None,
+        derived_steps: int | None = None,
+    ) -> tuple[list[Exception], RunStatus, str]:
+        """Persist outputs, terminal metadata, and status for one run."""
+        cleanup_errors: list[Exception] = []
+        for save in (
+            self.collector.save if self.collector else None,
+            self.step_logger.save if self.step_logger else None,
+        ):
+            if save is None:
+                continue
+            try:
+                save()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        try:
+            self.bridge.close()
+        except Exception as exc:
+            cleanup_errors.append(exc)
+
+        if (
+            not cleanup_errors
+            and self.artifacts is not None
+            and status in (RunStatus.COMPLETED, RunStatus.ENDED_EARLY)
+        ):
+            core_outputs = (
+                self.artifacts.tripinfo,
+                self.artifacts.stats,
+                self.artifacts.trajectory,
+            )
+            if all(
+                path.exists() and path.stat().st_size > 0
+                for path in core_outputs
+            ):
+                try:
+                    write_run_summary(self.artifacts)
+                except Exception as exc:
+                    cleanup_errors.append(exc)
+
+        if cleanup_errors and not body_exception:
+            status = RunStatus.FAILED
+            reason = str(cleanup_errors[0]) or type(cleanup_errors[0]).__name__
+
+        if self.event_logger:
+            try:
+                self.event_logger.log(last_step, "terminal", status.value)
+                self.event_logger.save()
+            except Exception as exc:
+                cleanup_errors.append(exc)
+                if not body_exception:
+                    status = RunStatus.FAILED
+                    reason = str(exc) or type(exc).__name__
+
+        if self.artifacts is not None:
+            generated_files = [
+                self.artifacts.metrics,
+                self.artifacts.step_log,
+                self.artifacts.events,
+                self.artifacts.tripinfo,
+                self.artifacts.stats,
+                self.artifacts.trajectory,
+                self.artifacts.queues,
+                self.artifacts.summary,
+            ]
+            try:
+                self.artifacts.write_metadata(
+                    status.value,
+                    reason,
+                    generated_files,
+                    started_at=started_at,
+                    ended_at=datetime.now(timezone.utc).isoformat(),
+                    sumo_version=self._sumo_version_value,
+                    requested_steps=derived_steps,
+                    final_simulation_time=self._last_simulation_time,
+                    step_length=getattr(self.bridge, "step_length", None),
+                    configured_end_time=getattr(
+                        self.bridge,
+                        "configured_end_time",
+                        None,
+                    ),
+                    requested_seconds=requested_seconds,
+                    warmup_seconds=warmup_seconds,
+                    derived_steps=derived_steps,
+                )
+                self.artifacts.write_status(status.value, reason)
+                if requested_seconds is not None:
+                    self.artifacts.write_manifest({
+                        "requested_seconds": requested_seconds,
+                        "warmup_seconds": warmup_seconds or 0.0,
+                        "derived_steps": derived_steps,
+                        "step_length": getattr(self.bridge, "step_length", None),
+                    })
+            except Exception as exc:
+                cleanup_errors.append(exc)
+                if not body_exception:
+                    status = RunStatus.FAILED
+                    reason = str(exc) or type(exc).__name__
+        return cleanup_errors, status, reason
+
+    def _tick(self, step: int, record: bool = True) -> str:
         """Advance one step and return continue, exhausted, or disconnected."""
         try:
             raw_state = self.bridge.get_state()
@@ -290,7 +434,7 @@ class SimulationRunner:
 
         if self.step_logger:
             self.step_logger.record(step, raw_state)
-        if step % self.snapshot_interval == 0:
+        if record and step % self.snapshot_interval == 0:
             metrics = compute_metrics(step, raw_state)
             self.collector.record(step, raw_state, metrics)
             self.metrics_history.append(

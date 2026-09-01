@@ -1,6 +1,7 @@
 """特征工程。
 
-将 JointState 转换为 ML 模型可用的特征字典。
+将 JointState 转换为 ML 模型可用的特征字典；
+并提供训练/推理共享的方向级流量特征契约。
 """
 
 from __future__ import annotations
@@ -8,6 +9,35 @@ from __future__ import annotations
 from typing import Dict
 
 from core.types import JointState
+
+# 方向级流量预测特征（训练与在线推理共用同一顺序）。
+FEATURE_NAMES = (
+    "flow_t",
+    "flow_lag1",
+    "queue_t",
+    "queue_lag1",
+    "avg_queue_t",
+    "phase",
+)
+
+
+def build_flow_feature_row(
+    flow_t: float,
+    flow_lag1: float,
+    queue_t: float,
+    queue_lag1: float,
+    avg_queue_t: float,
+    phase: int,
+) -> Dict[str, float]:
+    """构造一个方向级特征行，字段顺序与 FEATURE_NAMES 一致。"""
+    return {
+        "flow_t": float(flow_t),
+        "flow_lag1": float(flow_lag1),
+        "queue_t": float(queue_t),
+        "queue_lag1": float(queue_lag1),
+        "avg_queue_t": float(avg_queue_t),
+        "phase": float(phase),
+    }
 
 
 def extract_features(state: JointState, window: int = 5) -> Dict[str, list]:

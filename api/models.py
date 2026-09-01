@@ -5,9 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt, model_validator
 
-from core.run_models import RunRequest, RunResult, VariantSpec
+from core.movements import (
+    MovementKey,
+    MovementState,
+    PhaseMovementState,
+)
+from core.run_models import DisturbanceSpec, RunRequest, RunResult, VariantSpec
 from core.types import (
     ControlAction,
     JointState,
@@ -76,6 +81,77 @@ class RunResultModel(BaseModel):
             reason=result.reason,
             run_dir=str(result.run_dir),
             summary=result.summary,
+        )
+
+
+class DisturbanceSpecModel(BaseModel):
+    """REST adapter for one bounded scene disturbance."""
+
+    kind: Literal["construction", "event_demand", "vehicle_failure"]
+    begin_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+    target: str
+    intensity: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _check_window(self) -> "DisturbanceSpecModel":
+        if self.end_seconds <= self.begin_seconds:
+            raise ValueError(
+                f"end_seconds must be greater than begin_seconds "
+                f"(begin={self.begin_seconds}, end={self.end_seconds})"
+            )
+        return self
+
+    def to_domain(self) -> "DisturbanceSpec":
+        return DisturbanceSpec(
+            kind=self.kind,
+            begin_seconds=self.begin_seconds,
+            end_seconds=self.end_seconds,
+            target=self.target,
+            intensity=self.intensity,
+        )
+
+
+class MovementStateModel(BaseModel):
+    """REST adapter for one movement measurement."""
+
+    incoming_lane: str
+    outgoing_lane: str
+    queue_vehicles: float = Field(ge=0)
+    downstream_queue_vehicles: float = Field(ge=0)
+    incoming_capacity: float = Field(gt=0)
+    downstream_capacity: float = Field(gt=0)
+    downstream_occupancy: float = Field(ge=0, le=1)
+    saturation_rate: float = Field(ge=0)
+    turn_ratio: float = Field(ge=0)
+
+    def to_domain(self) -> MovementState:
+        return MovementState(
+            key=MovementKey(self.incoming_lane, self.outgoing_lane),
+            queue_vehicles=self.queue_vehicles,
+            downstream_queue_vehicles=self.downstream_queue_vehicles,
+            incoming_capacity=self.incoming_capacity,
+            downstream_capacity=self.downstream_capacity,
+            downstream_occupancy=self.downstream_occupancy,
+            saturation_rate=self.saturation_rate,
+            turn_ratio=self.turn_ratio,
+        )
+
+
+class PhaseMovementStateModel(BaseModel):
+    """REST adapter for one movement-level signal phase."""
+
+    phase_index: StrictInt = Field(ge=0)
+    signal_state: str
+    nominal_duration: float = Field(gt=0)
+    movements: list[MovementStateModel] = Field(default_factory=list)
+
+    def to_domain(self) -> PhaseMovementState:
+        return PhaseMovementState(
+            phase_index=self.phase_index,
+            signal_state=self.signal_state,
+            movements=tuple(model.to_domain() for model in self.movements),
+            nominal_duration=self.nominal_duration,
         )
 
 

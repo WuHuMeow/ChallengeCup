@@ -59,3 +59,20 @@ metrics:
 logging:
   level: "INFO"
   format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+# 冻结的扰动实验默认值（来源：output/runs/formal/matrix.csv 冻结矩阵，
+# DisturbanceSpec 校验允许 intensity>1 仅用于 event_demand 需求抬升）。
+scene:
+  disturbance_defaults:
+    construction:
+      begin_seconds: 600.0
+      end_seconds: 1200.0
+      intensity: 1.0
+    event_demand:
+      begin_seconds: 600.0
+      end_seconds: 1200.0
+      intensity: 1.25
+    vehicle_failure:
+      begin_seconds: 600.0
+      end_seconds: 1200.0
+      intensity: 1.0

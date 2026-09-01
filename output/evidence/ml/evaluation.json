@@ -1,0 +1,47 @@
+{
+  "evaluation": {
+    "ewma": {
+      "mae": 4885.223429687027,
+      "rmse": 7653.869362438544
+    },
+    "model": {
+      "mae": 3810.2422956021564,
+      "rmse": 5634.745795222123
+    },
+    "n": 25584
+  },
+  "feature_names": [
+    "flow_t",
+    "flow_lag1",
+    "queue_t",
+    "queue_lag1",
+    "avg_queue_t",
+    "phase"
+  ],
+  "generated_at_utc": "2026-08-31T14:42:20.814999+00:00",
+  "label": "next_sample_flow (veh/h, 600s ahead)",
+  "matrix_csv": "output\\runs\\formal\\matrix.csv",
+  "matrix_kind_filter": "normal",
+  "model": {
+    "estimator": "GradientBoostingRegressor",
+    "n_samples": 12792,
+    "path": "ml\\model.pkl",
+    "sha256": "f06263b9a7a6aa47cf60b2bc3801d9ef63fc35145bb2b922861e067926c29b97",
+    "train_seconds": 0.766,
+    "type": "gradient_boosting_flow_forecast"
+  },
+  "run_root": "output\\runs\\formal\\runs",
+  "schema": "challenge-cup-ml-flow-forecast",
+  "schema_version": 1,
+  "split": {
+    "calibration_seeds": [
+      42
+    ],
+    "holdout_samples": 25584,
+    "holdout_seeds": [
+      43,
+      44
+    ],
+    "train_samples": 12792
+  }
+}

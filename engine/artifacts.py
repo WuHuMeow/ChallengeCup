@@ -6,6 +6,10 @@ from pathlib import Path
 from uuid import uuid4
 
 
+class CorruptStatusArtifactError(RuntimeError):
+    """Raised when a run's status artifact exists but cannot be trusted."""
+
+
 @dataclass(frozen=True)
 class RunArtifacts:
     """Stable paths for one isolated intersection/algorithm run."""
@@ -28,7 +32,23 @@ class RunArtifacts:
             "metrics.csv",
             "simulation_log.csv",
             "events.csv",
+            "tripinfo.xml",
+            "stats.xml",
+            "traj.xml",
+            "collisions.xml",
             "summary.json",
+        )
+
+    @classmethod
+    def evidence_required_output_names(cls) -> tuple[str, ...]:
+        """Files that must exist (and hash) for strict evidence validation."""
+        return (
+            "manifest.json",
+            "provenance.json",
+            "status.json",
+            "run_metadata.json",
+            *cls.required_output_names(),
+            "hashes.json",
         )
 
     @classmethod
@@ -89,8 +109,73 @@ class RunArtifacts:
         return self.run_dir / "queues.xml"
 
     @property
+    def collisions(self) -> Path:
+        return self.run_dir / "collisions.xml"
+
+    @property
+    def provenance(self) -> Path:
+        return self.run_dir / "provenance.json"
+
+    @property
+    def hashes(self) -> Path:
+        return self.run_dir / "hashes.json"
+
+    @property
     def metadata(self) -> Path:
         return self.run_dir / "run_metadata.json"
+
+    @property
+    def status(self) -> Path:
+        return self.run_dir / "status.json"
+
+    @property
+    def manifest(self) -> Path:
+        return self.run_dir / "run_manifest.json"
+
+    def write_manifest(self, payload: dict[str, object]) -> None:
+        """Atomically write the run manifest with the derived timing record."""
+        temporary = self.manifest.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        temporary.replace(self.manifest)
+
+    def read_status(self) -> dict[str, object]:
+        """Load the persisted status payload, failing closed when corrupt."""
+        try:
+            payload = json.loads(self.status.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CorruptStatusArtifactError(
+                f"status artifact is corrupt: {self.status}: {exc}"
+            ) from exc
+        if not isinstance(payload, dict) or "status" not in payload:
+            raise CorruptStatusArtifactError(
+                f"status artifact is missing required fields: {self.status}"
+            )
+        return payload
+
+    def write_status(
+        self,
+        status: str,
+        reason: str = "",
+        **extra: object,
+    ) -> None:
+        """Atomically record the current lifecycle state for observers."""
+        payload = {
+            "run_id": self.run_id,
+            "intersection_id": self.intersection_id,
+            "algorithm": self.algorithm,
+            "status": status,
+            "reason": reason,
+        }
+        payload.update(extra)
+        temporary = self.status.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        temporary.replace(self.status)
 
     @property
     def summary(self) -> Path:
@@ -113,6 +198,9 @@ class RunArtifacts:
         final_simulation_time: float | None = None,
         step_length: float | None = None,
         configured_end_time: float | None = None,
+        requested_seconds: float | None = None,
+        warmup_seconds: float | None = None,
+        derived_steps: int | None = None,
     ) -> None:
         """Atomically replace run metadata with the current terminal state."""
         payload = {
@@ -130,6 +218,9 @@ class RunArtifacts:
             "final_simulation_time": final_simulation_time,
             "step_length": step_length,
             "configured_end_time": configured_end_time,
+            "requested_seconds": requested_seconds,
+            "warmup_seconds": warmup_seconds,
+            "derived_steps": derived_steps,
             "generated_files": [
                 Path(path).name for path in generated_files if Path(path).exists()
             ],

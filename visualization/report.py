@@ -29,11 +29,16 @@ COMPARISON_METRICS = (
 
 def collect_summaries(root: Path) -> pd.DataFrame:
     """Collect exact summary metrics and run identity from one artifact tree."""
+    from experiments.evidence import EvidenceReader
+
     rows = []
     for summary_path in sorted(Path(root).rglob("summary.json")):
         run_dir = summary_path.parent
         metadata_path = run_dir / "run_metadata.json"
         if not metadata_path.exists():
+            continue
+        if EvidenceReader.validate(run_dir):
+            # Strict contract: only reader-validated evidence is visualized.
             continue
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))

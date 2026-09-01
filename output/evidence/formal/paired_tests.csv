@@ -1,0 +1,3 @@
+baseline,candidate,metric,n_pairs,baseline_mean,candidate_mean,mean_difference,relative_change,cohen_dz,ci_lower,ci_upper,improved_unit_count,worst_scene_id,worst_flow_multiplier,safety_eligible,eligible,flags
+fixed_time,classic_maxpressure,avg_travel_time,120,69.33873449954044,66.12531887777435,-3.213415621766088,-0.05815501695210596,-0.4053450951460185,-4.646390088529643,-1.7804411550025323,18,14,1.25,False,False,
+fixed_time,capacity_aware_maxpressure,avg_travel_time,120,69.33873449954044,66.46265526125536,-2.8760792382850777,-0.036536727439551026,-0.26392719454506813,-4.8458386274866685,-0.9063198490834867,25,9,1.0,False,False,

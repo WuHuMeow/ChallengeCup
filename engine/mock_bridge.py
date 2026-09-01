@@ -143,3 +143,7 @@ class MockBridge:
     def get_lane_capacity(self, lane_id: str) -> float:
         """确定性容量：20 辆（对应 150m 车道 / 7.5m）。"""
         return 20.0
+
+    def _apply_actions(self, actions):
+        """安全执行器的私有写入钩子（与 TraCIBridge 对齐）。"""
+        return self.apply_actions(actions)

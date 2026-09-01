@@ -93,6 +93,11 @@ def is_complete(result_dir: Path, request: RunRequest | None = None) -> bool:
             (result_dir / name).stat().st_size > 0
             for name in REQUIRED_ARTIFACTS
         )
+        strict_complete = (
+            (result_dir / "manifest.json").is_file()
+            and (result_dir / "hashes.json").is_file()
+        )
+        artifacts_complete = artifacts_complete and strict_complete
         if not artifacts_complete or request is None:
             return artifacts_complete
 

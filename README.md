@@ -512,19 +512,25 @@ def ca_mp_decide(state: JointState, prediction: PredictionResult) -> List[Contro
 |------|------|---------|----------|----------|
 | 固定配时 | 基线 | 无 | 无协同 | `algorithms/fixed_time.py` |
 | 感应控制（Actuated） | 基线 | 无 | 边缘独立决策 | `algorithms/rule_adaptive.py` |
-| **CA-MP** | **核心创新** | EWMA 流量预测 | 云-边协同 | `algorithms/ca_max_pressure.py` |
+| **CA-MP** | **核心创新** | GBR 流量预测（EWMA 回退） | 云-边协同 | `algorithms/ca_max_pressure.py` |
 
 <a id="ewma-预测"></a>
 
-### EWMA 流量预测
+### 流量预测：GBR 模型 + EWMA 回退
 
-```text
-predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)
-```
+云端 `CloudPolicy` 的流量预测支持两种来源：
 
-- alpha = 0.3（平滑系数，平衡响应速度与稳定性）
+1. **GBR 模型（默认优先）**：`ml/` 用 scikit-learn `GradientBoostingRegressor`
+   在 formal 矩阵遥测（617 个 `metrics.csv` 时间序列）上训练"下一采样步（600s）
+   各方向流量"预测模型，特征为 `[flow_t, flow_lag1, queue_t, queue_lag1, avg_queue_t, phase]`；
+   seed 42 训练、seed 43/44 留出。留出集 n=25,584 上模型 MAE 3,810 vs EWMA 4,885
+   （改善约 22%），证据见 `output/evidence/ml/evaluation.json`（含 SHA-256 溯源）。
+   复现：`python scripts/train_ml.py`。
+2. **EWMA 回退**：`predicted_flow(t+1) = alpha * observed_flow(t) + (1-alpha) * predicted_flow(t)`，
+   α = 0.3。模型缺失、滞后历史不足或推理失败时自动回退，保证决策链路永不中断。
+
 - 预测结果用于修正 CA-MP 的 pressure 计算，使决策具有前瞻性
-- 轻量级：无需 GPU，单步计算 < 0.1ms
+- `policy.model_source` 记录每次预测的实际来源（`model` / `ewma`）
 
 ---
 
