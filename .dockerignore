@@ -1,10 +1,56 @@
-# Docker 构建上下文排除清单（IA W4：控制镜像体积）
+# Docker build context boundary (Task 19.E; design Section 3.7).
+# Never send protected judge inputs, secrets, or generated evidence to the
+# build context; runtime inputs below must stay includable.
 .git
 .venv
-__pycache__
 **/__pycache__
+*.pyc
+.pytest_cache
+**/.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+
+# Generated runtime results and evidence
 output
+output/evidence
+
+# Internal workflow material
+.superpowers
+.agents
+.worktrees
+会话
 docs
 tests
-*.pyc
-.dockerignore
+examples
+
+# Local environment files, keys, and certificates
+.env
+.env.*
+*.env
+*.key
+*.pem
+*.crt
+*.crt.key
+*.p12
+*.pfx
+
+# Protected judge inputs and other local archives
+赛题资料.7z
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+
+# Browser and test reports
+playwright-report
+test-results
+
+# Host-built web artifacts and dependencies (the image builds its own)
+web/node_modules
+api/static/dist
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db

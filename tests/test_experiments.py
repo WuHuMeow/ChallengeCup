@@ -1,11 +1,36 @@
 """实验框架接口测试。"""
 import inspect
 import pytest
-from experiments.runner import run_batch, ALGORITHM_MAP
+from algorithms.registry import get_algorithm_registry
+from experiments.runner import run_batch
+from scripts.split_jobs import ALGOS, JOBS
 
 
-def test_algorithm_map_has_three_entries():
-    assert set(ALGORITHM_MAP.keys()) == {"fixed_time", "actuated", "ca_maxpressure"}
+def test_formal_experiment_algorithms_come_from_registry():
+    assert [
+        item.key for item in get_algorithm_registry().list(formal_only=True)
+    ] == [
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+    ]
+
+
+def test_split_jobs_uses_only_formal_registry_algorithms():
+    assert ALGOS == [
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+    ]
+    assert {algorithm for _, algorithm, _, _ in JOBS} == set(ALGOS)
+
+
+def test_demo_constructs_algorithms_through_the_registry():
+    from examples.run_demo import create_algorithm
+
+    algorithm = create_algorithm("capacity_aware_maxpressure")
+
+    assert algorithm.name == "capacity_aware_maxpressure"
 
 
 def test_run_batch_signature_accepts_seeds():
@@ -21,7 +46,9 @@ def test_parse_args_defaults():
     assert args.flow_multiplier == 1.0
     assert args.output_dir is None
     assert args.intersection == "1"
-    assert args.steps == 36000
+    assert args.steps is None
+    assert args.duration_seconds == 3600
+    assert args.warmup_seconds == 600
     assert args.algorithm == "fixed_time"
 
 
@@ -30,10 +57,26 @@ def test_parse_args_custom():
     args = parse_args([
         "--seed", "7", "--flow-multiplier", "1.5",
         "--output-dir", "output/x", "--intersection", "16",
-        "--steps", "100", "--algorithm", "ca_maxpressure",
+        "--steps", "100", "--algorithm", "capacity_aware_maxpressure",
     ])
     assert (args.seed, args.flow_multiplier, args.intersection) == (7, 1.5, "16")
-    assert args.algorithm == "ca_maxpressure"
+    assert args.algorithm == "capacity_aware_maxpressure"
+
+
+def test_run_single_constructs_a_seconds_first_request_by_default(tmp_path):
+    from unittest.mock import Mock
+    from experiments.runner import parse_args, run_single
+
+    args = parse_args(["--output-dir", str(tmp_path)])
+    service = Mock()
+    service.run_sync.return_value = Mock()
+
+    run_single(args, run_service=service)
+
+    request = service.run_sync.call_args.args[0]
+    assert request.duration_seconds == 3600
+    assert request.warmup_seconds == 600
+    assert request.steps is None
 
 
 def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
@@ -57,6 +100,12 @@ def test_build_artifacts_encodes_all_run_dimensions(tmp_path):
     ("--steps", "0"),
     ("--seed", "-1"),
     ("--flow-multiplier", "0"),
+    ("--flow-multiplier", "nan"),
+    ("--flow-multiplier", "inf"),
+    ("--duration-seconds", "nan"),
+    ("--duration-seconds", "inf"),
+    ("--warmup-seconds", "nan"),
+    ("--warmup-seconds", "inf"),
 ])
 def test_parse_args_rejects_invalid_dimensions(option, value):
     from experiments.runner import parse_args
@@ -107,7 +156,7 @@ def test_run_batch_delegates_every_case_to_run_service(tmp_path):
     service = FakeService()
     results = run_batch(
         intersection_ids=["1"],
-        algorithms=["fixed_time", "ca_maxpressure"],
+        algorithms=["fixed_time", "capacity_aware_maxpressure"],
         levels=[TrafficLevel.NORMAL],
         seeds=[42],
         steps=10,
@@ -118,7 +167,7 @@ def test_run_batch_delegates_every_case_to_run_service(tmp_path):
     assert len(results) == 2
     assert [request.algorithm for request in service.requests] == [
         "fixed_time",
-        "ca_maxpressure",
+        "capacity_aware_maxpressure",
     ]
     assert all(request.output_root == tmp_path for request in service.requests)
 

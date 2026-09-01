@@ -1,7 +1,10 @@
+import csv
 import json
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from scripts.validation_common import ValidationResult, run_sumo_validation
 
@@ -373,6 +376,172 @@ def test_audit_matrix_csv_rejects_the_wrong_request_set(tmp_path, monkeypatch):
     assert any("request set mismatch" in error for error in result.errors)
 
 
+def _write_formal_audit_fixture(tmp_path, monkeypatch, specs):
+    from experiments import matrix as matrix_module
+    from experiments.matrix import _new_manifest
+
+    metrics = {
+        "avg_travel_time": 10.0,
+        "avg_delay": 2.0,
+        "avg_queue_length": 1.0,
+        "throughput": 1,
+        "total_stops": 0,
+        "fuel_consumption": 3.0,
+        "collision_count": 0,
+        "red_light_count": 0,
+        "illegal_transition_count": 0,
+        "harsh_braking_count": 0,
+        "teleport_count": 0,
+        "potential_conflict_count": 0,
+    }
+    rows = []
+    summaries = {}
+    manifest = _new_manifest(tuple(specs))
+    checked = []
+    for index, spec in enumerate(specs):
+        run_id = f"run-{index}"
+        run_dir = (
+            tmp_path
+            / "runs"
+            / f"i{spec.scene_id}"
+            / spec.algorithm
+            / f"x{spec.flow_multiplier:g}"
+            / f"s{spec.seed}"
+            / run_id
+        )
+        run_dir.mkdir(parents=True)
+        (run_dir / "status.json").write_text(
+            json.dumps({"run_id": run_id, "status": "completed", "reason": ""}),
+            encoding="utf-8",
+        )
+        disturbance = spec.disturbance
+        rows.append({
+            "run_key": spec.run_key,
+            "scene_id": spec.scene_id,
+            "intersection_id": spec.scene_id,
+            "algorithm": spec.algorithm,
+            "flow_multiplier": spec.flow_multiplier,
+            "seed": spec.seed,
+            "matrix_kind": spec.matrix_kind,
+            "disturbance_kind": disturbance.kind if disturbance else "",
+            "disturbance_begin_seconds": (
+                disturbance.begin_seconds if disturbance else ""
+            ),
+            "disturbance_end_seconds": disturbance.end_seconds if disturbance else "",
+            "disturbance_target": disturbance.target if disturbance else "",
+            "disturbance_intensity": disturbance.intensity if disturbance else "",
+            "duration_seconds": spec.duration_seconds,
+            "warmup_seconds": spec.warmup_seconds,
+            "steps": "",
+            "steps_origin": "none",
+            "algorithm_params": json.dumps(
+                spec.algorithm_params, sort_keys=True, separators=(",", ":")
+            ),
+            "run_id": run_id,
+            "status": "completed",
+            "reason": "",
+            "run_dir": str(run_dir.relative_to(tmp_path)),
+            **metrics,
+        })
+        manifest["attempt_chains"][spec.run_key].append({
+            "run_id": run_id,
+            "run_dir": str(run_dir.resolve()),
+            "status": "completed",
+            "reason": "",
+            "parent_failure": None,
+        })
+        summaries[str(run_dir.resolve())] = {"run_id": run_id, "metrics": metrics}
+    matrix_csv = tmp_path / "matrix.csv"
+    with matrix_csv.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+    (tmp_path / "matrix_manifest.json").write_text(
+        json.dumps(manifest, sort_keys=True), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        matrix_module,
+        "_strict_is_complete",
+        lambda run_dir, request: checked.append((run_dir, request)) or True,
+    )
+    monkeypatch.setattr(
+        matrix_module.EvidenceReader,
+        "load_summary",
+        staticmethod(lambda run_dir: summaries[str(Path(run_dir).resolve())]),
+    )
+    return matrix_csv, checked
+
+
+def test_audit_matrix_csv_accepts_seconds_first_formal_run_spec(tmp_path, monkeypatch):
+    """Catch the release auditor requiring removed legacy step identities."""
+    from experiments.matrix import RunSpec
+    from scripts import verify_ia_ib
+
+    spec = RunSpec("1", "fixed_time", 1.0, 42)
+    matrix_csv, checked = _write_formal_audit_fixture(
+        tmp_path, monkeypatch, (spec,)
+    )
+
+    result = verify_ia_ib.audit_matrix_csv(
+        matrix_csv,
+        expected=1,
+        expected_specs=(spec,),
+    )
+
+    assert result.status == "pass"
+    assert checked[0][1].steps is None
+    assert checked[0][1].duration_seconds == 3600
+    assert checked[0][1].warmup_seconds == 600
+
+
+def _swap_formal_run_keys(rows):
+    rows[0]["run_key"], rows[1]["run_key"] = (
+        rows[1]["run_key"],
+        rows[0]["run_key"],
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation,error_fragment",
+    (
+        (_swap_formal_run_keys, "identity"),
+        (lambda rows: rows[0].__setitem__("avg_travel_time", "99"), "sealed summary"),
+        (lambda rows: rows[0].__setitem__("collision_count", "1"), "sealed summary"),
+    ),
+)
+def test_audit_matrix_csv_rejects_swapped_key_or_forged_canonical_values(
+    tmp_path, monkeypatch, mutation, error_fragment
+):
+    """Catch IA/IB audit trusting key sets or submitted CSV metrics."""
+    from experiments.matrix import RunSpec
+    from scripts import verify_ia_ib
+
+    specs = (
+        RunSpec("1", "fixed_time", 1.0, 42),
+        RunSpec("1", "fixed_time", 1.0, 43),
+    )
+    matrix_csv, checked = _write_formal_audit_fixture(
+        tmp_path, monkeypatch, specs
+    )
+    with matrix_csv.open(newline="", encoding="utf-8") as source:
+        rows = list(csv.DictReader(source))
+        fieldnames = list(rows[0])
+    mutation(rows)
+    with matrix_csv.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    result = verify_ia_ib.audit_matrix_csv(
+        matrix_csv,
+        expected=2,
+        expected_specs=specs,
+    )
+
+    assert result.status == "fail"
+    assert any(error_fragment in error for error in result.errors)
+
+
 def test_verify_matrix_rejects_new_completed_result_below_horizon(
     tmp_path,
     monkeypatch,
@@ -389,6 +558,59 @@ def test_verify_matrix_rejects_new_completed_result_below_horizon(
     check = verify_ia_ib.verify_matrix(tmp_path, quick=True)
 
     assert any("short: incomplete or below requested horizon" in error for error in check.errors)
+
+
+@pytest.mark.parametrize("check_name", ["ca_mp_smoke", "exact_metrics"])
+def test_live_verification_checks_reject_unsealed_summary_before_consuming_it(
+    tmp_path,
+    monkeypatch,
+    check_name,
+):
+    from core.run_models import RunResult, RunStatus
+    from scripts import verify_ia_ib
+
+    run_dir = tmp_path / "unsealed"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps({
+            "metrics": {
+                "avg_travel_time": 1,
+                "avg_delay": 1,
+                "throughput": 1,
+                "total_stops": 1,
+                "fuel_consumption": 1,
+            }
+        }),
+        encoding="utf-8",
+    )
+    (run_dir / "events.csv").write_text(
+        "type\naction_applied\n",
+        encoding="utf-8",
+    )
+    result = RunResult(
+        "unsealed",
+        RunStatus.COMPLETED,
+        "",
+        run_dir,
+        json.loads((run_dir / "summary.json").read_text(encoding="utf-8")),
+    )
+
+    class FakeService:
+        def __init__(self, **kwargs):
+            pass
+
+        def run_sync(self, request):
+            return result
+
+        def shutdown(self):
+            pass
+
+    monkeypatch.setattr(verify_ia_ib, "RunService", FakeService)
+
+    check = getattr(verify_ia_ib, f"verify_{check_name}")(tmp_path)
+
+    assert check.status == "fail"
+    assert any("strict evidence" in error for error in check.errors)
 
 
 def test_final_report_uses_flat_document_path():

@@ -1,20 +1,24 @@
 """场景变体生成。
 
-根据基准流量文件生成 1.0x / 1.5x 流量等级变体，
-用于对比实验（原始流量 vs 1.5 倍压力）。
+根据基准流量文件生成 1.0x / 1.25x 流量等级变体，
+用于对比实验（原始流量 vs 1.25 倍高流量）。
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict
 
 from core.config import get_config
-from core.run_models import VariantBundle, VariantSpec
+from core.run_models import DisturbanceSpec, VariantBundle, VariantSpec
 from core.types import SceneMeta, TrafficLevel
+from scenes.disturbances import validate_variant, write_disturbance
+from scenes.models import SceneManifest
 
 
 class VariantGenerator:
@@ -26,7 +30,7 @@ class VariantGenerator:
             raw = cfg.get("scene.default_traffic_levels", {})
             levels = {
                 TrafficLevel.NORMAL: raw.get("normal", 1.0),
-                TrafficLevel.HIGH: raw.get("high", 1.5),
+                TrafficLevel.HIGH: raw.get("high", 1.25),
             }
         self.levels = levels
 
@@ -64,6 +68,85 @@ class VariantGenerator:
             per_hour_attr = flow.get("vehsPerHour")
             if per_hour_attr is not None:
                 flow.set("vehsPerHour", f"{float(per_hour_attr) * factor:g}")
+        for vehicle in root.findall("vehicle"):
+            vehicle_id = vehicle.get("id")
+            if vehicle_id is not None:
+                vehicle.set("id", vehicle_id + suffix)
+            type_attr = vehicle.get("type")
+            if type_attr in vtype_map:
+                vehicle.set("type", vtype_map[type_attr])
+
+    @staticmethod
+    def _relative_runtime_path(path: Path, destination: Path) -> str:
+        return Path(os.path.relpath(path, destination)).as_posix()
+
+    @classmethod
+    def _write_runtime_config(
+        cls,
+        scene_meta: SceneMeta,
+        route_file: Path,
+        output_file: Path,
+        step_length_override: float | None = None,
+    ) -> None:
+        """Clone config metadata while replacing its sole demand population."""
+        tree = ET.parse(scene_meta.sumo_cfg)
+        root = tree.getroot()
+        inputs = root.find("input")
+        if inputs is None:
+            inputs = ET.SubElement(root, "input")
+        net = inputs.find("net-file")
+        if net is None:
+            net = ET.SubElement(inputs, "net-file")
+        net.set("value", cls._relative_runtime_path(scene_meta.sumo_net, output_file.parent))
+        routes = inputs.find("route-files")
+        if routes is None:
+            routes = ET.SubElement(inputs, "route-files")
+        routes.set("value", route_file.name)
+        for extra in inputs.findall("additional-files"):
+            inputs.remove(extra)
+        if step_length_override is not None:
+            time = root.find("time")
+            if time is None:
+                time = ET.SubElement(root, "time")
+            step_length = time.find("step-length")
+            if step_length is None:
+                step_length = ET.SubElement(time, "step-length")
+            step_length.set("value", f"{step_length_override:g}")
+        tree.write(output_file, encoding="utf-8", xml_declaration=True)
+
+    @staticmethod
+    def _derive_routes(
+        scene_meta: SceneMeta,
+        flow_file: Path,
+        route_file: Path,
+    ) -> None:
+        """Route the one scaled source population into an executable routes file."""
+        cmd = [
+            "jtrrouter",
+            "--net-file", str(scene_meta.sumo_net),
+            "--route-files", str(flow_file),
+            "--turn-ratio-files", str(scene_meta.sumo_turn),
+            "--output-file", str(route_file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0 or not route_file.exists():
+            detail = (result.stderr or result.stdout).strip()
+            raise ValueError(f"jtrrouter failed to derive demand routes: {detail}")
+
+    @staticmethod
+    def _manifest_path(path: Path, repo_root: Path) -> str:
+        try:
+            return path.resolve().relative_to(repo_root.resolve()).as_posix()
+        except ValueError:
+            return f"external/{path.name}"
+
+    @staticmethod
+    def _intensity_semantics(disturbance: DisturbanceSpec) -> str:
+        if disturbance.kind == "construction":
+            return "closure duration = declared interval * intensity (0, 1]"
+        if disturbance.kind == "event_demand":
+            return "additional demand = 360 vehicles/hour * intensity"
+        return "stopped vehicle duration = declared interval * intensity (0, 1]"
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -91,10 +174,30 @@ class VariantGenerator:
             raise ValueError(f"unknown vehicle type override: {names}")
 
     @staticmethod
+    def _resolve_signal_phases(
+        scene_meta: SceneMeta,
+    ) -> tuple[list[tuple[float, str]], str] | None:
+        """Resolve the validated timing plan; None keeps the net fallback."""
+        try:
+            from algorithms.fixed_time_plan import FixedTimePlanResolver
+            from core.types import Scene
+
+            resolved = FixedTimePlanResolver().resolve(
+                Scene(meta=scene_meta, config={})
+            )
+        except Exception:
+            return None
+        return (
+            [(phase.duration, phase.state) for phase in resolved.phases],
+            str(resolved.program_id),
+        )
+
+    @staticmethod
     def _write_signal_additional(
         scene_meta: SceneMeta,
         scale: float,
         output_file: Path,
+        phases: list[tuple[float, str]] | None = None,
     ) -> None:
         source_root = ET.parse(scene_meta.sumo_net).getroot()
         output_root = ET.Element("additional")
@@ -105,16 +208,30 @@ class VariantGenerator:
             logic_attributes = dict(source_logic.attrib)
             logic_attributes["programID"] = f"variant_x{scale:g}"
             logic = ET.SubElement(output_root, "tlLogic", logic_attributes)
-            for source_phase in source_logic.findall("phase"):
-                attributes = dict(source_phase.attrib)
-                state = attributes.get("state", "")
+            if phases is None:
+                for source_phase in source_logic.findall("phase"):
+                    attributes = dict(source_phase.attrib)
+                    state = attributes.get("state", "")
+                    if any(value in state for value in "Gg") and not any(
+                        value in state for value in "yY"
+                    ):
+                        attributes["duration"] = (
+                            f"{float(attributes['duration']) * scale:g}"
+                        )
+                    ET.SubElement(logic, "phase", attributes)
+                continue
+            # Phases come from the validated timing plan so the mandatory
+            # all-red clearance between service greens survives the variant.
+            for duration, state in phases:
                 if any(value in state for value in "Gg") and not any(
                     value in state for value in "yY"
                 ):
-                    attributes["duration"] = (
-                        f"{float(attributes['duration']) * scale:g}"
-                    )
-                ET.SubElement(logic, "phase", attributes)
+                    duration = duration * scale
+                ET.SubElement(
+                    logic,
+                    "phase",
+                    {"duration": f"{duration:g}", "state": state},
+                )
         ET.ElementTree(output_root).write(
             output_file,
             encoding="utf-8",
@@ -154,66 +271,173 @@ class VariantGenerator:
             xml_declaration=True,
         )
 
+    @staticmethod
+    def _coerce_meta(scene: SceneMeta | SceneManifest) -> SceneMeta:
+        """Keep the Task 6 manifest surface usable without breaking runtime metadata."""
+        if isinstance(scene, SceneMeta):
+            return scene
+        files = scene.source_files
+        try:
+            return SceneMeta(
+                scene.scene_id,
+                scene.name,
+                Path(files["net"]),
+                Path(files["route"]),
+                Path(files["flow"]),
+                Path(files["turn"]),
+                Path(files["sumocfg"]),
+                Path(files["timing"]),
+                description=scene.description,
+            )
+        except KeyError as exc:
+            raise ValueError(f"scene manifest is missing source file: {exc.args[0]}") from exc
+
+    @staticmethod
+    def _lane_ids(scene_meta: SceneMeta) -> set[str]:
+        return {
+            lane.get("id")
+            for lane in ET.parse(scene_meta.sumo_net).getroot().findall(".//lane")
+            if lane.get("id")
+        }
+
+    @staticmethod
+    def _validate_disturbance_target(
+        disturbance: DisturbanceSpec,
+        lane_ids: set[str],
+    ) -> None:
+        if disturbance.kind in {"construction", "vehicle_failure"}:
+            if disturbance.target not in lane_ids:
+                raise ValueError(f"disturbance target is not an accessible lane: {disturbance.target}")
+        else:
+            edge = disturbance.target
+            if not any(lane.rsplit("_", 1)[0] == edge for lane in lane_ids):
+                raise ValueError(f"disturbance target is not an accessible edge: {edge}")
+
     def generate_bundle(
         self,
-        scene_meta: SceneMeta,
+        scene_meta: SceneMeta | SceneManifest,
         flow_multiplier: float,
-        spec: VariantSpec,
+        spec: VariantSpec | DisturbanceSpec | None,
         output_dir: Path,
+        step_length_override: float | None = None,
     ) -> VariantBundle:
         """Generate a deterministic, source-preserving SUMO variant bundle."""
+        scene_meta = self._coerce_meta(scene_meta)
+        disturbance = (
+            spec
+            if isinstance(spec, DisturbanceSpec)
+            else getattr(spec, "disturbance", None)
+        )
+        variant = spec if isinstance(spec, VariantSpec) else VariantSpec()
         if flow_multiplier <= 0:
             raise ValueError(f"flow multiplier must be > 0, got {flow_multiplier}")
-        if spec.signal_duration_scale <= 0:
+        if variant.signal_duration_scale <= 0:
             raise ValueError("signal_duration_scale must be > 0")
-        if spec.closed_lanes and spec.closure_end <= spec.closure_begin:
+        if variant.closed_lanes and variant.closure_end <= variant.closure_begin:
             raise ValueError("closure_end must be greater than closure_begin")
+        lane_ids = self._lane_ids(scene_meta)
+        if disturbance is not None:
+            self._validate_disturbance_target(disturbance, lane_ids)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         flow_tree = ET.parse(scene_meta.sumo_flow)
         flow_root = flow_tree.getroot()
-        self._apply_vehicle_overrides(flow_root, spec.vehicle_type_overrides)
+        self._apply_vehicle_overrides(flow_root, variant.vehicle_type_overrides)
         self._scale_tree(flow_root, flow_multiplier, f"_x{flow_multiplier:g}")
         flow_file = output_dir / f"{scene_meta.sumo_flow.stem}_variant.flow.xml"
         flow_tree.write(flow_file, encoding="utf-8", xml_declaration=True)
+        route_file = output_dir / "derived_demand.rou.xml"
+        self._derive_routes(scene_meta, flow_file, route_file)
+        runtime_config = output_dir / f"{scene_meta.sumo_cfg.stem}_variant.sumocfg"
+        self._write_runtime_config(
+            scene_meta,
+            route_file,
+            runtime_config,
+            step_length_override,
+        )
 
         signal_file = output_dir / "signal_program.add.xml"
+        resolved_phases = self._resolve_signal_phases(scene_meta)
         self._write_signal_additional(
             scene_meta,
-            spec.signal_duration_scale,
+            variant.signal_duration_scale,
             signal_file,
+            phases=resolved_phases[0] if resolved_phases else None,
         )
-        additional_files = [flow_file, signal_file]
+        additional_files = [signal_file]
 
-        if spec.closed_lanes:
+        if variant.closed_lanes:
             closure_file = output_dir / "lane_closure.add.xml"
-            self._write_closure_additional(spec, closure_file)
+            self._write_closure_additional(variant, closure_file)
             additional_files.append(closure_file)
 
+        if disturbance is not None:
+            disturbance_file = output_dir / f"disturbance_{disturbance.kind}.add.xml"
+            write_disturbance(
+                disturbance,
+                disturbance_file,
+                network_file=scene_meta.sumo_net,
+            )
+            additional_files.append(disturbance_file)
+
+        repo_root = Path(__file__).resolve().parents[1]
         manifest: dict[str, object] = {
             "flow_multiplier": flow_multiplier,
-            "vehicle_type_overrides": spec.vehicle_type_overrides,
-            "signal_duration_scale": spec.signal_duration_scale,
-            "closed_lanes": list(spec.closed_lanes),
-            "closure_begin": spec.closure_begin,
-            "closure_end": spec.closure_end,
+            "vehicle_type_overrides": variant.vehicle_type_overrides,
+            "signal_duration_scale": variant.signal_duration_scale,
+            "closed_lanes": list(variant.closed_lanes),
+            "closure_begin": variant.closure_begin,
+            "closure_end": variant.closure_end,
+            "parent_sha256": self._sha256(scene_meta.sumo_flow),
+            "lane_ids": sorted(lane_ids),
+            "runtime_files": {
+                "flow": flow_file.name,
+                "route": route_file.name,
+                "sumocfg": runtime_config.name,
+            },
+            "step_length_override": step_length_override,
             "sources": {
                 "flow": {
-                    "path": str(scene_meta.sumo_flow),
+                    "path": self._manifest_path(scene_meta.sumo_flow, repo_root),
                     "sha256": self._sha256(scene_meta.sumo_flow),
                 },
                 "network": {
-                    "path": str(scene_meta.sumo_net),
+                    "path": self._manifest_path(scene_meta.sumo_net, repo_root),
                     "sha256": self._sha256(scene_meta.sumo_net),
+                },
+                "route": {
+                    "path": self._manifest_path(scene_meta.sumo_rou, repo_root),
+                    "sha256": self._sha256(scene_meta.sumo_rou),
                 },
             },
             "additional_files": [path.name for path in additional_files],
         }
+        if disturbance is not None:
+            manifest["disturbance"] = {
+                "kind": disturbance.kind,
+                "begin_seconds": disturbance.begin_seconds,
+                "end_seconds": disturbance.end_seconds,
+                "target": disturbance.target,
+                "intensity": disturbance.intensity,
+                "intensity_semantics": self._intensity_semantics(disturbance),
+            }
         (output_dir / "variant_manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        return VariantBundle(tuple(additional_files), manifest)
+        bundle = VariantBundle(
+            tuple(additional_files), manifest, flow_file, route_file, runtime_config,
+            scene_meta.sumo_net,
+        )
+        issues = validate_variant(bundle)
+        if issues:
+            for path in [
+                flow_file, route_file, runtime_config, *additional_files,
+                output_dir / "variant_manifest.json",
+            ]:
+                path.unlink(missing_ok=True)
+            raise ValueError("invalid variant bundle: " + "; ".join(issues))
+        return bundle
 
     def generate(
         self,

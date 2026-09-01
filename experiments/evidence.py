@@ -240,23 +240,6 @@ class EvidenceWriter:
                 self._warmup_seconds = 0.0
 
     def begin(self, manifest: RunManifest) -> None:
-        # RunArtifacts layout: i{id}/{algorithm}/x{flow}/s{seed}/{run_id};
-        # synthetic directories outside that layout only bind the run_id.
-        if self.run_dir.name != manifest.run_id:
-            raise ValueError(
-                "evidence identity does not match its artifact directory"
-            )
-        algorithm_dir = self.run_dir.parent.parent.parent.name
-        in_standard_layout = (
-            self.run_dir.parent.name.startswith("s")
-            and self.run_dir.parent.parent.name.startswith("x")
-            and algorithm_dir != ""
-            and not algorithm_dir.startswith(".")
-        )
-        if in_standard_layout and algorithm_dir != manifest.algorithm:
-            raise ValueError(
-                "evidence identity does not match its artifact directory"
-            )
         with _EVIDENCE_LOCK:
             self.run_dir.mkdir(parents=True, exist_ok=True)
             if (self.run_dir / "hashes.json").exists():
@@ -336,11 +319,8 @@ class EvidenceWriter:
         if (self.run_dir / "hashes.json").exists():
             raise ValueError("sealed evidence cannot be materialized again")
         value = status.value if isinstance(status, RunStatus) else str(status)
-        _FINALIZABLE = {*_PUBLISHABLE, "failed", "interrupted", "disconnected"}
-        if value not in _FINALIZABLE:
-            raise ValueError(
-                f"{value} is not a finalizable terminal state for evidence"
-            )
+        if value not in _TERMINAL:
+            raise ValueError(f"evidence status must be terminal: {value}")
         if value in _PUBLISHABLE and summary is None:
             raise ValueError("publishable evidence requires MetricSummary")
         if value not in _PUBLISHABLE and summary is not None:
@@ -356,14 +336,6 @@ class EvidenceWriter:
         manifest = _load_json(manifest_path)
         manifest["end_status"] = value
         _atomic_json(manifest_path, manifest)
-        run_manifest_path = self.run_dir / "run_manifest.json"
-        run_record = (
-            _load_json(run_manifest_path) if run_manifest_path.exists() else {}
-        )
-        run_record["end_status"] = value
-        run_record.setdefault("run_id", manifest.get("run_id"))
-        run_record.setdefault("algorithm", manifest.get("algorithm"))
-        _atomic_json(run_manifest_path, run_record)
         if summary is not None:
             from experiments.summary import metric_summary_payload
 
@@ -397,19 +369,9 @@ class EvidenceWriter:
             provenance_path = self.run_dir / "provenance.json"
             status = _load_json(self.run_dir / "status.json")
             metadata = _load_json(self.run_dir / "run_metadata.json")
-            value = metadata.get("status")
-            if value not in _TERMINAL:
-                raise ValueError(
-                    "run_metadata must carry a terminal state before sealing"
-                )
-            if status.get("status") != value:
-                # Converge the lifecycle status artifact to the terminal run
-                # metadata; the metadata write is the authoritative moment.
-                converged = dict(status)
-                converged["status"] = value
-                converged["reason"] = metadata.get("reason", "")
-                _atomic_json(self.run_dir / "status.json", converged)
-                status = converged
+            value = status.get("status")
+            if value not in _TERMINAL or metadata.get("status") != value:
+                raise ValueError("status and run_metadata must agree on a terminal state")
             manifest = _load_json(manifest_path)
             if str(manifest.get("evidence_error", "")).strip():
                 raise ValueError("manifest records an evidence error and cannot be sealed")

@@ -14,13 +14,58 @@ sumo:
   # 批量跑批推荐用命令行版 sumo；需要可视化观察时改为 sumo-gui。
   binary: "sumo"
   step_length: 0.1
-  default_simulation_steps: 36000
+
+simulation:
+  duration_seconds: 3600
+  warmup_seconds: 600
+  quick_duration_seconds: 600
+
+smoke:
+  steps: 100
+
+experiments:
+  formal_schema_version: 1
+  formal_expected_runs: 540
+  formal_algorithms:
+    - fixed_time
+    - classic_maxpressure
+    - capacity_aware_maxpressure
+  formal_flow_multipliers: [1.0, 1.25]
+  formal_seeds: [42, 43, 44]
+  formal_duration_seconds: 3600
+  formal_warmup_seconds: 600
+  formal_disturbance_seed: 42
+  formal_disturbance_flow_multiplier: 1.0
+  hard_safety_gates:
+    - collision_count
+    - red_light_count
+    - illegal_transition_count
+  observational_safety_metrics:
+    - harsh_braking_count
+    - teleport_count
+    - potential_conflict_count
 
 scene:
   # 20 路口 × 2 流量等级 = 40 个变体
   default_traffic_levels:
     normal: 1.0
-    high: 1.5
+    high: 1.25
+  # 正式扰动矩阵的冻结基线；每次运行仍须声明作用对象与时间窗。
+  disturbance_defaults:
+    # construction/failure intensity: (0, 1]，作用时间占声明时间窗的比例。
+    # event_demand intensity: 正数，额外需求为每小时 360 * intensity 辆。
+    construction:
+      intensity: 1.0
+      begin_seconds: 600
+      end_seconds: 1200
+    event_demand:
+      intensity: 1.25
+      begin_seconds: 600
+      end_seconds: 1200
+    vehicle_failure:
+      intensity: 1.0
+      begin_seconds: 600
+      end_seconds: 1200
 
 algorithms:
   fixed_time:
@@ -34,6 +79,8 @@ algorithms:
     queue_threshold: 5
 
   ca_maxpressure:
+    # Prediction is an M4 ablation and remains off unless explicitly selected.
+    prediction_enabled: false
     # 溢出门控阈值：进口道占用率超过此值时强制放行
     overflow_occupancy_threshold: 0.9
     # 云端下发参数默认值

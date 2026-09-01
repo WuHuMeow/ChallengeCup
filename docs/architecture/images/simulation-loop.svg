@@ -1,63 +1,282 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" font-family="Microsoft YaHei, SimHei, sans-serif">
-  <defs>
-    <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4a5568"/></marker>
-    <marker id="ag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#38a169"/></marker>
-    <marker id="ap" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#805ad5"/></marker>
-    <filter id="s"><feDropShadow dx="1" dy="2" stdDeviation="2" flood-opacity="0.1"/></filter>
-  </defs>
-  <rect width="800" height="480" fill="#f8fafc"/>
-  <text x="400" y="30" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a202c">CA-MP 仿真循环数据流</text>
-  <!-- Row 1: Main pipeline -->
-  <rect x="40" y="55" width="130" height="55" rx="8" fill="#ebf8ff" stroke="#4facfe" stroke-width="2"/>
-  <text x="105" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#2b6cb0">SUMO 仿真</text>
-  <text x="105" y="96" text-anchor="middle" font-size="9" fill="#718096">demo_N.sumocfg</text>
-  <path d="M170,82 L200,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
-  <rect x="200" y="55" width="130" height="55" rx="8" fill="#fefcbf" stroke="#d69e2e" stroke-width="2"/>
-  <text x="265" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#975a16">TraCI Bridge</text>
-  <text x="265" y="96" text-anchor="middle" font-size="9" fill="#718096">traci_bridge.py</text>
-  <path d="M330,82 L360,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
-  <rect x="360" y="55" width="130" height="55" rx="8" fill="#e6fffa" stroke="#38b2ac" stroke-width="2"/>
-  <text x="425" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#285e61">JointState</text>
-  <text x="425" y="96" text-anchor="middle" font-size="9" fill="#718096">排队/流量/相位</text>
-  <path d="M490,82 L520,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
-  <rect x="520" y="55" width="130" height="55" rx="8" fill="#fed7e2" stroke="#d53f8c" stroke-width="2"/>
-  <text x="585" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#97266d">CA-MP 决策</text>
-  <text x="585" y="96" text-anchor="middle" font-size="9" fill="#718096">ca_max_pressure.py</text>
-  <path d="M650,82 L680,82" stroke="#4a5568" stroke-width="1.5" marker-end="url(#a)"/>
-  <rect x="680" y="55" width="100" height="55" rx="8" fill="#c6f6d5" stroke="#38a169" stroke-width="2"/>
-  <text x="730" y="78" text-anchor="middle" font-size="11" font-weight="bold" fill="#276749">Action</text>
-  <text x="730" y="96" text-anchor="middle" font-size="9" fill="#718096">写入SUMO</text>
-  <!-- Feedback loop -->
-  <path d="M730,110 L730,135 L105,135 L105,110" stroke="#38a169" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#ag)"/>
-  <text x="400" y="130" text-anchor="middle" font-size="9" fill="#38a169">下一步仿真（循环 3600 步）</text>
-  <!-- CA-MP Decision Detail -->
-  <rect x="350" y="160" width="320" height="130" rx="10" fill="white" stroke="#d53f8c" stroke-width="2" filter="url(#s)"/>
-  <text x="510" y="185" text-anchor="middle" font-size="12" font-weight="bold" fill="#97266d">CA-MP 决策逻辑（每步）</text>
-  <text x="370" y="210" font-size="10" fill="#4a5568">① 溢出门控: occupancy > 90% → 强制放行</text>
-  <text x="370" y="232" font-size="10" fill="#4a5568">② 容量归一化: pressure = queue / capacity</text>
-  <text x="370" y="254" font-size="10" fill="#4a5568">③ 选最大压力相位: argmax(pressure)</text>
-  <text x="370" y="276" font-size="10" fill="#4a5568">④ 动态绿灯: duration = base_green × (p / avg_p)</text>
-  <path d="M585,110 L510,160" stroke="#d53f8c" stroke-width="1" stroke-dasharray="3,2"/>
-  <!-- Cloud -->
-  <rect x="40" y="180" width="220" height="90" rx="8" fill="#e9d8fd" stroke="#805ad5" stroke-width="2"/>
-  <text x="150" y="205" text-anchor="middle" font-size="11" font-weight="bold" fill="#553c9a">CloudCoordinator</text>
-  <text x="150" y="225" text-anchor="middle" font-size="9" fill="#4a5568">EWMA 预测 → 修正压力值</text>
-  <text x="150" y="242" text-anchor="middle" font-size="9" fill="#4a5568">周期性下发 base_green 参数</text>
-  <text x="150" y="259" text-anchor="middle" font-size="9" fill="#4a5568">cloud/cloud_policy.py</text>
-  <path d="M260,225 L350,225" stroke="#805ad5" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#ap)"/>
-  <!-- Collector -->
-  <rect x="40" y="320" width="220" height="70" rx="8" fill="#feebc8" stroke="#dd6b20" stroke-width="2"/>
-  <text x="150" y="345" text-anchor="middle" font-size="11" font-weight="bold" fill="#c05621">MetricsCollector</text>
-  <text x="150" y="365" text-anchor="middle" font-size="9" fill="#4a5568">每 60 步快照 → CSV</text>
-  <text x="150" y="380" text-anchor="middle" font-size="9" fill="#4a5568">engine/collector.py</text>
-  <path d="M265,110 L265,320" stroke="#dd6b20" stroke-width="1" stroke-dasharray="3,3"/>
-  <!-- Experiment output -->
-  <rect x="350" y="320" width="320" height="70" rx="8" fill="#fff5f5" stroke="#e53e3e" stroke-width="1.5"/>
-  <text x="510" y="345" text-anchor="middle" font-size="11" font-weight="bold" fill="#c53030">实验输出</text>
-  <text x="510" y="365" text-anchor="middle" font-size="9" fill="#4a5568">360 次仿真 → 对比表 + 图表 + 统计检验</text>
-  <text x="510" y="380" text-anchor="middle" font-size="9" fill="#4a5568">experiments/runner.py → visualization/plots.py</text>
-  <path d="M260,370 L350,370" stroke="#dd6b20" stroke-width="1" marker-end="url(#a)"/>
-  <!-- Legend -->
-  <text x="400" y="430" text-anchor="middle" font-size="10" fill="#a0aec0">实线 = 数据流方向 | 虚线 = 反馈/辅助流 | 每仿真步循环一次</text>
-  <text x="400" y="450" text-anchor="middle" font-size="10" fill="#a0aec0">XH-202613 | 20 路口 × 3 算法 × 2 流量 × 3 种子 = 360 次仿真</text>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.3 (20260303.0454)
+ -->
+<!-- Title: simulation_loop Pages: 1 -->
+<svg role="img" aria-labelledby="simulation-loop-title simulation-loop-desc" width="464pt" height="961pt"
+ viewBox="0.00 0.00 464.00 961.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title id="simulation-loop-title">单步仿真控制与证据生成流程</title>
+  <desc id="simulation-loop-desc">RunRequest 经过变体生成、状态读取、算法决策、动作应用和 simulationStep，最终生成指标与 summary.json，并按终止状态结束或回到下一步。</desc>
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(20.16 940.96)">
+<title>simulation_loop</title>
+<polygon fill="white" stroke="none" points="-20.16,20.16 -20.16,-940.96 444.16,-940.96 444.16,20.16 -20.16,20.16"/>
+<text xml:space="preserve" text-anchor="middle" x="212" y="-900.6" font-family="Arial" font-size="18.00" fill="#17324d">单步仿真控制与证据生成流程</text>
+<g id="clust1" class="cluster">
+<title>cluster_main</title>
+<path fill="#fbfcfd" stroke="#c3d0dc" d="M24,-100C24,-100 176,-100 176,-100 182,-100 188,-106 188,-112 188,-112 188,-871.2 188,-871.2 188,-877.2 182,-883.2 176,-883.2 176,-883.2 24,-883.2 24,-883.2 18,-883.2 12,-877.2 12,-871.2 12,-871.2 12,-112 12,-112 12,-106 18,-100 24,-100"/>
+<text xml:space="preserve" text-anchor="middle" x="100" y="-869.3" font-family="Arial" font-size="11.00" fill="#49647b">主执行链 · 观察 → 决策 → 执行</text>
+</g>
+<g id="clust2" class="cluster">
+<title>cluster_decision</title>
+<path fill="#f8fbfb" stroke="#7baaa2" d="M208,-384C208,-384 404,-384 404,-384 410,-384 416,-390 416,-396 416,-396 416,-871.2 416,-871.2 416,-877.2 410,-883.2 404,-883.2 404,-883.2 208,-883.2 208,-883.2 202,-883.2 196,-877.2 196,-871.2 196,-871.2 196,-396 196,-396 196,-390 202,-384 208,-384"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-869.3" font-family="Arial" font-size="11.00" fill="#496d67">CA&#45;MP 决策细节 · A01–A07</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_terminal</title>
+<path fill="#fffdfa" stroke="#c09b68" d="M20,-8C20,-8 178,-8 178,-8 184,-8 190,-14 190,-20 190,-20 190,-80 190,-80 190,-86 184,-92 178,-92 178,-92 20,-92 20,-92 14,-92 8,-86 8,-80 8,-80 8,-20 8,-20 8,-14 14,-8 20,-8"/>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-78.1" font-family="Arial" font-size="11.00" fill="#80633e">终止状态 / 证据</text>
+</g>
+<!-- f01 -->
+<g id="node1" class="node">
+<title>f01</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M137.28,-854C137.28,-854 40.72,-854 40.72,-854 34.72,-854 28.72,-848 28.72,-842 28.72,-842 28.72,-830 28.72,-830 28.72,-824 34.72,-818 40.72,-818 40.72,-818 137.28,-818 137.28,-818 143.28,-818 149.28,-824 149.28,-830 149.28,-830 149.28,-842 149.28,-842 149.28,-848 143.28,-854 137.28,-854"/>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-838.7" font-family="Arial" font-size="9.00" fill="#17324d">F01 &#160;RunRequest</text>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-827.9" font-family="Arial" font-size="9.00" fill="#17324d">校验路由、算法、种子、步数</text>
+</g>
+<!-- f02 -->
+<g id="node2" class="node">
+<title>f02</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M133.54,-783C133.54,-783 44.46,-783 44.46,-783 38.46,-783 32.46,-777 32.46,-771 32.46,-771 32.46,-759 32.46,-759 32.46,-753 38.46,-747 44.46,-747 44.46,-747 133.54,-747 133.54,-747 139.54,-747 145.54,-753 145.54,-759 145.54,-759 145.54,-771 145.54,-771 145.54,-777 139.54,-783 133.54,-783"/>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-767.7" font-family="Arial" font-size="9.00" fill="#17324d">F02 &#160;RunArtifacts</text>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-756.9" font-family="Arial" font-size="9.00" fill="#17324d">创建独立 run_id 输出目录</text>
+</g>
+<!-- f01&#45;&gt;f02 -->
+<g id="edge1" class="edge">
+<title>f01&#45;&gt;f02</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M89,-817.72C89,-817.72 89,-792.71 89,-792.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="91.52,-792.71 89,-785.51 86.48,-792.71 91.52,-792.71"/>
+</g>
+<!-- f03 -->
+<g id="node3" class="node">
+<title>f03</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M137.28,-712C137.28,-712 40.72,-712 40.72,-712 34.72,-712 28.72,-706 28.72,-700 28.72,-700 28.72,-688 28.72,-688 28.72,-682 34.72,-676 40.72,-676 40.72,-676 137.28,-676 137.28,-676 143.28,-676 149.28,-682 149.28,-688 149.28,-688 149.28,-700 149.28,-700 149.28,-706 143.28,-712 137.28,-712"/>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-696.7" font-family="Arial" font-size="9.00" fill="#17324d">F03 &#160;VariantBundle</text>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-685.9" font-family="Arial" font-size="9.00" fill="#17324d">原始场景只读，生成附加文件</text>
+</g>
+<!-- f02&#45;&gt;f03 -->
+<g id="edge2" class="edge">
+<title>f02&#45;&gt;f03</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M89,-746.72C89,-746.72 89,-721.71 89,-721.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="91.52,-721.71 89,-714.51 86.48,-721.71 91.52,-721.71"/>
+</g>
+<!-- f04 -->
+<g id="node4" class="node">
+<title>f04</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M146.29,-641C146.29,-641 31.71,-641 31.71,-641 25.71,-641 19.71,-635 19.71,-629 19.71,-629 19.71,-617 19.71,-617 19.71,-611 25.71,-605 31.71,-605 31.71,-605 146.29,-605 146.29,-605 152.29,-605 158.29,-611 158.29,-617 158.29,-617 158.29,-629 158.29,-629 158.29,-635 152.29,-641 146.29,-641"/>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-625.7" font-family="Arial" font-size="9.00" fill="#17324d">F04 &#160;JointState</text>
+<text xml:space="preserve" text-anchor="middle" x="89" y="-614.9" font-family="Arial" font-size="9.00" fill="#17324d">TraCI get_state() 读取当前状态</text>
+</g>
+<!-- f03&#45;&gt;f04 -->
+<g id="edge3" class="edge">
+<title>f03&#45;&gt;f04</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M89,-675.72C89,-675.72 89,-650.71 89,-650.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="91.52,-650.71 89,-643.51 86.48,-650.71 91.52,-650.71"/>
+</g>
+<!-- f05 -->
+<g id="node5" class="node">
+<title>f05</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M140.05,-570C140.05,-570 35.95,-570 35.95,-570 29.95,-570 23.95,-564 23.95,-558 23.95,-558 23.95,-546 23.95,-546 23.95,-540 29.95,-534 35.95,-534 35.95,-534 140.05,-534 140.05,-534 146.05,-534 152.05,-540 152.05,-546 152.05,-546 152.05,-558 152.05,-558 152.05,-564 146.05,-570 140.05,-570"/>
+<text xml:space="preserve" text-anchor="middle" x="88" y="-554.7" font-family="Arial" font-size="9.00" fill="#17324d">F05 &#160;EdgeChannel（可选）</text>
+<text xml:space="preserve" text-anchor="middle" x="88" y="-543.9" font-family="Arial" font-size="9.00" fill="#17324d">发送 / 接收 · 固定延迟</text>
+</g>
+<!-- f04&#45;&gt;f05 -->
+<g id="edge4" class="edge">
+<title>f04&#45;&gt;f05</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M88,-604.72C88,-604.72 88,-579.71 88,-579.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="90.52,-579.71 88,-572.51 85.48,-579.71 90.52,-579.71"/>
+</g>
+<!-- f06 -->
+<g id="node6" class="node">
+<title>f06</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M121.53,-499C121.53,-499 52.47,-499 52.47,-499 46.47,-499 40.47,-493 40.47,-487 40.47,-487 40.47,-475 40.47,-475 40.47,-469 46.47,-463 52.47,-463 52.47,-463 121.53,-463 121.53,-463 127.53,-463 133.53,-469 133.53,-475 133.53,-475 133.53,-487 133.53,-487 133.53,-493 127.53,-499 121.53,-499"/>
+<text xml:space="preserve" text-anchor="middle" x="87" y="-483.7" font-family="Arial" font-size="9.00" fill="#17324d">F06 &#160;CloudPolicy</text>
+<text xml:space="preserve" text-anchor="middle" x="87" y="-472.9" font-family="Arial" font-size="9.00" fill="#17324d">预测到达 · 周期参数</text>
+</g>
+<!-- f05&#45;&gt;f06 -->
+<g id="edge5" class="edge">
+<title>f05&#45;&gt;f06</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M87,-533.72C87,-533.72 87,-508.71 87,-508.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="89.52,-508.71 87,-501.51 84.48,-508.71 89.52,-508.71"/>
+</g>
+<!-- a01 -->
+<g id="node12" class="node">
+<title>a01</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M383.81,-854C383.81,-854 228.19,-854 228.19,-854 222.19,-854 216.19,-848 216.19,-842 216.19,-842 216.19,-830 216.19,-830 216.19,-824 222.19,-818 228.19,-818 228.19,-818 383.81,-818 383.81,-818 389.81,-818 395.81,-824 395.81,-830 395.81,-830 395.81,-842 395.81,-842 395.81,-848 389.81,-854 383.81,-854"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-838.7" font-family="Arial" font-size="9.00" fill="#17324d">A01 &#160;读取 PhaseTrafficState</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-827.9" font-family="Arial" font-size="9.00" fill="#17324d">phase_index · signal_state · 上下游车道</text>
+</g>
+<!-- f05&#45;&gt;a01 -->
+<g id="edge18" class="edge">
+<title>f05&#45;&gt;a01</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" stroke-dasharray="5,2" d="M152.45,-552C163.43,-552 171.37,-552 171.37,-552 171.37,-552 171.37,-836 171.37,-836 171.37,-836 206.58,-836 206.58,-836"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="206.58,-838.52 213.78,-836 206.58,-833.48 206.58,-838.52"/>
+<rect x="134.82" y="-704.95" width="116.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="192.82" y="-694.95" font-family="Arial" font-size="8.00" fill="#41566b">CA&#45;MP 使用 CloudPolicy</text>
+</g>
+<!-- f07 -->
+<g id="node7" class="node">
+<title>f07</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M142.3,-428C142.3,-428 31.7,-428 31.7,-428 25.7,-428 19.7,-422 19.7,-416 19.7,-416 19.7,-404 19.7,-404 19.7,-398 25.7,-392 31.7,-392 31.7,-392 142.3,-392 142.3,-392 148.3,-392 154.3,-398 154.3,-404 154.3,-404 154.3,-416 154.3,-416 154.3,-422 148.3,-428 142.3,-428"/>
+<text xml:space="preserve" text-anchor="middle" x="87" y="-412.7" font-family="Arial" font-size="9.00" fill="#17324d">F07 &#160;algorithm.step()</text>
+<text xml:space="preserve" text-anchor="middle" x="87" y="-401.9" font-family="Arial" font-size="9.00" fill="#17324d">JointState → ControlAction[]</text>
+</g>
+<!-- f06&#45;&gt;f07 -->
+<g id="edge6" class="edge">
+<title>f06&#45;&gt;f07</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M87,-462.72C87,-462.72 87,-437.71 87,-437.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="89.52,-437.71 87,-430.51 84.48,-437.71 89.52,-437.71"/>
+</g>
+<!-- f08 -->
+<g id="node8" class="node">
+<title>f08</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M136.54,-357C136.54,-357 39.46,-357 39.46,-357 33.46,-357 27.46,-351 27.46,-345 27.46,-345 27.46,-333 27.46,-333 27.46,-327 33.46,-321 39.46,-321 39.46,-321 136.54,-321 136.54,-321 142.54,-321 148.54,-327 148.54,-333 148.54,-333 148.54,-345 148.54,-345 148.54,-351 142.54,-357 136.54,-357"/>
+<text xml:space="preserve" text-anchor="middle" x="88" y="-341.7" font-family="Arial" font-size="9.00" fill="#17324d">F08 &#160;validate + apply</text>
+<text xml:space="preserve" text-anchor="middle" x="88" y="-330.9" font-family="Arial" font-size="9.00" fill="#17324d">动作校验 → ActionResult[]</text>
+</g>
+<!-- f07&#45;&gt;f08 -->
+<g id="edge7" class="edge">
+<title>f07&#45;&gt;f08</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M88,-391.72C88,-391.72 88,-366.71 88,-366.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="90.52,-366.71 88,-359.51 85.48,-366.71 90.52,-366.71"/>
+</g>
+<!-- f09 -->
+<g id="node9" class="node">
+<title>f09</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M132.29,-286C132.29,-286 47.71,-286 47.71,-286 41.71,-286 35.71,-280 35.71,-274 35.71,-274 35.71,-262 35.71,-262 35.71,-256 41.71,-250 47.71,-250 47.71,-250 132.29,-250 132.29,-250 138.29,-250 144.29,-256 144.29,-262 144.29,-262 144.29,-274 144.29,-274 144.29,-280 138.29,-286 132.29,-286"/>
+<text xml:space="preserve" text-anchor="middle" x="90" y="-270.7" font-family="Arial" font-size="9.00" fill="#17324d">F09 &#160;simulationStep()</text>
+<text xml:space="preserve" text-anchor="middle" x="90" y="-259.9" font-family="Arial" font-size="9.00" fill="#17324d">推进仿真时钟，检查耗尽</text>
+</g>
+<!-- f08&#45;&gt;f09 -->
+<g id="edge8" class="edge">
+<title>f08&#45;&gt;f09</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M90,-320.72C90,-320.72 90,-295.71 90,-295.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="92.52,-295.71 90,-288.51 87.48,-295.71 92.52,-295.71"/>
+</g>
+<!-- f10 -->
+<g id="node10" class="node">
+<title>f10</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M131.53,-215C131.53,-215 52.47,-215 52.47,-215 46.47,-215 40.47,-209 40.47,-203 40.47,-203 40.47,-191 40.47,-191 40.47,-185 46.47,-179 52.47,-179 52.47,-179 131.53,-179 131.53,-179 137.53,-179 143.53,-185 143.53,-191 143.53,-191 143.53,-203 143.53,-203 143.53,-209 137.53,-215 131.53,-215"/>
+<text xml:space="preserve" text-anchor="middle" x="92" y="-199.7" font-family="Arial" font-size="9.00" fill="#17324d">F10 &#160;collect + log</text>
+<text xml:space="preserve" text-anchor="middle" x="92" y="-188.9" font-family="Arial" font-size="9.00" fill="#17324d">指标 · 事件 · 步进日志</text>
+</g>
+<!-- f09&#45;&gt;f10 -->
+<g id="edge9" class="edge">
+<title>f09&#45;&gt;f10</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M92,-249.72C92,-249.72 92,-224.71 92,-224.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="94.52,-224.71 92,-217.51 89.48,-224.71 94.52,-224.71"/>
+</g>
+<!-- f11 -->
+<g id="node11" class="node">
+<title>f11</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M165.91,-144C165.91,-144 32.09,-144 32.09,-144 26.09,-144 20.09,-138 20.09,-132 20.09,-132 20.09,-120 20.09,-120 20.09,-114 26.09,-108 32.09,-108 32.09,-108 165.91,-108 165.91,-108 171.91,-108 177.91,-114 177.91,-120 177.91,-120 177.91,-132 177.91,-132 177.91,-138 171.91,-144 165.91,-144"/>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-128.7" font-family="Arial" font-size="9.00" fill="#17324d">F11 &#160;汇总证据</text>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-117.9" font-family="Arial" font-size="9.00" fill="#17324d">tripinfo + metrics → summary.json</text>
+</g>
+<!-- f10&#45;&gt;f11 -->
+<g id="edge10" class="edge">
+<title>f10&#45;&gt;f11</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M92,-178.72C92,-178.72 92,-153.71 92,-153.71"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="94.52,-153.71 92,-146.51 89.48,-153.71 94.52,-153.71"/>
+</g>
+<!-- f11&#45;&gt;f04 -->
+<g id="edge11" class="edge">
+<title>f11&#45;&gt;f04</title>
+<path fill="none" stroke="#52677d" stroke-width="1.35" stroke-dasharray="5,2" d="M164.83,-144.28C164.83,-233.94 164.83,-623 164.83,-623 164.83,-623 164.21,-623 164.21,-623"/>
+<polygon fill="#52677d" stroke="#52677d" stroke-width="1.35" points="167.87,-620.48 160.67,-623 167.87,-625.52 167.87,-620.48"/>
+<rect x="118.32" y="-386.75" width="53.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="144.82" y="-376.75" font-family="Arial" font-size="8.00" fill="#41566b">loop → F04</text>
+</g>
+<!-- terminal -->
+<g id="node19" class="node">
+<title>terminal</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M170.07,-62.8C170.07,-62.8 27.93,-62.8 27.93,-62.8 21.93,-62.8 15.93,-56.8 15.93,-50.8 15.93,-50.8 15.93,-28 15.93,-28 15.93,-22 21.93,-16 27.93,-16 27.93,-16 170.07,-16 170.07,-16 176.07,-16 182.07,-22 182.07,-28 182.07,-28 182.07,-50.8 182.07,-50.8 182.07,-56.8 176.07,-62.8 170.07,-62.8"/>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-47.5" font-family="Arial" font-size="9.00" fill="#17324d">completed · ended_early · stopped</text>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-36.7" font-family="Arial" font-size="9.00" fill="#17324d">disconnected · interrupted · failed</text>
+<text xml:space="preserve" text-anchor="middle" x="99" y="-25.9" font-family="Arial" font-size="9.00" fill="#17324d">所有终止原因写入 summary.json</text>
+</g>
+<!-- f11&#45;&gt;terminal -->
+<g id="edge19" class="edge">
+<title>f11&#45;&gt;terminal</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" d="M99,-107.63C99,-107.63 99,-72.58 99,-72.58"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="101.52,-72.58 99,-65.38 96.48,-72.58 101.52,-72.58"/>
+<rect x="82.33" y="-102.51" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="92.33" y="-92.51" font-family="Arial" font-size="8.00" fill="#41566b">状态</text>
+</g>
+<!-- a02 -->
+<g id="node13" class="node">
+<title>a02</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M394.29,-783C394.29,-783 217.71,-783 217.71,-783 211.71,-783 205.71,-777 205.71,-771 205.71,-771 205.71,-759 205.71,-759 205.71,-753 211.71,-747 217.71,-747 217.71,-747 394.29,-747 394.29,-747 400.29,-747 406.29,-753 406.29,-759 406.29,-759 406.29,-771 406.29,-771 406.29,-777 400.29,-783 394.29,-783"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-767.7" font-family="Arial" font-size="9.00" fill="#17324d">A02 &#160;容量归一化压力</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-756.9" font-family="Arial" font-size="9.00" fill="#17324d">入口排队长度 / 通行能力 → 出口排队长度 / 通行能力</text>
+</g>
+<!-- a01&#45;&gt;a02 -->
+<g id="edge12" class="edge">
+<title>a01&#45;&gt;a02</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-817.72C306,-817.72 306,-792.71 306,-792.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-792.71 306,-785.51 303.48,-792.71 308.52,-792.71"/>
+</g>
+<!-- a03 -->
+<g id="node14" class="node">
+<title>a03</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M367.04,-712C367.04,-712 244.96,-712 244.96,-712 238.96,-712 232.96,-706 232.96,-700 232.96,-700 232.96,-688 232.96,-688 232.96,-682 238.96,-676 244.96,-676 244.96,-676 367.04,-676 367.04,-676 373.04,-676 379.04,-682 379.04,-688 379.04,-688 379.04,-700 379.04,-700 379.04,-706 373.04,-712 367.04,-712"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-696.7" font-family="Arial" font-size="9.00" fill="#17324d">A03 &#160;预测修正</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-685.9" font-family="Arial" font-size="9.00" fill="#17324d">CloudPolicy.predict() × 预测权重</text>
+</g>
+<!-- a02&#45;&gt;a03 -->
+<g id="edge13" class="edge">
+<title>a02&#45;&gt;a03</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-746.72C306,-746.72 306,-721.71 306,-721.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-721.71 306,-714.51 303.48,-721.71 308.52,-721.71"/>
+</g>
+<!-- a04 -->
+<g id="node15" class="node">
+<title>a04</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M382.81,-641C382.81,-641 229.19,-641 229.19,-641 223.19,-641 217.19,-635 217.19,-629 217.19,-629 217.19,-617 217.19,-617 217.19,-611 223.19,-605 229.19,-605 229.19,-605 382.81,-605 382.81,-605 388.81,-605 394.81,-611 394.81,-617 394.81,-617 394.81,-629 394.81,-629 394.81,-635 388.81,-641 382.81,-641"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-625.7" font-family="Arial" font-size="9.00" fill="#17324d">A04 &#160;下游溢出门控</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-614.9" font-family="Arial" font-size="9.00" fill="#17324d">occupancy ≥ threshold → phase 不可选</text>
+</g>
+<!-- a03&#45;&gt;a04 -->
+<g id="edge14" class="edge">
+<title>a03&#45;&gt;a04</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-675.72C306,-675.72 306,-650.71 306,-650.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-650.71 306,-643.51 303.48,-650.71 308.52,-650.71"/>
+</g>
+<!-- a05 -->
+<g id="node16" class="node">
+<title>a05</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M396.06,-570C396.06,-570 215.94,-570 215.94,-570 209.94,-570 203.94,-564 203.94,-558 203.94,-558 203.94,-546 203.94,-546 203.94,-540 209.94,-534 215.94,-534 215.94,-534 396.06,-534 396.06,-534 402.06,-534 408.06,-540 408.06,-546 408.06,-546 408.06,-558 408.06,-558 408.06,-564 402.06,-570 396.06,-570"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-554.7" font-family="Arial" font-size="9.00" fill="#17324d">A05 &#160;选择合法绿灯相位</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-543.9" font-family="Arial" font-size="9.00" fill="#17324d">argmax pressure；只使用真实整数 phase_index</text>
+</g>
+<!-- a04&#45;&gt;a05 -->
+<g id="edge15" class="edge">
+<title>a04&#45;&gt;a05</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-604.72C306,-604.72 306,-579.71 306,-579.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-579.71 306,-572.51 303.48,-579.71 308.52,-579.71"/>
+</g>
+<!-- a06 -->
+<g id="node17" class="node">
+<title>a06</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M356.78,-499C356.78,-499 255.22,-499 255.22,-499 249.22,-499 243.22,-493 243.22,-487 243.22,-487 243.22,-475 243.22,-475 243.22,-469 249.22,-463 255.22,-463 255.22,-463 356.78,-463 356.78,-463 362.78,-463 368.78,-469 368.78,-475 368.78,-475 368.78,-487 368.78,-487 368.78,-493 362.78,-499 356.78,-499"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-483.7" font-family="Arial" font-size="9.00" fill="#17324d">A06 &#160;绿灯与安全过渡约束</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-472.9" font-family="Arial" font-size="9.00" fill="#17324d">最小 / 最大绿灯 · 黄灯 · 全红</text>
+</g>
+<!-- a05&#45;&gt;a06 -->
+<g id="edge16" class="edge">
+<title>a05&#45;&gt;a06</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-533.72C306,-533.72 306,-508.71 306,-508.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-508.71 306,-501.51 303.48,-508.71 308.52,-508.71"/>
+</g>
+<!-- a07 -->
+<g id="node18" class="node">
+<title>a07</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M390.2,-428C390.2,-428 221.8,-428 221.8,-428 215.8,-428 209.8,-422 209.8,-416 209.8,-416 209.8,-404 209.8,-404 209.8,-398 215.8,-392 221.8,-392 221.8,-392 390.2,-392 390.2,-392 396.2,-392 402.2,-398 402.2,-404 402.2,-404 402.2,-416 402.2,-416 402.2,-422 396.2,-428 390.2,-428"/>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-412.7" font-family="Arial" font-size="9.00" fill="#17324d">A07 &#160;动态时长与动作</text>
+<text xml:space="preserve" text-anchor="middle" x="306" y="-401.9" font-family="Arial" font-size="9.00" fill="#17324d">set_phase(int) + set_phase_duration(float)</text>
+</g>
+<!-- a06&#45;&gt;a07 -->
+<g id="edge17" class="edge">
+<title>a06&#45;&gt;a07</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" d="M306,-462.72C306,-462.72 306,-437.71 306,-437.71"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="308.52,-437.71 306,-430.51 303.48,-437.71 308.52,-437.71"/>
+</g>
+</g>
 </svg>

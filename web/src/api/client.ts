@@ -59,6 +59,7 @@ export interface RunRequest {
   seed: number;
   duration_seconds: number;
   warmup_seconds: number;
+  gui_delay_ms: number;
   step_length_override?: number;
   edge_delay_steps?: number;
   edge_directions?: string[];
@@ -125,6 +126,7 @@ export interface JudgeApiClient {
   listResults(): Promise<ResultList>;
   getResult(runId: string): Promise<ResultListItem>;
   getSafety(runId: string): Promise<SafetyCounters>;
+  setGuiDelay(runId: string, delayMs: number): Promise<{ delay_ms: number }>;
   openNativeGui(runId: string): Promise<{ status: "shown" }>;
   subscribeEvents(
     runId: string,
@@ -219,6 +221,12 @@ export function createApiClient(baseUrl = ""): JudgeApiClient {
     },
     getResult: async (runId) => sanitizeResultItem(await request<ResultListItem & { run_dir?: string }>(`/api/results/${encodeURIComponent(runId)}`)),
     getSafety: (runId) => request<SafetyCounters>(`/api/runs/${encodeURIComponent(runId)}/safety`),
+    setGuiDelay: (runId, delayMs) =>
+      request<{ delay_ms: number }>(`/api/runs/${encodeURIComponent(runId)}/gui-delay`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delay_ms: delayMs }),
+      }),
     openNativeGui: (runId) =>
       request<{ status: "shown" }>(`/api/runs/${encodeURIComponent(runId)}/native-gui`, { method: "POST" }),
     subscribeEvents: (runId, onMessage, onClose, onOpen) => {

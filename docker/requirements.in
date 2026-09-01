@@ -1,0 +1,5 @@
+# Judge image dependency input: repository requirements plus frozen SUMO.
+-r ../requirements.txt
+eclipse-sumo==1.27.1
+traci==1.27.1
+sumolib==1.27.1

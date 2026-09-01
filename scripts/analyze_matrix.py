@@ -1,23 +1,30 @@
-"""Traceable paired statistical analysis for the experiment matrix.
-
-Consumes a frozen ``matrix.csv`` and produces descriptive statistics, paired t-tests
-(Bonferroni-corrected), and a reproducibility manifest.  Every comparison is paired on
-``intersection_id``, ``flow_multiplier``, and ``seed``.
-"""
+"""Analyze only the complete frozen 540-run judge-facing matrix."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import sys
 from pathlib import Path
+import sys
 from typing import Any
 
+import numpy as np
 import pandas as pd
-from scipy.stats import ttest_rel
 
-PAIR_KEYS = ["intersection_id", "flow_multiplier", "seed"]
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from experiments.matrix import (  # noqa: E402
+    FORMAL_ALGORITHMS,
+    FORMAL_FLOWS,
+    FORMAL_SEEDS,
+    FormalMatrix,
+    load_sealed_matrix_rows,
+)
+from experiments.statistics import select_default  # noqa: E402
+
+
 METRICS = (
     "avg_travel_time",
     "avg_delay",
@@ -26,157 +33,238 @@ METRICS = (
     "total_stops",
     "fuel_consumption",
 )
-BASELINES = ("fixed_time", "actuated")
-LOWER_IS_BETTER = {
-    "avg_travel_time",
-    "avg_delay",
-    "avg_queue_length",
-    "total_stops",
-    "fuel_consumption",
-}
-N_TESTS = len(BASELINES) * len(METRICS)  # Bonferroni divisor
-
-
-def improvement_percent(
-    candidate: pd.Series, baseline: pd.Series, metric: str
-) -> float:
-    """Mean relative improvement; positive == better."""
-    if metric in LOWER_IS_BETTER:
-        return float(((baseline - candidate) / baseline).mean() * 100.0)
-    return float(((candidate - baseline) / baseline).mean() * 100.0)
+SAFETY_COLUMNS = (
+    "collision_count",
+    "red_light_count",
+    "illegal_transition_count",
+    "harsh_braking_count",
+    "teleport_count",
+    "potential_conflict_count",
+)
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def analyze_matrix(
-    matrix_csv: Path, output_dir: Path
-) -> dict[str, Path]:
-    """Run paired analysis and write results to *output_dir*.
+def _write_json(path: Path, payload: object) -> None:
+    path.write_text(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
-    Returns a dictionary mapping artifact names to their file paths.
-    """
-    # ------------------------------------------------------------------
-    # 1. Load and validate
-    # ------------------------------------------------------------------
-    frame = pd.read_csv(matrix_csv)
-    required = [*PAIR_KEYS, "algorithm", "status", *METRICS]
-    missing = [c for c in required if c not in frame.columns]
+
+def _validate_frozen_frame(frame: pd.DataFrame) -> None:
+    required = {
+        "run_key",
+        "scene_id",
+        "intersection_id",
+        "algorithm",
+        "flow_multiplier",
+        "seed",
+        "matrix_kind",
+        "disturbance_kind",
+        "disturbance_begin_seconds",
+        "disturbance_end_seconds",
+        "disturbance_target",
+        "disturbance_intensity",
+        "duration_seconds",
+        "warmup_seconds",
+        "steps",
+        "steps_origin",
+        "algorithm_params",
+        "run_id",
+        "run_dir",
+        "status",
+        *METRICS,
+        *SAFETY_COLUMNS,
+    }
+    missing = sorted(required - set(frame.columns))
     if missing:
-        raise ValueError(f"Matrix CSV missing columns: {missing}")
-
-    # Only completed runs
+        raise ValueError(f"Matrix schema missing columns: {missing}")
+    if frame["run_key"].duplicated(keep=False).any():
+        raise ValueError("Matrix contains duplicate run key")
+    if len(frame) != 540:
+        raise ValueError(f"Frozen matrix must contain exactly 540 rows, got {len(frame)}")
+    actual_run_keys = set(frame["run_key"])
+    expected_run_keys = {spec.run_key for spec in FormalMatrix.all()}
+    if actual_run_keys != expected_run_keys:
+        raise ValueError(
+            "Matrix does not contain the 540 expected run keys: "
+            f"missing={len(expected_run_keys - actual_run_keys)} "
+            f"unexpected={len(actual_run_keys - expected_run_keys)}"
+        )
     incomplete = frame[frame["status"] != "completed"]
-    if len(incomplete):
+    if not incomplete.empty:
         raise ValueError(
-            f"Matrix contains {len(incomplete)} non-completed row(s); "
-            "only fully completed matrices are accepted"
+            f"Matrix contains {len(incomplete)} non-completed row(s)"
+        )
+    algorithms = set(frame["algorithm"])
+    if algorithms != set(FORMAL_ALGORITHMS):
+        raise ValueError(
+            f"Frozen matrix algorithms must be {list(FORMAL_ALGORITHMS)}, "
+            f"got {sorted(algorithms)}"
+        )
+    flows = {float(value) for value in frame["flow_multiplier"]}
+    if flows != set(FORMAL_FLOWS):
+        raise ValueError(
+            f"Frozen matrix flow multipliers must be {list(FORMAL_FLOWS)}, "
+            f"got {sorted(flows)}"
+        )
+    seeds = {int(value) for value in frame["seed"]}
+    if seeds != set(FORMAL_SEEDS):
+        raise ValueError(
+            f"Frozen matrix seeds must be {list(FORMAL_SEEDS)}, got {sorted(seeds)}"
         )
 
-    # All three algorithms must be present
-    algorithms = set(frame["algorithm"].unique())
-    expected = {"fixed_time", "actuated", "ca_maxpressure"}
-    if algorithms != expected:
-        raise ValueError(
-            f"Expected algorithms {sorted(expected)}, got {sorted(algorithms)}"
-        )
+    normal = frame[frame["matrix_kind"] == "normal"]
+    disturbance = frame[frame["matrix_kind"] == "disturbance"]
+    if len(normal) != 360 or len(disturbance) != 180:
+        raise ValueError("Frozen matrix must contain 360 normal and 180 disturbance rows")
+    if normal.duplicated(
+        ["scene_id", "algorithm", "flow_multiplier", "seed"], keep=False
+    ).any():
+        raise ValueError("Matrix contains duplicate normal case")
+    if disturbance.duplicated(
+        ["scene_id", "algorithm", "disturbance_kind"], keep=False
+    ).any():
+        raise ValueError("Matrix contains duplicate disturbance case")
+    if set(disturbance["disturbance_kind"]) != {
+        "construction",
+        "event_demand",
+        "vehicle_failure",
+    }:
+        raise ValueError("Frozen matrix disturbance kinds do not match schema")
+    if set(float(value) for value in disturbance["flow_multiplier"]) != {1.0}:
+        raise ValueError("Frozen disturbance matrix flow multiplier must be 1.0")
+    if set(int(value) for value in disturbance["seed"]) != {42}:
+        raise ValueError("Frozen disturbance matrix seed must be 42")
 
-    # Duplicate check on pair keys + algorithm
-    dup_mask = frame.duplicated(subset=[*PAIR_KEYS, "algorithm"], keep=False)
-    if dup_mask.any():
-        dup_cols = ["intersection_id", "algorithm", "flow_multiplier", "seed"]
-        dup_rows = frame[dup_mask]
-        dup_detail = dup_rows[dup_cols].to_dict("records")
-        raise ValueError(
-            f"Matrix contains duplicate case(s): {dup_detail}"
-        )
+    for column in METRICS:
+        values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(values).all():
+            raise ValueError(f"Matrix metric {column} must be complete and finite")
 
-    # ------------------------------------------------------------------
-    # 2. Descriptive statistics
-    # ------------------------------------------------------------------
+
+def analyze_matrix(matrix_csv: Path, output_dir: Path) -> dict[str, Path]:
+    """Validate, pair, select, and publish analysis artifacts."""
+    matrix_csv = Path(matrix_csv)
+    output_dir = Path(output_dir)
+    submitted_frame = pd.read_csv(matrix_csv, keep_default_na=False)
+    _validate_frozen_frame(submitted_frame)
+    frame = pd.DataFrame(
+        load_sealed_matrix_rows(matrix_csv, FormalMatrix.all())
+    )
+
     desc_rows: list[dict[str, Any]] = []
-    for algo in sorted(expected):
-        subset = frame[frame["algorithm"] == algo]
+    for algorithm in FORMAL_ALGORITHMS:
+        subset = frame[
+            (frame["algorithm"] == algorithm)
+            & (frame["matrix_kind"] == "normal")
+        ]
         for metric in METRICS:
             values = subset[metric]
-            desc_rows.append(
-                {
-                    "algorithm": algo,
+            desc_rows.append({
+                "algorithm": algorithm,
+                "matrix_kind": "normal",
+                "metric": metric,
+                "n": int(values.count()),
+                "mean": float(values.mean()),
+                "std": float(values.std(ddof=1)),
+                "min": float(values.min()),
+                "max": float(values.max()),
+            })
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    desc_path = output_dir / "descriptive_stats.csv"
+    pd.DataFrame(desc_rows).to_csv(desc_path, index=False)
+
+    resilience_rows: list[dict[str, Any]] = []
+    for algorithm in FORMAL_ALGORITHMS:
+        for kind in ("construction", "event_demand", "vehicle_failure"):
+            subset = frame[
+                (frame["algorithm"] == algorithm)
+                & (frame["matrix_kind"] == "disturbance")
+                & (frame["disturbance_kind"] == kind)
+            ]
+            for metric in METRICS:
+                values = subset[metric]
+                resilience_rows.append({
+                    "algorithm": algorithm,
+                    "matrix_kind": "disturbance",
+                    "disturbance_kind": kind,
                     "metric": metric,
                     "n": int(values.count()),
                     "mean": float(values.mean()),
                     "std": float(values.std(ddof=1)),
                     "min": float(values.min()),
                     "max": float(values.max()),
-                }
-            )
-    desc_df = pd.DataFrame(desc_rows)
-    desc_path = output_dir / "descriptive_stats.csv"
-    desc_path.parent.mkdir(parents=True, exist_ok=True)
-    desc_df.to_csv(desc_path, index=False)
+                })
+    resilience_path = output_dir / "disturbance_resilience.csv"
+    pd.DataFrame(resilience_rows).to_csv(resilience_path, index=False)
 
-    # ------------------------------------------------------------------
-    # 3. Paired t-tests
-    # ------------------------------------------------------------------
-    paired_rows: list[dict[str, Any]] = []
-    candidate_algo = "ca_maxpressure"
-    candidate_data = frame[frame["algorithm"] == candidate_algo]
-
-    for baseline_algo in BASELINES:
-        baseline_data = frame[frame["algorithm"] == baseline_algo]
-        # Merge on pair keys to guarantee identical ordering
-        merged = pd.merge(
-            candidate_data,
-            baseline_data,
-            on=PAIR_KEYS,
-            suffixes=("_candidate", "_baseline"),
-        )
-        for metric in METRICS:
-            c = merged[f"{metric}_candidate"]
-            b = merged[f"{metric}_baseline"]
-
-            if len(c) == 0 or len(b) == 0:
-                raise ValueError(
-                    f"No paired data for {baseline_algo} vs {candidate_algo} "
-                    f"on {metric}"
-                )
-
-            t_stat, p_value = ttest_rel(c, b, nan_policy="omit")
-            p_bonf = min(p_value * N_TESTS, 1.0)
-
-            paired_rows.append(
-                {
-                    "baseline": baseline_algo,
-                    "candidate": candidate_algo,
-                    "metric": metric,
-                    "n_pairs": len(c),
-                    "baseline_mean": float(b.mean()),
-                    "candidate_mean": float(c.mean()),
-                    "mean_difference": float(c.mean() - b.mean()),
-                    "improvement_percent": improvement_percent(c, b, metric),
-                    "t_statistic": float(t_stat),
-                    "p_value": float(p_value),
-                    "p_value_bonferroni": p_bonf,
-                    "significant_after_bonferroni": p_bonf < 0.05,
-                }
-            )
-
-    paired_df = pd.DataFrame(paired_rows)
+    selection = select_default(
+        frame,
+        candidates=("classic_maxpressure", "capacity_aware_maxpressure"),
+        baseline="fixed_time",
+    )
+    paired_rows = []
+    for result in selection.results:
+        paired_rows.append({
+            "baseline": result.baseline,
+            "candidate": result.candidate,
+            "metric": "avg_travel_time",
+            "n_pairs": len(result.differences),
+            "baseline_mean": float(
+                frame[
+                    (frame["algorithm"] == result.baseline)
+                    & (frame["matrix_kind"] == "normal")
+                ]["avg_travel_time"].mean()
+            ),
+            "candidate_mean": float(
+                frame[
+                    (frame["algorithm"] == result.candidate)
+                    & (frame["matrix_kind"] == "normal")
+                ]["avg_travel_time"].mean()
+            ),
+            "mean_difference": result.mean_difference,
+            "relative_change": result.relative_change,
+            "cohen_dz": result.cohen_dz,
+            "ci_lower": result.confidence_interval[0],
+            "ci_upper": result.confidence_interval[1],
+            "improved_unit_count": result.improved_unit_count,
+            "worst_scene_id": result.worst_unit["scene_id"],
+            "worst_flow_multiplier": result.worst_unit["flow_multiplier"],
+            "safety_eligible": result.safety_eligible,
+            "eligible": result.eligible,
+            "flags": ";".join(result.flags),
+        })
     paired_path = output_dir / "paired_tests.csv"
-    paired_df.to_csv(paired_path, index=False)
+    pd.DataFrame(paired_rows).to_csv(paired_path, index=False)
 
-    # ------------------------------------------------------------------
-    # 4. Manifest
-    # ------------------------------------------------------------------
+    selection_path = output_dir / "selection.json"
+    _write_json(selection_path, {
+        "algorithm": selection.algorithm,
+        "improvement_claim": selection.improvement_claim,
+        "candidates": [result.to_payload() for result in selection.results],
+    })
+
+    manifest_path = output_dir / "analysis_manifest.json"
     manifest: dict[str, Any] = {
+        "schema": "challenge-cup-formal-matrix-analysis",
+        "schema_version": 1,
         "matrix_path": str(matrix_csv.resolve()),
         "matrix_sha256": _sha256(matrix_csv),
-        "command": " ".join(sys.argv),
-        "metrics": list(METRICS),
-        "pair_keys": PAIR_KEYS,
-        "baselines": list(BASELINES),
-        "correction": f"Bonferroni, N_tests={N_TESTS}",
+        "expected_rows": 540,
+        "pair_keys": ["scene_id", "flow_multiplier", "seed"],
+        "difference_direction": "candidate_minus_baseline",
         "outputs": {
             "descriptive_stats": {
                 "path": str(desc_path.resolve()),
@@ -186,36 +274,33 @@ def analyze_matrix(
                 "path": str(paired_path.resolve()),
                 "sha256": _sha256(paired_path),
             },
+            "disturbance_resilience": {
+                "path": str(resilience_path.resolve()),
+                "sha256": _sha256(resilience_path),
+            },
+            "selection": {
+                "path": str(selection_path.resolve()),
+                "sha256": _sha256(selection_path),
+            },
         },
     }
-    manifest_path = output_dir / "analysis_manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
-
+    _write_json(manifest_path, manifest)
     return {
         "descriptive_stats": desc_path,
+        "disturbance_resilience": resilience_path,
         "paired_tests": paired_path,
+        "selection": selection_path,
         "analysis_manifest": manifest_path,
     }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run paired statistical analysis on the experiment matrix."
-    )
-    parser.add_argument(
-        "--matrix", required=True, type=Path, help="Path to matrix.csv"
-    )
-    parser.add_argument(
-        "--output", required=True, type=Path, help="Output directory"
-    )
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--matrix", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-
     outputs = analyze_matrix(args.matrix, args.output)
-    print(f"Wrote {len(outputs)} file(s) to {args.output.resolve()}:")
-    for name, path in outputs.items():
-        print(f"  {name}: {path}")
+    print(f"Wrote {len(outputs)} file(s) to {args.output.resolve()}")
 
 
 if __name__ == "__main__":

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from core.config import get_config
 from core.types import Scene, SceneMeta
+from scenes.models import SceneManifest
+from scenes.validator import SceneValidator
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ class SceneRegistry:
             data_root = get_config().path("paths.data_root")
         self.data_root = Path(data_root).resolve()
         self._scenes: Dict[str, SceneMeta] = {}
+        self._manifests: tuple[SceneManifest, ...] = ()
         self._discover()
 
     def _discover(self) -> None:
@@ -40,6 +43,11 @@ class SceneRegistry:
                 self._scenes[intersection_id] = meta
 
         logger.info("发现 %d 个路口场景", len(self._scenes))
+        validator = SceneValidator(repository_root=self.data_root.parents[1])
+        self._manifests = tuple(
+            validator.validate(self.data_root / intersection_id)
+            for intersection_id in sorted(self._scenes, key=int)
+        )
 
     def _build_meta(self, intersection_id: str) -> Optional[SceneMeta]:
         """为单个路口构建 SceneMeta，兼容 `高精地图` / `高清地图` 等命名差异。"""
@@ -84,20 +92,15 @@ class SceneRegistry:
             description=f"雄安新区路口 {intersection_id} 的 SUMO 仿真场景",
         )
 
-    def list_scenes(self, formal_only: bool = False) -> List[SceneMeta]:
-        """返回已注册场景的元数据列表。
-
-        formal_only=True 时仅保留正式编号路口（1..20 的纯数字编号），
-        供冻结实验矩阵的组装 fail-closed 使用。
-        """
-        scenes = list(self._scenes.values())
+    def list_scenes(self, formal_only: bool = False) -> tuple[SceneManifest, ...]:
+        """Return immutable validated manifests; runtime access remains get_scene/get_meta."""
         if formal_only:
-            scenes = [
-                meta
-                for meta in scenes
-                if str(meta.intersection_id).isdigit()
-            ]
-        return scenes
+            return tuple(
+                manifest
+                for manifest in self._manifests
+                if manifest.validation_status == "pass"
+            )
+        return self._manifests
 
     def get_scene(self, intersection_id: str) -> Scene:
         """根据路口 ID 获取运行时场景对象。"""

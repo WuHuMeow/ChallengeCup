@@ -1,21 +1,24 @@
-"""Phase-aware Capacity-Aware MaxPressure (CA-MP) control."""
+"""Legacy phase-state CA-MP controller retained for compatibility.
+
+The registered capacity-aware algorithm uses the movement-level layered
+ablations in ``capacity_aware_max_pressure``. This module remains only for
+older callers that provide ``PhaseTrafficState`` rather than movement state.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from math import isfinite
-from typing import List, Optional, Tuple
+from typing import List
 
 from algorithms.base import BaseControlAlgorithm
-from cloud.cloud_policy import CloudPolicy
+from cloud.cloud_policy import CloudPolicy, CloudPolicyPlan, joint_state_fingerprint
 from core.config import get_config
 from core.types import ControlAction, JointState, PhaseTrafficState, Scene
 
 
 @dataclass(frozen=True)
 class _LegacyPlanningProfile:
-    """Parameter bundle captured at planning time (no live mutation)."""
-
     prediction_enabled: bool
     dispatch_enabled: bool
     base_green: float
@@ -23,26 +26,54 @@ class _LegacyPlanningProfile:
     max_green: float
     overflow_threshold: float
     prediction_weight: float
-    delegation_mode: bool = False
+
+
+@dataclass(frozen=True)
+class _LegacyPlannedAction:
+    tls_id: str
+    action_type: str
+    value: int | float
+    reason: str
+
+    def control_action(self, simulation_seconds: float) -> ControlAction:
+        return ControlAction.for_simulation_time(
+            self.tls_id,
+            self.action_type,
+            self.value,
+            self.reason,
+            simulation_seconds,
+        )
 
 
 @dataclass(frozen=True)
 class LegacyDecisionPlan:
-    """Immutable legacy (phase-state) decision awaiting commit."""
-
-    fingerprint: tuple
-    scores: Tuple[Tuple[int, float], ...]
+    owner_token: object
+    reset_epoch: int
+    base_revision: int
+    state_fingerprint: tuple[object, ...]
+    state_step: int
+    state_timestamp: float
+    profile: _LegacyPlanningProfile
+    cloud_plan: CloudPolicyPlan | None
+    scores: tuple[tuple[int, float], ...]
     current_phase: int
     elapsed_phase_time: float
-    legal_targets: Tuple[int, ...]
-    candidate_phases: Tuple[int, ...]
-    selected_phase: Optional[int]
+    legal_targets: tuple[int, ...]
+    candidate_phases: tuple[int, ...]
+    selected_phase: int | None
     selection_reason: str
     decision_reason: str
-    actions: Tuple[ControlAction, ...]
-    cloud_plan: object | None = None
-    next_pending_target: Optional[int] = None
-    next_configured_phase: Optional[int] = None
+    actions: tuple[_LegacyPlannedAction, ...]
+    next_configured_phase: int | None
+    next_base_green: float
+    next_min_green: float
+    next_max_green: float
+
+    def control_actions(self) -> list[ControlAction]:
+        return [
+            action.control_action(self.state_timestamp)
+            for action in self.actions
+        ]
 
 
 class CAMaxPressureAlgorithm(BaseControlAlgorithm):
@@ -56,9 +87,17 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         base_green: float | None = None,
     ) -> None:
         cfg = get_config().get("algorithms.ca_maxpressure", {})
-        self.cloud_policy = (
-            cloud_policy if cloud_policy is not None else CloudPolicy()
+        self.cloud_policy = cloud_policy if cloud_policy is not None else CloudPolicy()
+        missing_transaction_methods = tuple(
+            name
+            for name in ("plan", "validate_plan", "commit", "reset")
+            if not callable(getattr(self.cloud_policy, name, None))
         )
+        if missing_transaction_methods:
+            raise TypeError(
+                "cloud_policy_transactional_contract_missing:"
+                + ",".join(missing_transaction_methods)
+            )
         self.scene: Scene | None = None
         self.overflow_threshold = float(
             overflow_occupancy_threshold
@@ -78,10 +117,13 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         )
         self.min_green = float(cfg.get("min_green", 10))
         self.max_green = float(cfg.get("max_green", 90))
-        self.yellow_duration = float(cfg.get("yellow_duration", 3))
-        self.all_red_duration = float(cfg.get("all_red_duration", 1))
-        self.pending_target_phase: int | None = None
         self._configured_phase: int | None = None
+        self._initial_base_green = self.base_green
+        self._initial_min_green = self.min_green
+        self._initial_max_green = self.max_green
+        self._initial_overflow_threshold = self.overflow_threshold
+        self._initial_prediction_weight = self.prediction_weight
+        self._legacy_plan_owner = object()
         self._legacy_reset_epoch = 0
         self._legacy_runtime_revision = 0
         self._pending_legacy_plan: LegacyDecisionPlan | None = None
@@ -89,12 +131,6 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
 
     def init(self, scene: Scene) -> None:
         self.scene = scene
-        self._legacy_reset_epoch += 1
-        self._legacy_runtime_revision = 0
-        self._pending_legacy_plan = None
-        self._committed_legacy_plan = None
-        self.pending_target_phase = None
-        self._configured_phase = None
 
     def phase_pressure(
         self,
@@ -117,32 +153,6 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
             value in phase.signal_state for value in "Gg"
         )
 
-    def _transition_duration(self, phase: PhaseTrafficState) -> float:
-        if any(value in phase.signal_state for value in "yY"):
-            return self.yellow_duration
-        return self.all_red_duration
-
-    @staticmethod
-    def _transition_after(
-        current_phase: int,
-        target_phase: int,
-        phases: list[PhaseTrafficState],
-    ) -> PhaseTrafficState | None:
-        ordered = sorted(phases, key=lambda phase: phase.phase_index)
-        if not ordered:
-            return None
-        positions = {phase.phase_index: index for index, phase in enumerate(ordered)}
-        if current_phase not in positions:
-            return None
-        index = positions[current_phase]
-        for offset in range(1, len(ordered)):
-            candidate = ordered[(index + offset) % len(ordered)]
-            if candidate.phase_index == target_phase:
-                return None
-            if not CAMaxPressureAlgorithm._is_green(candidate):
-                return candidate
-        return None
-
     def _dynamic_duration(
         self,
         selected_pressure: float,
@@ -162,414 +172,12 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
             duration = self.base_green * selected_pressure / average
         return float(min(self.max_green, max(self.min_green, duration)))
 
-    def _activate(
-        self,
-        state: JointState,
-        target: int,
-        duration: float,
-        reason: str,
-    ) -> List[ControlAction]:
-        self.pending_target_phase = None
-        self._configured_phase = target
-        return [
-            ControlAction(
-                tls_id=state.tls_id,
-                action_type="set_phase",
-                value=int(target),
-                reason=reason,
-            ),
-            ControlAction(
-                tls_id=state.tls_id,
-                action_type="set_phase_duration",
-                value=float(duration),
-                reason=f"dynamic_green target={target}",
-            ),
-        ]
-
-    def step(self, state: JointState) -> List[ControlAction]:
-        if not state.phase_states:
-            return []
-        plan = self.plan_decision(state)
-        self.commit_plan(plan)
-        return list(plan.actions)
-
-    def plan_decision(
-        self,
-        state: JointState,
-        profile: _LegacyPlanningProfile | None = None,
-    ) -> LegacyDecisionPlan:
-        """Plan one legacy decision without mutating controller or cloud state."""
-        from cloud.cloud_policy import joint_state_fingerprint
-
-        fingerprint = joint_state_fingerprint(state)
-        if profile is None:
-            profile = self._legacy_profile()
-        if not state.phase_states:
-            return LegacyDecisionPlan(
-                fingerprint=fingerprint,
-                scores=(),
-                current_phase=state.current_phase,
-                elapsed_phase_time=state.elapsed_phase_time,
-                legal_targets=(),
-                candidate_phases=(),
-                selected_phase=None,
-                selection_reason="no_phase_states",
-                decision_reason="no_phase_states",
-                actions=(),
-            )
-
-        cloud_plan = self.cloud_policy.plan(
-            state,
-            prediction=profile.prediction_enabled,
-            dispatch=profile.dispatch_enabled,
-        )
-        return self._plan_from_phase_states(
-            state, profile, cloud_plan, fingerprint
-        )
-
-    def _legacy_profile(self) -> _LegacyPlanningProfile:
-        return _LegacyPlanningProfile(
-            prediction_enabled=True,
-            dispatch_enabled=True,
-            base_green=self._frozen_base_green,
-            min_green=self.min_green,
-            max_green=self.max_green,
-            overflow_threshold=self.overflow_threshold,
-            prediction_weight=self.prediction_weight,
-        )
-
-    def _plan_from_phase_states(
-        self,
-        state: JointState,
-        profile: _LegacyPlanningProfile,
-        cloud_plan,
-        fingerprint: tuple,
-    ) -> LegacyDecisionPlan:
-        """Pure decision body shared by step() and external planners."""
-        from cloud.cloud_policy import joint_state_fingerprint
-
-        prediction = (
-            cloud_plan.prediction_result()
-            if profile.prediction_enabled
-            else None
-        )
-        params = cloud_plan.params or {}
-        base_green = (
-            profile.base_green
-            if profile.base_green is not None
-            else float(params.get("base_green", self.base_green))
-        )
-        min_green = (
-            profile.min_green
-            if profile.min_green is not None
-            else float(params.get("min_green", self.min_green))
-        )
-        max_green = (
-            profile.max_green
-            if profile.max_green is not None
-            else float(params.get("max_green", self.max_green))
-        )
-
-        phases = list(state.phase_states)
-        by_index = {phase.phase_index: phase for phase in phases}
-        green_phases = [phase for phase in phases if self._is_green(phase)]
-        if not green_phases:
-            return LegacyDecisionPlan(
-                fingerprint=fingerprint,
-                scores=(),
-                current_phase=state.current_phase,
-                elapsed_phase_time=state.elapsed_phase_time,
-                legal_targets=(),
-                candidate_phases=(),
-                selected_phase=None,
-                selection_reason="no_green_phases",
-                decision_reason="no_green_phases",
-                actions=(),
-                cloud_plan=cloud_plan,
-            )
-
-        scores: dict[int, float] = {}
-        predicted_flows = (
-            prediction.predicted_flows if prediction is not None else {}
-        )
-        for phase in green_phases:
-            predicted_arrivals = sum(
-                predicted_flows.get(lane, 0.0)
-                for lane in phase.incoming_lanes
-            )
-            scores[phase.phase_index] = self._profile_phase_pressure(
-                phase,
-                predicted_arrivals,
-                profile,
-            )
-        viable = [
-            phase
-            for phase in green_phases
-            if isfinite(scores[phase.phase_index])
-        ]
-
-        def duration_for(selected_pressure: float) -> float:
-            finite_positive = [
-                max(score, 0.0) for score in scores.values() if isfinite(score)
-            ]
-            average = (
-                sum(finite_positive) / len(finite_positive)
-                if finite_positive
-                else 0.0
-            )
-            if selected_pressure <= 0 or average <= 0:
-                duration = base_green
-            else:
-                duration = base_green * selected_pressure / average
-            return float(min(max_green, max(min_green, duration)))
-
-        def activate(target: int, duration: float, reason: str) -> tuple:
-            return (
-                ControlAction(
-                    tls_id=state.tls_id,
-                    action_type="set_phase",
-                    value=int(target),
-                    reason=reason,
-                ),
-                ControlAction(
-                    tls_id=state.tls_id,
-                    action_type="set_phase_duration",
-                    value=float(duration),
-                    reason=f"dynamic_green target={target}",
-                ),
-            )
-
-        selection_reason = "highest_viable_pressure"
-        decision_reason = ""
-        actions: tuple = ()
-        next_pending: int | None = None
-        next_configured: int | None = None
-
-        if not viable:
-            return LegacyDecisionPlan(
-                fingerprint=fingerprint,
-                scores=tuple(sorted(scores.items())),
-                current_phase=state.current_phase,
-                elapsed_phase_time=state.elapsed_phase_time,
-                legal_targets=self._legal_targets(state),
-                candidate_phases=(),
-                selected_phase=None,
-                selection_reason="all_blocked",
-                decision_reason="all_blocked",
-                actions=(),
-                cloud_plan=cloud_plan,
-            )
-
-        highest_score = max(scores[phase.phase_index] for phase in viable)
-        tied = tuple(sorted(
-            phase.phase_index
-            for phase in viable
-            if scores[phase.phase_index] == highest_score
-        ))
-        if len(tied) > 1:
-            selection_reason = (
-                "equal_score_keep_current"
-                if state.current_phase in tied
-                else "equal_score_smallest_index"
-            )
-            selected_phase = (
-                state.current_phase
-                if state.current_phase in tied
-                else tied[0]
-            )
-        else:
-            selected_phase = tied[0]
-            selection_reason = (
-                "current_phase_selected"
-                if tied[0] == state.current_phase
-                else "highest_viable_pressure"
-            )
-        selected = by_index[selected_phase]
-        current = by_index.get(state.current_phase)
-
-        if (
-            self.pending_target_phase is not None
-            and state.current_phase == self.pending_target_phase
-        ):
-            selected = by_index[self.pending_target_phase]
-            selection_reason = "pending_target_reached"
-            decision_reason = f"pending_target_reached target={selected.phase_index}"
-            actions = activate(
-                selected.phase_index,
-                duration_for(scores.get(selected.phase_index, 0.0)),
-                decision_reason,
-            )
-            next_pending = None
-            next_configured = selected.phase_index
-        elif self.pending_target_phase is not None and not self._is_green(current):
-            if (
-                not profile.delegation_mode
-                and (
-                    current is None
-                    or state.elapsed_phase_time
-                    < self._transition_duration(current)
-                )
-            ):
-                actions = ()
-                selection_reason = "wait_transition"
-                decision_reason = "wait_transition"
-            else:
-                target = self.pending_target_phase
-                selection_reason = "transition_complete"
-                decision_reason = f"transition_complete target={target}"
-                actions = activate(
-                    target,
-                    duration_for(scores.get(target, 0.0)),
-                    decision_reason,
-                )
-                next_pending = None
-                next_configured = target
-        else:
-            if (
-                self._is_green(current)
-                and state.elapsed_phase_time >= max_green
-            ):
-                alternatives = [
-                    phase
-                    for phase in viable
-                    if phase.phase_index != state.current_phase
-                ]
-                if alternatives:
-                    selected = max(
-                        alternatives,
-                        key=lambda phase: (
-                            scores[phase.phase_index],
-                            -phase.phase_index,
-                        ),
-                    )
-
-            if selected.phase_index == state.current_phase:
-                if self._configured_phase == state.current_phase:
-                    actions = ()
-                    selection_reason = "hold_current"
-                    decision_reason = "hold_current"
-                    next_configured = state.current_phase
-                else:
-                    decision_reason = (
-                        "dispatch_safety_executor"
-                        if profile.delegation_mode
-                        else f"max_pressure target={selected.phase_index}"
-                    )
-                    actions = activate(
-                        selected.phase_index,
-                        duration_for(scores[selected.phase_index]),
-                        decision_reason,
-                    )
-                    next_pending = None
-                    next_configured = selected.phase_index
-            elif (
-                not profile.delegation_mode
-                and self._is_green(current)
-                and state.elapsed_phase_time < min_green
-            ):
-                actions = ()
-                selection_reason = "min_green_hold"
-                decision_reason = "min_green_hold"
-            else:
-                transition = self._transition_after(
-                    state.current_phase,
-                    selected.phase_index,
-                    phases,
-                )
-                if transition is None:
-                    decision_reason = (
-                        "dispatch_safety_executor"
-                        if profile.delegation_mode
-                        else f"direct_switch target={selected.phase_index}"
-                    )
-                    actions = activate(
-                        selected.phase_index,
-                        duration_for(scores[selected.phase_index]),
-                        decision_reason,
-                    )
-                    next_pending = None
-                    next_configured = selected.phase_index
-                else:
-                    if profile.delegation_mode:
-                        # Clearance timing belongs to the safety executor:
-                        # switch to the target directly, never wait in-phase.
-                        next_pending = None
-                        next_configured = selected.phase_index
-                        decision_reason = "dispatch_safety_executor"
-                        actions = activate(
-                            selected.phase_index,
-                            duration_for(scores[selected.phase_index]),
-                            decision_reason,
-                        )
-                        return LegacyDecisionPlan(
-                            fingerprint=fingerprint,
-                            scores=tuple(sorted(scores.items())),
-                            current_phase=state.current_phase,
-                            elapsed_phase_time=state.elapsed_phase_time,
-                            legal_targets=self._legal_targets(state),
-                            candidate_phases=tuple(sorted(scores)),
-                            selected_phase=selected.phase_index,
-                            selection_reason=selection_reason,
-                            decision_reason=decision_reason,
-                            actions=actions,
-                            cloud_plan=cloud_plan,
-                            next_pending_target=next_pending,
-                            next_configured_phase=next_configured,
-                        )
-                    next_pending = selected.phase_index
-                    next_configured = None
-                    selection_reason = "safe_transition"
-                    decision_reason = (
-                        f"safe_transition phase={transition.phase_index} "
-                        f"target={selected.phase_index}"
-                    )
-                    transition_duration = self._transition_duration(transition)
-                    actions = (
-                        ControlAction(
-                            tls_id=state.tls_id,
-                            action_type="set_phase",
-                            value=int(transition.phase_index),
-                            reason=decision_reason,
-                        ),
-                        ControlAction(
-                            tls_id=state.tls_id,
-                            action_type="set_phase_duration",
-                            value=float(transition_duration),
-                            reason=f"transition_duration target={selected.phase_index}",
-                        ),
-                    )
-
-        return LegacyDecisionPlan(
-            fingerprint=fingerprint,
-            scores=tuple(sorted(scores.items())),
-            current_phase=state.current_phase,
-            elapsed_phase_time=state.elapsed_phase_time,
-            legal_targets=self._legal_targets(state),
-            candidate_phases=tuple(sorted(scores)),
-            selected_phase=selected.phase_index if viable else None,
-            selection_reason=selection_reason,
-            decision_reason=decision_reason,
-            actions=actions,
-            cloud_plan=cloud_plan,
-            next_pending_target=next_pending,
-            next_configured_phase=next_configured,
-        )
-
     @staticmethod
-    def _legal_targets(state: JointState) -> tuple[int, ...]:
-        return tuple(
-            target
-            for source, target in getattr(state, "legal_phase_transitions", ())
-            if source == state.current_phase
-        )
-
-    def _profile_phase_pressure(
-        self,
+    def _phase_pressure_for(
         phase: PhaseTrafficState,
         predicted_arrivals: float,
         profile: _LegacyPlanningProfile,
     ) -> float:
-        """Profile-parameterized pressure (pure; no self thresholds)."""
         if phase.outgoing_occupancy >= profile.overflow_threshold:
             return float("-inf")
         incoming = phase.incoming_queue / max(phase.incoming_capacity, 1.0)
@@ -579,33 +187,403 @@ class CAMaxPressureAlgorithm(BaseControlAlgorithm):
         )
         return incoming - outgoing + prediction
 
-    def _validate_legacy_plan(self, plan: LegacyDecisionPlan) -> None:
-        """Validate a legacy plan before any nested transition is applied."""
+    @staticmethod
+    def _planned_duration(
+        selected_pressure: float,
+        scores: dict[int, float],
+        profile: _LegacyPlanningProfile,
+    ) -> float:
+        finite_positive = [
+            max(score, 0.0) for score in scores.values() if isfinite(score)
+        ]
+        average = (
+            sum(finite_positive) / len(finite_positive)
+            if finite_positive
+            else 0.0
+        )
+        if selected_pressure <= 0 or average <= 0:
+            duration = profile.base_green
+        else:
+            duration = profile.base_green * selected_pressure / average
+        return float(min(profile.max_green, max(profile.min_green, duration)))
+
+    @staticmethod
+    def _activation_actions(
+        state: JointState,
+        target: int,
+        duration: float,
+        reason: str,
+    ) -> tuple[_LegacyPlannedAction, ...]:
+        return (
+            _LegacyPlannedAction(
+                state.tls_id,
+                "set_phase",
+                int(target),
+                reason,
+            ),
+            _LegacyPlannedAction(
+                state.tls_id,
+                "set_phase_duration",
+                float(duration),
+                f"dynamic_green target={target}",
+            ),
+        )
+
+    def _profile_and_cloud_plan(
+        self,
+        state: JointState,
+        profile: _LegacyPlanningProfile | None,
+    ) -> tuple[_LegacyPlanningProfile, CloudPolicyPlan | None, dict[str, float]]:
+        if not state.phase_states:
+            effective = profile or _LegacyPlanningProfile(
+                True,
+                True,
+                self.base_green,
+                self.min_green,
+                self.max_green,
+                self.overflow_threshold,
+                self.prediction_weight,
+            )
+            return effective, None, {}
+
+        if profile is None:
+            cloud_plan = self.cloud_policy.plan(
+                state, prediction=True, dispatch=True
+            )
+            params = cloud_plan.params()
+            if params is None:
+                raise RuntimeError("legacy_cloud_dispatch_plan_missing_params")
+            effective = _LegacyPlanningProfile(
+                True,
+                True,
+                (
+                    self._frozen_base_green
+                    if self._frozen_base_green is not None
+                    else float(params.get("base_green", self.base_green))
+                ),
+                float(params.get("min_green", self.min_green)),
+                float(params.get("max_green", self.max_green)),
+                self.overflow_threshold,
+                self.prediction_weight,
+            )
+        else:
+            effective = profile
+            cloud_plan = self.cloud_policy.plan(
+                state,
+                prediction=profile.prediction_enabled,
+                dispatch=profile.dispatch_enabled,
+            )
+
+        predicted: dict[str, float] = {}
+        if effective.prediction_enabled:
+            prediction_result = cloud_plan.prediction_result()
+            if prediction_result is None:
+                raise RuntimeError("legacy_cloud_prediction_plan_missing_result")
+            predicted = prediction_result.predicted_flows
+        return effective, cloud_plan, predicted
+
+    def plan_decision(
+        self,
+        state: JointState,
+        *,
+        profile: _LegacyPlanningProfile | None = None,
+        _reuse_committed: bool = True,
+    ) -> LegacyDecisionPlan:
+        """Build one immutable legacy decision without committing runtime state."""
+        direct_scoring = profile is None
+        fingerprint = joint_state_fingerprint(state)
+        current_order = (state.step, float(state.timestamp))
+        if self._committed_legacy_plan is not None:
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if (
+                fingerprint != self._committed_legacy_plan.state_fingerprint
+                and current_order <= committed_order
+            ):
+                raise RuntimeError("legacy_history_unavailable")
+        for cached in (
+            self._pending_legacy_plan,
+            self._committed_legacy_plan,
+        ):
+            if cached is not None and cached.state_fingerprint == fingerprint:
+                self._validate_legacy_nested_plan(cached)
+
+        effective, cloud_plan, predicted = self._profile_and_cloud_plan(state, profile)
+        cache_key = (fingerprint, effective)
+        if self._pending_legacy_plan is not None:
+            pending_key = (
+                self._pending_legacy_plan.state_fingerprint,
+                self._pending_legacy_plan.profile,
+            )
+            if (
+                pending_key == cache_key
+                and self._pending_legacy_plan.reset_epoch == self._legacy_reset_epoch
+                and self._pending_legacy_plan.base_revision
+                == self._legacy_runtime_revision
+            ):
+                self._validate_legacy_nested_plan(self._pending_legacy_plan)
+                return self._pending_legacy_plan
+        if self._committed_legacy_plan is not None:
+            committed_key = (
+                self._committed_legacy_plan.state_fingerprint,
+                self._committed_legacy_plan.profile,
+            )
+            if committed_key == cache_key and _reuse_committed:
+                self._validate_legacy_nested_plan(self._committed_legacy_plan)
+                return self._committed_legacy_plan
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if committed_key != cache_key and current_order <= committed_order:
+                raise RuntimeError("legacy_history_unavailable")
+
+        phases = list(state.phase_states)
+        green_phases = [phase for phase in phases if self._is_green(phase)]
+        scores: dict[int, float] = {}
+        viable: list[PhaseTrafficState] = []
+        selected_phase: int | None = None
+        actions: tuple[_LegacyPlannedAction, ...] = ()
+        next_configured = self._configured_phase
+
+        if not phases:
+            selection_reason = "no_phase_states"
+            decision_reason = "no_phase_states"
+        elif not green_phases:
+            selection_reason = "no_green_phase"
+            decision_reason = "no_green_phase"
+        else:
+            for phase in green_phases:
+                predicted_arrivals = sum(
+                    predicted.get(lane, 0.0) for lane in phase.incoming_lanes
+                )
+                scores[phase.phase_index] = (
+                    self.phase_pressure(phase, predicted_arrivals)
+                    if direct_scoring
+                    else self._phase_pressure_for(
+                        phase, predicted_arrivals, effective
+                    )
+                )
+            viable = [
+                phase
+                for phase in green_phases
+                if isfinite(scores[phase.phase_index])
+            ]
+            if not viable:
+                selection_reason = "safe_fallback_all_blocked"
+                decision_reason = "safe_fallback_all_blocked"
+            else:
+                selected = max(
+                    viable,
+                    key=lambda phase: (
+                        scores[phase.phase_index],
+                        phase.phase_index == state.current_phase,
+                        -phase.phase_index,
+                    ),
+                )
+                selected_phase = selected.phase_index
+                highest_score = scores[selected_phase]
+                tied = tuple(
+                    sorted(
+                        phase.phase_index
+                        for phase in viable
+                        if scores[phase.phase_index] == highest_score
+                    )
+                )
+                if state.current_phase in tied:
+                    selection_reason = (
+                        "equal_score_keep_current"
+                        if len(tied) > 1
+                        else "current_phase_selected"
+                    )
+                else:
+                    selection_reason = (
+                        "equal_score_smallest_index"
+                        if len(tied) > 1
+                        else "highest_viable_pressure"
+                    )
+                current = next(
+                    (
+                        phase
+                        for phase in phases
+                        if phase.phase_index == state.current_phase
+                    ),
+                    None,
+                )
+                if (
+                    self._is_green(current)
+                    and state.elapsed_phase_time >= effective.max_green
+                    and selected_phase == state.current_phase
+                ):
+                    alternatives = [
+                        phase
+                        for phase in viable
+                        if phase.phase_index != state.current_phase
+                    ]
+                    if alternatives:
+                        selected = max(
+                            alternatives,
+                            key=lambda phase: (
+                                scores[phase.phase_index],
+                                -phase.phase_index,
+                            ),
+                        )
+                        selected_phase = selected.phase_index
+                        highest_alternative = scores[selected_phase]
+                        tied_alternatives = tuple(
+                            sorted(
+                                phase.phase_index
+                                for phase in alternatives
+                                if scores[phase.phase_index] == highest_alternative
+                            )
+                        )
+                        selection_reason = (
+                            "max_green_forced_equal_score_smallest_index"
+                            if len(tied_alternatives) > 1
+                            else "max_green_forced_alternative"
+                        )
+
+                if selected_phase == state.current_phase:
+                    if self._configured_phase == state.current_phase:
+                        decision_reason = "already_configured"
+                    else:
+                        decision_reason = "dispatch_legacy_phase_state"
+                        actions = self._activation_actions(
+                            state,
+                            selected_phase,
+                            self._planned_duration(
+                                scores[selected_phase], scores, effective
+                            ),
+                            f"max_pressure target={selected_phase}",
+                        )
+                        next_configured = selected_phase
+                else:
+                    decision_reason = "dispatch_safety_executor"
+                    actions = self._activation_actions(
+                        state,
+                        selected_phase,
+                        self._planned_duration(
+                            scores[selected_phase], scores, effective
+                        ),
+                        f"max_pressure target={selected_phase}",
+                    )
+                    next_configured = selected_phase
+
+        plan = LegacyDecisionPlan(
+            owner_token=self._legacy_plan_owner,
+            reset_epoch=self._legacy_reset_epoch,
+            base_revision=self._legacy_runtime_revision,
+            state_fingerprint=fingerprint,
+            state_step=state.step,
+            state_timestamp=float(state.timestamp),
+            profile=effective,
+            cloud_plan=cloud_plan,
+            scores=tuple(scores.items()),
+            current_phase=state.current_phase,
+            elapsed_phase_time=state.elapsed_phase_time,
+            legal_targets=tuple(
+                target
+                for source, target in state.legal_phase_transitions
+                if source == state.current_phase
+            ),
+            candidate_phases=tuple(phase.phase_index for phase in viable),
+            selected_phase=selected_phase,
+            selection_reason=selection_reason,
+            decision_reason=decision_reason,
+            actions=actions,
+            next_configured_phase=next_configured,
+            next_base_green=effective.base_green,
+            next_min_green=effective.min_green,
+            next_max_green=effective.max_green,
+        )
+        self._pending_legacy_plan = plan
+        return plan
+
+    def _validate_legacy_nested_plan(self, plan: LegacyDecisionPlan) -> None:
+        if plan.cloud_plan is not None:
+            self.cloud_policy.validate_plan(plan.cloud_plan)
+
+    def _validate_legacy_plan(self, plan: LegacyDecisionPlan) -> bool:
+        """Validate a legacy plan, returning False only after its first commit."""
         if not isinstance(plan, LegacyDecisionPlan):
             raise RuntimeError("legacy_plan_invalid_type")
+        if plan.owner_token is not self._legacy_plan_owner:
+            raise RuntimeError("legacy_plan_cross_owner")
+        if plan.reset_epoch != self._legacy_reset_epoch:
+            raise RuntimeError("legacy_plan_post_reset")
+        if plan is self._committed_legacy_plan:
+            self._validate_legacy_nested_plan(plan)
+            return False
+        if self._committed_legacy_plan is not None:
+            plan_key = (plan.state_fingerprint, plan.profile)
+            committed_key = (
+                self._committed_legacy_plan.state_fingerprint,
+                self._committed_legacy_plan.profile,
+            )
+            plan_order = (plan.state_step, plan.state_timestamp)
+            committed_order = (
+                self._committed_legacy_plan.state_step,
+                self._committed_legacy_plan.state_timestamp,
+            )
+            if plan_key != committed_key and plan_order <= committed_order:
+                raise RuntimeError("legacy_history_unavailable")
+        if self._pending_legacy_plan is not None and plan is not self._pending_legacy_plan:
+            raise RuntimeError("legacy_plan_superseded")
+        if plan.base_revision != self._legacy_runtime_revision:
+            raise RuntimeError("legacy_plan_stale_revision")
+        if plan is not self._pending_legacy_plan:
+            raise RuntimeError("legacy_plan_not_pending")
+        self._validate_legacy_nested_plan(plan)
+        return True
+
+    def validate_plan(self, plan: LegacyDecisionPlan) -> bool:
+        return self._validate_legacy_plan(plan)
 
     def commit_plan(self, plan: LegacyDecisionPlan) -> None:
-        """Commit the planned transition once, applying controller side effects."""
-        self._validate_legacy_plan(plan)
-        if plan is self._committed_legacy_plan:
+        """Commit controller and cloud next-state exactly once."""
+        if not self._validate_legacy_plan(plan):
             return
+        self._configured_phase = plan.next_configured_phase
+        self.base_green = plan.next_base_green
+        self.min_green = plan.next_min_green
+        self.max_green = plan.next_max_green
         if plan.cloud_plan is not None:
             self.cloud_policy.commit(plan.cloud_plan)
-        self.pending_target_phase = plan.next_pending_target
-        self._configured_phase = plan.next_configured_phase
         self._legacy_runtime_revision += 1
         self._committed_legacy_plan = plan
         self._pending_legacy_plan = None
 
+    def step(self, state: JointState) -> List[ControlAction]:
+        plan = self.plan_decision(state, _reuse_committed=False)
+        self.commit_plan(plan)
+        return plan.control_actions()
+
     def reset(self) -> None:
-        self.pending_target_phase = None
         self._configured_phase = None
-        self.cloud_policy.reset()
+        self.base_green = self._initial_base_green
+        self.min_green = self._initial_min_green
+        self.max_green = self._initial_max_green
+        self.overflow_threshold = self._initial_overflow_threshold
+        self.prediction_weight = self._initial_prediction_weight
         self._legacy_reset_epoch += 1
         self._legacy_runtime_revision = 0
         self._pending_legacy_plan = None
         self._committed_legacy_plan = None
+        self.cloud_policy.reset()
 
     @property
     def name(self) -> str:
-        return "ca_maxpressure"
+        return "capacity_aware_maxpressure"
+
+    @property
+    def manifest(self) -> dict[str, object]:
+        payload = super().manifest
+        payload["enhancements"] = (
+            "capacity_normalization",
+            "spillback_gating",
+            "cloud_prediction",
+            "dynamic_green",
+        )
+        return payload

@@ -1,6 +1,5 @@
 import type {
   AlgorithmKey,
-  FrameResponse,
   ResultListItem,
   RunEvent,
   RunResult,
@@ -21,13 +20,13 @@ export interface RunStoreSnapshot {
   selectedSeed: number;
   selectedDuration: number;
   selectedWarmup: number;
+  selectedGuiDelayMs: number;
+  selectedStepLength: number;
   selectedDisturbance: "none" | "construction" | "event_demand" | "vehicle_failure";
   activeRun: RunResult | null;
   metrics: Record<string, unknown>;
   events: RunEvent[];
-  frameSequence: number | null;
-  frameUrl: string | null;
-  simulationTime: number | null;
+  runSimulationTime: number | null;
   safety: SafetyCounters | null;
   formalEvidence: ResultListItem | null;
   error: RunError | null;
@@ -37,7 +36,7 @@ export interface RunStoreSnapshot {
 export interface RunStore {
   getSnapshot(): RunStoreSnapshot;
   subscribe(listener: () => void): () => void;
-  setSelection(selection: Partial<Pick<RunStoreSnapshot, "selectedScene" | "selectedAlgorithm" | "selectedLoad" | "selectedSeed" | "selectedDuration" | "selectedWarmup" | "selectedDisturbance">>): void;
+  setSelection(selection: Partial<Pick<RunStoreSnapshot, "selectedScene" | "selectedAlgorithm" | "selectedLoad" | "selectedSeed" | "selectedDuration" | "selectedWarmup" | "selectedGuiDelayMs" | "selectedStepLength" | "selectedDisturbance">>): void;
   setActiveRun(run: RunResult): void;
   setRunStatus(status: RunStatus): void;
   setMetrics(metrics: Record<string, unknown>): void;
@@ -45,7 +44,6 @@ export interface RunStore {
   addEvent(event: RunEvent): void;
   setError(error: RunError | null): void;
   setConnection(connection: RunStoreSnapshot["connection"]): void;
-  acceptFrame(frame: FrameResponse): boolean;
   setFormalEvidence(result: ResultListItem | null): void;
   resetRun(): void;
 }
@@ -55,26 +53,20 @@ const initialSnapshot: RunStoreSnapshot = {
   selectedAlgorithm: "fixed_time",
   selectedLoad: 1,
   selectedSeed: 42,
-  selectedDuration: 30,
+  selectedDuration: 300,
   selectedWarmup: 0,
+  selectedGuiDelayMs: 100,
+  selectedStepLength: 1,
   selectedDisturbance: "none",
   activeRun: null,
   metrics: {},
   events: [],
-  frameSequence: null,
-  frameUrl: null,
-  simulationTime: null,
+  runSimulationTime: null,
   safety: null,
   formalEvidence: null,
   error: null,
   connection: "idle",
 };
-
-function revokeObjectUrl(url: string | null): void {
-  if (url && typeof URL !== "undefined" && url.startsWith("blob:")) {
-    URL.revokeObjectURL(url);
-  }
-}
 
 export function createRunStore(): RunStore {
   let snapshot = { ...initialSnapshot };
@@ -105,28 +97,26 @@ export function createRunStore(): RunStore {
     },
     setMetrics: (metrics) => update({ metrics }),
     setSafety: (safety) => update({ safety }),
-    addEvent: (event) => update({ events: [...snapshot.events.slice(-99), event] }),
+    addEvent: (event) => {
+      const eventTime = typeof event.simulation_time === "number" && Number.isFinite(event.simulation_time)
+        ? event.simulation_time
+        : null;
+      update({
+        events: [...snapshot.events.slice(-99), event],
+        ...(eventTime === null
+          ? {}
+          : { runSimulationTime: Math.max(snapshot.runSimulationTime ?? 0, eventTime) }),
+      });
+    },
     setError: (error) => update({ error }),
     setConnection: (connection) => update({ connection }),
-    acceptFrame: (frame) => {
-      const currentRunId = snapshot.activeRun?.run_id;
-      const currentSequence = snapshot.frameSequence ?? -1;
-      if (frame.runId !== currentRunId || frame.sequence <= currentSequence) return false;
-      const frameUrl = URL.createObjectURL(frame.blob);
-      revokeObjectUrl(snapshot.frameUrl);
-      update({ frameSequence: frame.sequence, simulationTime: frame.simulationTime, frameUrl });
-      return true;
-    },
     setFormalEvidence: (formalEvidence) => update({ formalEvidence }),
     resetRun: () => {
-      revokeObjectUrl(snapshot.frameUrl);
       update({
         activeRun: null,
         metrics: {},
         events: [],
-        frameSequence: null,
-        frameUrl: null,
-        simulationTime: null,
+        runSimulationTime: null,
         safety: null,
         formalEvidence: null,
         error: null,

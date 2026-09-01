@@ -742,11 +742,15 @@ def focus_window_for_pid(
     hwnd = matches[0]
     try:
         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        if not bool(user32.SetForegroundWindow(hwnd)):
+        raised = bool(user32.BringWindowToTop(hwnd))
+        focused = bool(user32.SetForegroundWindow(hwnd))
+        if not focused and not raised:
             return False, f"could not focus SUMO process {pid}"
     except (OSError, TypeError, ValueError):
         return False, f"could not focus SUMO process {pid}"
-    return True, f"focused SUMO process {pid}"
+    if focused:
+        return True, f"focused SUMO process {pid}"
+    return True, f"raised SUMO process {pid}"
 
 
 class RunnerRegistry:

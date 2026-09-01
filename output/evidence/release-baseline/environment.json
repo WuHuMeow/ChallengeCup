@@ -1,0 +1,105 @@
+{
+  "environment": {
+    "docker": {
+      "cli_available": false,
+      "detail": "Docker CLI unavailable",
+      "status": "not_run"
+    },
+    "git_commit": "853335a6281f3cdddf45c1fcb2394e925fa296f8",
+    "os": {
+      "machine": "AMD64",
+      "release": "11",
+      "system": "Windows"
+    },
+    "packages": {
+      "fastapi": "0.141.1",
+      "numpy": "2.3.5",
+      "pandas": "3.0.1",
+      "scipy": "1.18.0",
+      "sumolib": "1.27.1",
+      "traci": "1.27.1"
+    },
+    "python": {
+      "implementation": "CPython",
+      "version": "3.12.13"
+    },
+    "source_archive": {
+      "path": "赛题资料.7z",
+      "presence": "present",
+      "sha256": "12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f",
+      "size_bytes": 67934257
+    },
+    "sumo": {
+      "version": "1.27.1"
+    }
+  },
+  "preflight": [
+    {
+      "check": "python_version",
+      "detail": "Python 3.12.13; requires >= 3.10",
+      "status": "pass"
+    },
+    {
+      "check": "sumo_version",
+      "detail": "detected 1.27.1; requires 1.27.1",
+      "status": "pass"
+    },
+    {
+      "check": "source_archive",
+      "detail": "SHA-256 12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f; expected 12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f",
+      "status": "pass"
+    },
+    {
+      "check": "writable_output",
+      "detail": "output is writable",
+      "status": "pass"
+    },
+    {
+      "check": "sumo_python_imports",
+      "detail": "traci and sumolib import successfully",
+      "status": "pass"
+    },
+    {
+      "check": "docker_cli",
+      "detail": "Docker CLI unavailable",
+      "status": "not_run"
+    }
+  ],
+  "worktree_inventory": {
+    "changed": [
+      {
+        "git_status": " M",
+        "path": ".gitignore",
+        "role": "path",
+        "sha256": "bfa33a9155bcdef431a11e0e5f2cfee4770816b7dfcc246853e4ae6b42449d65"
+      },
+      {
+        "git_status": " M",
+        "path": "output/README.md",
+        "role": "path",
+        "sha256": "35abef9b5c51e294471d4e90612ed3626e480f8506879ab28de6831c0544d2f7"
+      }
+    ],
+    "git_available": true,
+    "untracked": [
+      {
+        "git_status": "??",
+        "path": "scripts/release/output_policy.py",
+        "role": "path",
+        "sha256": "a5bf86e196edd9c52cffb8c04eecaa867c5229baf0633fe8dd3051bd9bbf5dac"
+      },
+      {
+        "git_status": "??",
+        "path": "tests/test_output_policy.py",
+        "role": "path",
+        "sha256": "69f06ede688d42ad0c046c7e8b9484c9a4e653d32b68b9aedda1e43260492c03"
+      },
+      {
+        "git_status": "??",
+        "path": "赛题资料.7z",
+        "role": "path",
+        "sha256": "12a6f2fd69acbcbf38c286a84232c4be64000edaf06c61ff6d3b3e09f8995c0f"
+      }
+    ]
+  }
+}

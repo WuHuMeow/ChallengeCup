@@ -1,8 +1,12 @@
 import csv
 import json
+from unittest.mock import patch
+
+import pytest
 
 from core.types import JointState
 from engine.artifacts import RunArtifacts
+from engine.collector import MetricsCollector
 from experiments.metrics import compute_metrics
 from experiments.summary import parse_tripinfo, write_run_summary
 
@@ -72,6 +76,8 @@ def test_run_summary_combines_exact_tripinfo_and_queue_metrics(tmp_path):
     _write_tripinfo(
         artifacts.tripinfo,
         [{
+            "depart": 0,
+            "arrival": 60,
             "duration": 60,
             "timeLoss": 10,
             "waitingCount": 1,
@@ -81,12 +87,12 @@ def test_run_summary_combines_exact_tripinfo_and_queue_metrics(tmp_path):
     with artifacts.metrics.open("w", newline="", encoding="utf-8") as output:
         writer = csv.DictWriter(
             output,
-            fieldnames=["avg_queue_length", "max_queue_length"],
+            fieldnames=["timestamp", "avg_queue_length", "max_queue_length"],
         )
         writer.writeheader()
         writer.writerows([
-            {"avg_queue_length": 2, "max_queue_length": 4},
-            {"avg_queue_length": 6, "max_queue_length": 9},
+            {"timestamp": 0, "avg_queue_length": 2, "max_queue_length": 4},
+            {"timestamp": 1, "avg_queue_length": 6, "max_queue_length": 9},
         ])
 
     payload = write_run_summary(artifacts)
@@ -115,3 +121,31 @@ def test_instantaneous_metrics_do_not_fabricate_exact_fields():
     assert metrics.avg_travel_time is None
     assert metrics.total_stops is None
     assert metrics.fuel_consumption is None
+
+
+def test_metrics_collector_save_failure_preserves_previous_atomic_snapshot(tmp_path):
+    output = tmp_path / "metrics.csv"
+    output.write_text("previous-snapshot\n", encoding="utf-8")
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls",
+        current_phase=0,
+        current_phase_name="phase_0",
+        elapsed_phase_time=0.0,
+        queues=[],
+        flows={},
+    )
+    collector = MetricsCollector(output)
+    collector.record(0, state, compute_metrics(0, state))
+
+    with patch(
+        "engine.collector.csv.DictWriter.writerows",
+        side_effect=RuntimeError("csv write failed"),
+    ):
+        with pytest.raises(RuntimeError, match="csv write failed"):
+            collector.save()
+
+    assert output.read_text(encoding="utf-8") == "previous-snapshot\n"
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))

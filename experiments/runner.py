@@ -9,28 +9,20 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
+import math
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
-from algorithms.base import BaseControlAlgorithm
-from algorithms.fixed_time import FixedTimeAlgorithm
-from algorithms.ca_max_pressure import CAMaxPressureAlgorithm
-from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.registry import get_algorithm_registry
 from core.config import get_config
 from core.run_models import RunRequest, RunResult
 from core.types import TrafficLevel
 from engine.artifacts import RunArtifacts
 from engine.run_service import RunService
+from experiments.matrix import FORMAL_ALGORITHMS, FORMAL_SEEDS
 from scenes.variant import VariantGenerator
 
 logger = logging.getLogger(__name__)
-
-
-ALGORITHM_MAP: Dict[str, type[BaseControlAlgorithm]] = {
-    "fixed_time": FixedTimeAlgorithm,
-    "actuated": RuleAdaptiveAlgorithm,
-    "ca_maxpressure": CAMaxPressureAlgorithm,
-}
 
 
 def run_batch(
@@ -38,7 +30,9 @@ def run_batch(
     algorithms: List[str] | None = None,
     levels: List[TrafficLevel] | None = None,
     seeds: List[int] | None = None,
-    steps: int = 36000,
+    steps: int | None = None,
+    duration_seconds: float = 3600.0,
+    warmup_seconds: float = 600.0,
     output_root: Path | None = None,
     run_service: RunService | None = None,
 ) -> List[RunResult]:
@@ -48,8 +42,10 @@ def run_batch(
         intersection_ids: 路口 ID 列表，默认全部 20 个。
         algorithms: 算法名称列表，默认全部 3 种。
         levels: 流量等级列表，默认全部 3 级。
-        seeds: 随机种子列表，默认 [42, 123, 456]。
-        steps: 每场景仿真步数。
+        seeds: 随机种子列表，默认 [42, 43, 44]。
+        steps: 显式兼容步数，仅供测试/烟测。
+        duration_seconds: 每场景仿真时长（秒）。
+        warmup_seconds: 预热时长（秒）。
         output_root: 输出根目录。
 
     Returns:
@@ -60,11 +56,11 @@ def run_batch(
     if intersection_ids is None:
         intersection_ids = [str(index) for index in range(1, 21)]
     if algorithms is None:
-        algorithms = list(ALGORITHM_MAP.keys())
+        algorithms = list(FORMAL_ALGORITHMS)
     if levels is None:
         levels = [TrafficLevel.NORMAL, TrafficLevel.HIGH]
     if seeds is None:
-        seeds = [42, 123, 456]
+        seeds = list(FORMAL_SEEDS)
     if output_root is None:
         output_root = get_config().path("paths.output_root") / "runs"
     service = run_service or RunService(output_root=output_root)
@@ -82,6 +78,8 @@ def run_batch(
                     intersection_id=intersection_id,
                     algorithm=algo_name,
                     steps=steps,
+                    duration_seconds=duration_seconds,
+                    warmup_seconds=warmup_seconds,
                     flow_multiplier=variant_gen.levels[level],
                     seed=seed,
                     output_root=output_root,
@@ -106,13 +104,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42,
                    help="SUMO 随机种子（传入 traci.start --seed，保证可复现）")
     p.add_argument("--flow-multiplier", type=float, default=1.0,
-                   help="流量倍率：1.0=原始流量，1.5=压力测试")
+                   help="流量倍率：1.0=原始流量，1.25=高流量")
     p.add_argument("--output-dir", type=str, default=None,
                    help="输出根目录（CSV/变体写入其下），默认 config 的 paths.output_root")
     p.add_argument("--intersection", type=str, default="1", help="路口编号 1-20")
-    p.add_argument("--steps", type=int, default=36000, help="仿真步数")
-    p.add_argument("--algorithm", choices=list(ALGORITHM_MAP), default="fixed_time",
-                   help="控制算法")
+    p.add_argument(
+        "--steps", type=int, default=None,
+        help="显式兼容步数（仅测试/烟测；正式请求使用秒）",
+    )
+    p.add_argument(
+        "--duration-seconds", type=float,
+        default=get_config().get("simulation.duration_seconds", 3600.0),
+        help="仿真时长（秒）",
+    )
+    p.add_argument(
+        "--warmup-seconds", type=float,
+        default=get_config().get("simulation.warmup_seconds", 600.0),
+        help="预热时长（秒）",
+    )
+    p.add_argument(
+        "--algorithm",
+        choices=[spec.key for spec in get_algorithm_registry().list()],
+        default="fixed_time",
+        help="控制算法")
     args = p.parse_args(argv)
     try:
         intersection = int(args.intersection)
@@ -120,11 +134,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         p.error("--intersection must be an integer in 1..20")
     if not 1 <= intersection <= 20:
         p.error("--intersection must be in 1..20")
-    if args.steps <= 0:
+    if args.steps is not None and args.steps <= 0:
         p.error("--steps must be > 0")
+    if not math.isfinite(args.duration_seconds) or args.duration_seconds <= 0:
+        p.error("--duration-seconds must be > 0")
+    if (
+        not math.isfinite(args.warmup_seconds)
+        or args.warmup_seconds < 0
+        or args.warmup_seconds >= args.duration_seconds
+    ):
+        p.error("--warmup-seconds must be >= 0 and less than duration")
     if args.seed < 0:
         p.error("--seed must be >= 0")
-    if args.flow_multiplier <= 0:
+    if not math.isfinite(args.flow_multiplier) or args.flow_multiplier <= 0:
         p.error("--flow-multiplier must be > 0")
     return args
 
@@ -139,7 +161,7 @@ def build_artifacts(args: argparse.Namespace) -> RunArtifacts:
     return RunArtifacts.create(
         root,
         args.intersection,
-        args.algorithm,
+        get_algorithm_registry().get(args.algorithm).key,
         args.flow_multiplier,
         args.seed,
     )
@@ -175,6 +197,8 @@ def run_single(
             intersection_id=args.intersection,
             algorithm=args.algorithm,
             steps=args.steps,
+            duration_seconds=args.duration_seconds,
+            warmup_seconds=args.warmup_seconds,
             flow_multiplier=args.flow_multiplier,
             seed=args.seed,
             output_root=output_root,

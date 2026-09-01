@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
+import subprocess
 import sys
-from collections import deque
+import threading
+import time
+from collections import Counter, deque
+from io import BytesIO
 from pathlib import Path
 from typing import Callable, List, Optional
 from uuid import uuid4
@@ -20,16 +25,134 @@ from defusedxml import ElementTree as ET
 
 from core.types import (
     ActionResult,
+    CollisionRecord,
     ControlAction,
     JointState,
     PhaseTrafficState,
     QueueState,
+    SafetyVehicleState,
     VehicleState,
 )
 from engine.action_validation import validate_control_action
 from engine.artifacts import RunArtifacts
+from engine.movement_state import MovementStateBuilder
+from engine.safety import ConflictDefinition
+from visualization.frame_publisher import FrameRecord
 
 logger = logging.getLogger(__name__)
+_TRACI_LIFECYCLE_LOCK = threading.RLock()
+
+
+def _is_sumo_gui_binary(binary: str) -> bool:
+    return Path(str(binary)).name.casefold() in {"sumo-gui", "sumo-gui.exe"}
+
+
+def _request_gui_window_close(
+    pid: int,
+    *,
+    platform_name: str = sys.platform,
+    user32: object | None = None,
+) -> bool:
+    """Ask the exact SUMO-GUI process window to close gracefully."""
+    if platform_name != "win32" or not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        import ctypes
+
+        user32 = user32 or ctypes.windll.user32
+        pid_value = ctypes.c_ulong()
+        matches: list[object] = []
+
+        def callback(hwnd, _lparam):
+            if not bool(user32.IsWindowVisible(hwnd)):
+                return True
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+            if int(pid_value.value) == pid:
+                matches.append(hwnd)
+                return False
+            return True
+
+        callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        callback_pointer = callback_type(
+            ctypes.c_bool,
+            ctypes.c_void_p,
+            ctypes.c_long,
+        )(callback)
+        user32.EnumWindows(callback_pointer, 0)
+        if not matches:
+            return False
+        return bool(user32.PostMessageW(matches[0], 0x0010, 0, 0))
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
+def _capture_gui_window_png(
+    pid: int,
+    *,
+    platform_name: str = sys.platform,
+    user32: object | None = None,
+    image_grab: Callable[..., object] | None = None,
+) -> bytes | None:
+    """Capture the exact owned SUMO-GUI window without issuing a TraCI command."""
+    if platform_name != "win32" or not isinstance(pid, int) or pid <= 0:
+        return None
+    try:
+        import ctypes
+
+        if image_grab is None:
+            from PIL import ImageGrab
+
+            image_grab = ImageGrab.grab
+        user32 = user32 or ctypes.windll.user32
+        pid_value = ctypes.c_ulong()
+        matches: list[object] = []
+
+        def callback(hwnd, _lparam):
+            if not bool(user32.IsWindowVisible(hwnd)):
+                return True
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+            if int(pid_value.value) == pid:
+                matches.append(hwnd)
+                return False
+            return True
+
+        callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+        callback_pointer = callback_type(
+            ctypes.c_bool,
+            ctypes.c_void_p,
+            ctypes.c_long,
+        )(callback)
+        user32.EnumWindows(callback_pointer, 0)
+        if not matches:
+            return None
+
+        class WindowRect(ctypes.Structure):
+            _fields_ = [
+                ("left", ctypes.c_long),
+                ("top", ctypes.c_long),
+                ("right", ctypes.c_long),
+                ("bottom", ctypes.c_long),
+            ]
+
+        rect = WindowRect()
+        if not bool(user32.GetWindowRect(matches[0], ctypes.byref(rect))):
+            return None
+        bbox = (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            return None
+        image = image_grab(bbox=bbox, all_screens=True)
+        if not hasattr(image, "save"):
+            return None
+        if hasattr(image, "thumbnail"):
+            image.thumbnail((960, 540))
+        output = BytesIO()
+        image.save(output, format="PNG")
+        png = output.getvalue()
+        return png or None
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        logger.debug("native SUMO GUI window capture unavailable", exc_info=True)
+        return None
+
 
 # 兼容本地 SUMO 安装：若通过 pip 安装 traci 则无需 SUMO_HOME。
 if "SUMO_HOME" in os.environ:
@@ -42,39 +165,6 @@ except ImportError as exc:  # pragma: no cover
         "无法导入 traci。请安装 SUMO 并设置 SUMO_HOME 环境变量，"
         "或在虚拟环境中执行 `pip install traci>=1.18.0`。"
     ) from exc
-
-
-def _request_gui_window_close(pid: int) -> bool:
-    """Best-effort WM_CLOSE to the sumo-gui main window owning ``pid``.
-
-    Lets sumo-gui persist its window layout before the process is reaped.
-    Returns False when no matching window is found or the platform does not
-    support the request.
-    """
-    try:
-        import ctypes
-        from ctypes import wintypes
-
-        user32 = ctypes.windll.user32
-        WM_CLOSE = 0x0010
-        found: list[int] = []
-
-        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-        def _callback(hwnd, _lparam):
-            owner = wintypes.DWORD()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-            if owner.value == pid and user32.IsWindowVisible(hwnd):
-                found.append(hwnd)
-                return False
-            return True
-
-        user32.EnumWindows(_callback, 0)
-        if not found:
-            return False
-        user32.PostMessageW(found[0], WM_CLOSE, 0, 0)
-        return True
-    except Exception:  # noqa: BLE001 - 关窗失败不影响进程收割
-        return False
 
 
 class TraCIBridge:
@@ -104,7 +194,7 @@ class TraCIBridge:
         max_restarts: int = 0,
         vehicle_sample_rate: int = 1,
         event_callback: Optional[Callable[[str, str], None]] = None,
-        process_factory: Optional[Callable[..., object]] = None,
+        process_factory: Optional[Callable[..., subprocess.Popen]] = None,
     ) -> None:
         self.sumo_cfg = Path(sumo_cfg)
         self.configured_end_time = self._read_configured_end_time()
@@ -115,20 +205,28 @@ class TraCIBridge:
         self.seed = seed
         self.max_restarts = max(0, int(max_restarts))
         self._restarts = 0
-        self._process_factory = process_factory or self._launch_sumo_process
         self.tls_id: Optional[str] = None
+        self._tls_ids: tuple[str, ...] = ()
         self._controlled_lanes: List[str] = []
         self._inbound_lanes: Optional[List[str]] = None  # edge_mapping 进口道筛选结果
         self.lane_directions: dict[str, str] = {}  # lane_id -> 方位（供 AB 压力映射）
         self.vehicle_sample_rate = max(1, int(vehicle_sample_rate))
         self.event_callback = event_callback or (lambda event_type, detail: None)
+        self._process_factory = process_factory or subprocess.Popen
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
-        # 进程与连接所有权：close() 只清理本桥接器启动的进程/连接，
-        # 不触碰全局 traci registry 中属于其他所有者的连接。
-        self.process_id: Optional[int] = None
-        self._owned_process: Optional[object] = None
-        self._connection: Optional[object] = None
-        self._connection_label: Optional[str] = None
+        self._movement_state_builder: MovementStateBuilder | None = None
+        self._turn_ratios: dict[tuple[str, str], float] = {}
+        self._observed_turn_counts: Counter[tuple[str, str]] = Counter()
+        self._approach_lanes_by_vehicle: dict[str, str] = {}
+        self._conflict_definitions: tuple[ConflictDefinition, ...] = ()
+        self._pending_startup_actions: tuple[ControlAction, ...] = ()
+        self._owned_process: subprocess.Popen | None = None
+        self._owned_pid: int | None = None
+        self._connection: object | None = None
+        self._connection_label: str | None = None
+        self._frame_sequence = 0
+        self._pending_frame_path: Path | None = None
+        self._pending_native_frame = False
 
     def _read_configured_end_time(self) -> float | None:
         """Read the SUMO simulation horizon in seconds when one is configured."""
@@ -154,10 +252,22 @@ class TraCIBridge:
     def _build_cmd(self) -> List[str]:
         """组装 traci.start 命令（含可选 --seed 与 additional files）。"""
         cmd = [self.binary, "-c", str(self.sumo_cfg), "--no-step-log", "true"]
+        if _is_sumo_gui_binary(self.binary):
+            # SUMO-GUI waits for an explicit GUI start before accepting TraCI init.
+            cmd.extend(["--start", "--quit-on-end", "--delay", "0"])
         if self.seed is not None:
             cmd += ["--seed", str(self.seed)]
         if self.additional_files:
             cmd += ["-a", ",".join(str(f) for f in self.additional_files)]
+            # Lane-closure disturbances reroute traffic at the onset step;
+            # vehicles that cannot be rerouted must be discarded (the
+            # construction semantics) instead of crashing SUMO with a
+            # fatal "no valid route" error.
+            if any(
+                Path(file).name.startswith("disturbance_")
+                for file in self.additional_files
+            ):
+                cmd += ["--ignore-route-errors", "true"]
         if self.artifacts is not None:
             cmd.extend([
                 "--tripinfo-output",
@@ -166,10 +276,14 @@ class TraCIBridge:
                 "true",
                 "--device.emissions.probability",
                 "1",
+                "--emissions.volumetric-fuel",
+                "true",
                 "--summary-output",
                 self.artifacts.stats.resolve().as_posix(),
                 "--fcd-output",
                 self.artifacts.trajectory.resolve().as_posix(),
+                "--collision-output",
+                self.artifacts.collisions.resolve().as_posix(),
             ])
             if self._config_has_queue_output():
                 cmd.extend([
@@ -185,93 +299,158 @@ class TraCIBridge:
             return False
         return any(node.tag == "queue-output" for node in root.iter())
 
-    def _launch_sumo_process(self, cmd: List[str], **kwargs) -> object:
-        """Launch the SUMO binary as an owned child process."""
-        import subprocess
-
-        return subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            **kwargs,
-        )
-
-    def _connection_scope(self) -> str:
-        """Stable unique TraCI connection label owned by this bridge."""
-        scope = self.artifacts.run_id if self.artifacts is not None else None
-        suffix = uuid4().hex[:8]
-        return f"bridge-{scope or 'anon'}-{suffix}"
-
     def start(self) -> None:
-        """启动 SUMO 仿真进程并建立专属 TraCI 连接。
-
-        本桥接器拥有它启动的进程与连接；start 失败时回收已创建的资源，
-        绝不触碰全局 traci registry 中属于其他所有者的连接。
+        """启动 SUMO 仿真进程。
 
         Raises:
             FileNotFoundError: sumo_cfg 配置文件不存在。
-            RuntimeError: 已有活动连接、场景中没有信号灯，或连接失败。
+            RuntimeError: 场景中没有信号灯，无法运行交通控制算法。
         """
-        if traci.isLoaded():
-            raise RuntimeError("TraCI connection already active")
-
         # Clear discovery state before every start so reconnects cannot retain
         # identifiers or lane mappings from the previous SUMO process.
         self.tls_id = None
+        self._tls_ids = ()
         self._controlled_lanes = []
         self._inbound_lanes = None
         self.lane_directions = {}
+        self._movement_state_builder = None
+        self._turn_ratios = {}
+        self._observed_turn_counts.clear()
+        self._approach_lanes_by_vehicle.clear()
+        self._conflict_definitions = ()
+        self._pending_startup_actions = ()
 
-        if not self.sumo_cfg.exists():
-            raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
+        with _TRACI_LIFECYCLE_LOCK:
+            if not self.sumo_cfg.exists():
+                raise FileNotFoundError(f"SUMO 配置文件不存在: {self.sumo_cfg}")
+            if traci.isLoaded():
+                raise RuntimeError("TraCI connection already active")
 
+            cmd = self._build_cmd()
+            logger.info("启动 SUMO: %s", " ".join(cmd))
+            try:
+                self._start_owned_connection(cmd)
+                tls_ids = tuple(traci.trafficlight.getIDList())
+                if not tls_ids:
+                    raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
+                self._tls_ids = tls_ids
+                self.tls_id = tls_ids[0]
+                self._pending_startup_actions = self._additional_signal_program_actions(
+                    set(tls_ids)
+                )
+                self._controlled_lanes = list(
+                    traci.trafficlight.getControlledLanes(self.tls_id)
+                )
+                logger.info(
+                    "控制信号灯: %s, 控制车道数: %d",
+                    self.tls_id,
+                    len(self._controlled_lanes),
+                )
+                self._load_edge_mapping()
+                self._load_turn_ratios()
+                self._load_conflict_definitions()
+                self._movement_state_builder = MovementStateBuilder(self, self.tls_id)
+            except BaseException:
+                if self._connection is not None or self._owned_process is not None:
+                    try:
+                        self.close()
+                    except Exception:
+                        logger.exception("清理 SUMO 启动失败的子进程时发生错误")
+                raise
+
+    def _start_owned_connection(self, cmd: list[str]) -> None:
+        """Create, record, and connect the exact SUMO child owned by this bridge."""
         port = traci.getFreeSocketPort()
-        cmd = self._build_cmd() + ["--remote-port", str(port)]
-        logger.info("启动 SUMO: %s", " ".join(cmd))
-        process = self._process_factory(cmd)
+        process = self._process_factory(
+            [*cmd, "--remote-port", str(port)],
+            stdout=None,
+        )
+        self._record_owned_process(process)
+        label = f"traffic-control-{uuid4().hex}"
+        self._connection_label = label
+        try:
+            traci.init(
+                port,
+                label=label,
+                proc=process,
+                doSwitch=True,
+            )
+        finally:
+            try:
+                self._connection = traci.getConnection(label)
+            except Exception:
+                self._connection = None
+        if self._connection is None:
+            raise RuntimeError("TraCI initialization did not register owned connection")
+
+    def _record_owned_process(self, process: subprocess.Popen | None) -> None:
         self._owned_process = process
-        self.process_id = getattr(process, "pid", None)
-        label = self._connection_scope()
-        try:
-            traci.init(port, label=label)
-            self._connection = traci.getConnection(label)
-            self._connection_label = label
-        except BaseException:
-            # Failure during connection setup: close our partial connection
-            # (never other owners') and reap the process we just created.
-            self._close_partial_connection(label, wait=False)
-            self._reap_owned_process()
-            raise
+        if process is not None:
+            self._owned_pid = int(process.pid)
 
-        try:
-            tls_ids = traci.trafficlight.getIDList()
-            if not tls_ids:
-                raise RuntimeError("场景中没有信号灯，无法运行交通控制算法")
-            self._activate_additional_signal_programs(set(tls_ids))
-            self.tls_id = tls_ids[0]
-            self._controlled_lanes = list(
-                traci.trafficlight.getControlledLanes(self.tls_id)
-            )
-            logger.info(
-                "控制信号灯: %s, 控制车道数: %d", self.tls_id, len(self._controlled_lanes)
-            )
-            self._load_edge_mapping()
-        except BaseException:
-            self.close()
-            raise
-
-    def _activate_additional_signal_programs(self, tls_ids: set[str]) -> None:
-        """Activate deterministic variant programs loaded from additional files."""
+    def _additional_signal_program_actions(
+        self,
+        tls_ids: set[str],
+    ) -> tuple[ControlAction, ...]:
+        """Build validated-boundary actions for deterministic variant programs."""
+        actions: list[ControlAction] = []
         for path in self.additional_files:
             try:
                 root = ET.parse(path).getroot()
             except (OSError, ET.ParseError):
                 continue
             for logic in root.findall("tlLogic"):
-                tls_id = logic.get("id", "")
+                candidate_tls_id = logic.get("id", "")
                 program_id = logic.get("programID", "")
-                if tls_id in tls_ids and program_id.startswith("variant_"):
-                    traci.trafficlight.setProgram(tls_id, program_id)
+                if (
+                    candidate_tls_id not in tls_ids
+                    or not program_id.startswith("variant_")
+                ):
+                    continue
+                actions.append(ControlAction.for_simulation_time(
+                    candidate_tls_id,
+                    "set_program",
+                    {
+                        "source": "plan_derived",
+                        "program_id": program_id,
+                        "phases": [
+                            {
+                                "duration": phase.get("duration"),
+                                "state": phase.get("state"),
+                            }
+                            for phase in logic.findall("phase")
+                        ],
+                    },
+                    "install validated variant signal program",
+                    0.0,
+                ))
+        return tuple(actions)
+
+    def take_startup_actions(self) -> tuple[ControlAction, ...]:
+        """Consume signal-program actions discovered during ``start()``."""
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
+
+    def get_startup_state(self, tls_id: str) -> JointState:
+        """Read the zero-time signal state used to validate one startup action."""
+        if tls_id not in self._tls_ids:
+            raise RuntimeError(f"unknown startup tls_id: {tls_id!r}")
+        simulation_time = float(traci.simulation.getTime())
+        current_phase = int(traci.trafficlight.getPhase(tls_id))
+        program = self.get_signal_program(tls_id)
+        phase_obj = program.phases[current_phase]
+        phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
+        return JointState(
+            step=int(round(simulation_time / self.step_length)),
+            timestamp=simulation_time,
+            tls_id=tls_id,
+            current_phase=current_phase,
+            current_phase_name=phase_name,
+            elapsed_phase_time=float(
+                traci.trafficlight.getSpentDuration(tls_id)
+            ),
+        )
 
     def _load_edge_mapping(self) -> None:
         """加载 data/intersection_data/metadata/edge_mapping.json 并筛选进口道。
@@ -310,81 +489,562 @@ class TraCIBridge:
         else:
             logger.warning("edge_mapping 无进口边命中，回退 getControlledLanes")
 
-    def _close_partial_connection(self, label: str, wait: bool = True) -> None:
-        """Close a partially-established connection by label, best effort."""
-        try:
-            traci.getConnection(label).close(wait=wait)
-        except Exception as exc:  # noqa: BLE001 - 无此连接或关闭失败都继续收割
-            logger.debug("partial connection %s close skipped: %s", label, exc)
-
-    def _close_owned_connection(self, wait: bool = True) -> None:
-        """Close only the connection recorded by this bridge, best effort."""
-        connection = self._connection
-        if connection is None:
-            return
-        try:
-            connection.close(wait=wait)
-        except Exception as exc:  # noqa: BLE001 - 记录但继续收割进程
-            logger.warning("owned connection close failed: %s", exc)
-
-    def _reap_owned_process(self) -> None:
-        """Terminate then reap the process this bridge launched."""
-        process = self._owned_process
-        self._owned_process = None
-        self.process_id = None
-        self._connection = None
-        self._connection_label = None
-        if process is None:
-            return
-        try:
-            terminate = getattr(process, "terminate", None)
-            if callable(terminate):
-                terminate()
+    def _load_turn_ratios(self) -> None:
+        """Load edgeRelation probabilities without modifying source files."""
+        self._turn_ratios = {}
+        for path in self._turn_file_candidates():
+            if not path.exists():
+                continue
             try:
-                process.wait(timeout=5)
-            except Exception:  # noqa: BLE001 - 再给一次宽限期
+                root = ET.parse(path).getroot()
+            except (OSError, ET.ParseError) as exc:
+                logger.warning("turn ratio file unavailable (%s): %s", path, exc)
+                return
+            for relation in root.iter("edgeRelation"):
+                incoming = relation.get("from")
+                outgoing = relation.get("to")
+                probability = relation.get("probability")
+                if not incoming or not outgoing or probability is None:
+                    continue
                 try:
-                    process.wait(timeout=10)
-                except Exception:  # noqa: BLE001 - 仍存活才强杀
-                    kill = getattr(process, "kill", None)
-                    if callable(kill):
-                        kill()
-                    try:
-                        process.wait(timeout=5)
-                    except Exception:  # noqa: BLE001
-                        pass
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("owned process reap failed: %s", exc)
+                    value = float(probability)
+                except ValueError:
+                    continue
+                if 0 <= value <= 1:
+                    self._turn_ratios[(incoming, outgoing)] = value
+            return
+
+    def _turn_file_candidates(self) -> tuple[Path, ...]:
+        filename = f"{self.sumo_cfg.stem}.turn.xml"
+        candidates = [self.sumo_cfg.parent / filename]
+        match = re.search(r"demo_(\d+)", self.sumo_cfg.stem)
+        if match:
+            from core.config import get_config
+
+            data_root = Path(get_config().path("paths.data_root"))
+            candidates.append(
+                data_root
+                / match.group(1)
+                / "sumo工程"
+                / f"demo_{match.group(1)}.turn.xml"
+            )
+        return tuple(dict.fromkeys(candidates))
+
+    def _network_file_path(self) -> Path | None:
+        try:
+            root = ET.parse(self.sumo_cfg).getroot()
+        except (OSError, ET.ParseError):
+            return None
+        node = root.find("./input/net-file")
+        value = node.get("value") if node is not None else None
+        if not value:
+            return None
+        path = Path(value.split(",", 1)[0])
+        return path if path.is_absolute() else (self.sumo_cfg.parent / path).resolve()
+
+    def _load_conflict_definitions(self) -> None:
+        """Load network foe pairs and path distances to geometric conflicts."""
+        self._conflict_definitions = ()
+        if self.tls_id is None:
+            return
+        path = self._network_file_path()
+        if path is None or not path.exists():
+            return
+        try:
+            root = ET.parse(path).getroot()
+        except (OSError, ET.ParseError) as exc:
+            logger.warning("network conflict data unavailable (%s): %s", path, exc)
+            return
+
+        junction = next(
+            (
+                candidate
+                for candidate in root.iter("junction")
+                if candidate.get("id") == self.tls_id
+            ),
+            None,
+        )
+        if junction is None:
+            return
+        requests = {
+            int(request.get("index", "-1")): request.get("foes", "")
+            for request in junction.findall("request")
+            if request.get("index", "").isdigit()
+        }
+        internal_lanes = junction.get("intLanes", "").split()
+        lane_shapes = {
+            lane.get("id", ""): self._parse_shape(lane.get("shape", ""))
+            for lane in root.iter("lane")
+            if lane.get("id")
+        }
+        lane_locations = {
+            lane.get("id", ""): (edge.get("id", ""), lane.get("index", ""))
+            for edge in root.iter("edge")
+            for lane in edge.findall("lane")
+            if lane.get("id")
+        }
+        connections = tuple(root.iter("connection"))
+        successors: dict[tuple[str, str], tuple[str, ...]] = {}
+        for connection in connections:
+            via = connection.get("via", "")
+            source = (connection.get("from", ""), connection.get("fromLane", ""))
+            if via:
+                successors[source] = successors.get(source, ()) + (via,)
+
+        link_shapes: dict[int, tuple[tuple[float, float], ...]] = {}
+        link_indices_by_internal_lane: dict[str, set[int]] = {}
+        for connection in connections:
+            if connection.get("tl") != self.tls_id:
+                continue
+            raw_index = connection.get("linkIndex", "")
+            via = connection.get("via", "")
+            if not raw_index.isdigit():
+                continue
+            link_index = int(raw_index)
+            path_lanes = []
+            current_lane = via
+            while current_lane and current_lane not in path_lanes:
+                path_lanes.append(current_lane)
+                location = lane_locations.get(current_lane)
+                next_lanes = successors.get(location, ()) if location else ()
+                current_lane = next_lanes[0] if len(next_lanes) == 1 else ""
+            for lane_id in path_lanes:
+                link_indices_by_internal_lane.setdefault(lane_id, set()).add(link_index)
+
+            shape = ()
+            for lane_id in path_lanes:
+                lane_shape = lane_shapes.get(lane_id, ())
+                if not lane_shape:
+                    continue
+                shape += lane_shape[1:] if shape and shape[-1] == lane_shape[0] else lane_shape
+            if not shape:
+                incoming_lane = (
+                    f"{connection.get('from')}_{connection.get('fromLane')}"
+                )
+                outgoing_lane = (
+                    f"{connection.get('to')}_{connection.get('toLane')}"
+                )
+                incoming_shape = lane_shapes.get(incoming_lane, ())
+                outgoing_shape = lane_shapes.get(outgoing_lane, ())
+                if incoming_shape and outgoing_shape:
+                    shape = (incoming_shape[-1], outgoing_shape[0])
+            if shape:
+                link_shapes[link_index] = shape
+
+        if internal_lanes:
+            request_link_indices = {
+                request_index: link_indices_by_internal_lane.get(
+                    internal_lanes[request_index], set()
+                )
+                for request_index in requests
+                if request_index < len(internal_lanes)
+            }
+        else:
+            request_link_indices = {
+                request_index: {request_index}
+                for request_index in requests
+                if request_index in link_shapes
+            }
+
+        definitions = []
+        for first_index, foes in requests.items():
+            for second_index in requests:
+                if second_index <= first_index:
+                    continue
+                bit_index = len(foes) - 1 - second_index
+                if bit_index < 0 or foes[bit_index] != "1":
+                    continue
+                for first_link_index in request_link_indices.get(first_index, set()):
+                    first_shape = link_shapes.get(first_link_index)
+                    if first_shape is None:
+                        continue
+                    for second_link_index in request_link_indices.get(second_index, set()):
+                        second_shape = link_shapes.get(second_link_index)
+                        if second_shape is None or first_link_index == second_link_index:
+                            continue
+                        offsets = self._polyline_intersection_offsets(
+                            first_shape,
+                            second_shape,
+                        )
+                        if offsets is None:
+                            continue
+                        definitions.append(
+                            ConflictDefinition(
+                                first_link_index,
+                                second_link_index,
+                                offsets[0],
+                                offsets[1],
+                            )
+                        )
+        self._conflict_definitions = tuple(definitions)
+
+    @staticmethod
+    def _parse_shape(raw: str) -> tuple[tuple[float, float], ...]:
+        points = []
+        for token in raw.split():
+            try:
+                x, y = token.split(",", 1)
+                points.append((float(x), float(y)))
+            except (TypeError, ValueError):
+                return ()
+        return tuple(points)
+
+    @staticmethod
+    def _polyline_intersection_offsets(
+        first: tuple[tuple[float, float], ...],
+        second: tuple[tuple[float, float], ...],
+    ) -> tuple[float, float] | None:
+        first_prefix = 0.0
+        closest: tuple[float, float, float] | None = None
+        for first_start, first_end in zip(first, first[1:]):
+            first_length = math.dist(first_start, first_end)
+            second_prefix = 0.0
+            for second_start, second_end in zip(second, second[1:]):
+                second_length = math.dist(second_start, second_end)
+                parameters = TraCIBridge._segment_intersection_parameters(
+                    first_start,
+                    first_end,
+                    second_start,
+                    second_end,
+                )
+                if parameters is not None:
+                    first_parameter, second_parameter = parameters
+                    return (
+                        first_prefix + first_parameter * first_length,
+                        second_prefix + second_parameter * second_length,
+                    )
+                first_parameter, second_parameter, distance_squared = (
+                    TraCIBridge._segment_closest_parameters(
+                        first_start,
+                        first_end,
+                        second_start,
+                        second_end,
+                    )
+                )
+                candidate = (
+                    distance_squared,
+                    first_prefix + first_parameter * first_length,
+                    second_prefix + second_parameter * second_length,
+                )
+                if closest is None or candidate < closest:
+                    closest = candidate
+                second_prefix += second_length
+            first_prefix += first_length
+        return (closest[1], closest[2]) if closest is not None else None
+
+    @staticmethod
+    def _segment_closest_parameters(
+        first_start: tuple[float, float],
+        first_end: tuple[float, float],
+        second_start: tuple[float, float],
+        second_end: tuple[float, float],
+    ) -> tuple[float, float, float]:
+        first = (
+            first_end[0] - first_start[0],
+            first_end[1] - first_start[1],
+        )
+        second = (
+            second_end[0] - second_start[0],
+            second_end[1] - second_start[1],
+        )
+        delta = (
+            first_start[0] - second_start[0],
+            first_start[1] - second_start[1],
+        )
+
+        def dot(left: tuple[float, float], right: tuple[float, float]) -> float:
+            return left[0] * right[0] + left[1] * right[1]
+
+        def clamp(value: float) -> float:
+            return min(1.0, max(0.0, value))
+
+        first_length_squared = dot(first, first)
+        second_length_squared = dot(second, second)
+        if first_length_squared <= 1e-12 and second_length_squared <= 1e-12:
+            first_parameter = second_parameter = 0.0
+        elif first_length_squared <= 1e-12:
+            first_parameter = 0.0
+            second_parameter = clamp(dot(second, delta) / second_length_squared)
+        else:
+            first_delta = dot(first, delta)
+            if second_length_squared <= 1e-12:
+                second_parameter = 0.0
+                first_parameter = clamp(-first_delta / first_length_squared)
+            else:
+                cross = dot(first, second)
+                second_delta = dot(second, delta)
+                denominator = (
+                    first_length_squared * second_length_squared
+                    - cross * cross
+                )
+                first_parameter = (
+                    clamp(
+                        (cross * second_delta - first_delta * second_length_squared)
+                        / denominator
+                    )
+                    if abs(denominator) > 1e-12
+                    else 0.0
+                )
+                second_parameter = (
+                    cross * first_parameter + second_delta
+                ) / second_length_squared
+                if second_parameter < 0:
+                    second_parameter = 0.0
+                    first_parameter = clamp(
+                        -first_delta / first_length_squared
+                    )
+                elif second_parameter > 1:
+                    second_parameter = 1.0
+                    first_parameter = clamp(
+                        (cross - first_delta) / first_length_squared
+                    )
+        first_point = (
+            first_start[0] + first_parameter * first[0],
+            first_start[1] + first_parameter * first[1],
+        )
+        second_point = (
+            second_start[0] + second_parameter * second[0],
+            second_start[1] + second_parameter * second[1],
+        )
+        return (
+            first_parameter,
+            second_parameter,
+            (first_point[0] - second_point[0]) ** 2
+            + (first_point[1] - second_point[1]) ** 2,
+        )
+
+    @staticmethod
+    def _segment_intersection_parameters(
+        first_start: tuple[float, float],
+        first_end: tuple[float, float],
+        second_start: tuple[float, float],
+        second_end: tuple[float, float],
+    ) -> tuple[float, float] | None:
+        first_dx = first_end[0] - first_start[0]
+        first_dy = first_end[1] - first_start[1]
+        second_dx = second_end[0] - second_start[0]
+        second_dy = second_end[1] - second_start[1]
+        denominator = first_dx * second_dy - first_dy * second_dx
+        if abs(denominator) <= 1e-9:
+            return None
+        delta_x = second_start[0] - first_start[0]
+        delta_y = second_start[1] - first_start[1]
+        first_parameter = (
+            delta_x * second_dy - delta_y * second_dx
+        ) / denominator
+        second_parameter = (
+            delta_x * first_dy - delta_y * first_dx
+        ) / denominator
+        if (
+            -1e-9 <= first_parameter <= 1 + 1e-9
+            and -1e-9 <= second_parameter <= 1 + 1e-9
+        ):
+            return (
+                min(1.0, max(0.0, first_parameter)),
+                min(1.0, max(0.0, second_parameter)),
+            )
+        return None
+
+    @staticmethod
+    def _lane_edge_id(lane_id: str) -> str:
+        edge_id, separator, lane_index = lane_id.rpartition("_")
+        return edge_id if separator and lane_index.isdigit() else lane_id
+
+    def get_turn_ratio(
+        self,
+        incoming_lane: str,
+        outgoing_lane: str,
+    ) -> float | None:
+        configured = self._turn_ratios.get(
+            (
+                self._lane_edge_id(incoming_lane),
+                self._lane_edge_id(outgoing_lane),
+            )
+        )
+        if configured is not None:
+            return configured
+        observed = self._observed_turn_counts[(incoming_lane, outgoing_lane)]
+        total = sum(
+            count
+            for (candidate_incoming, _), count in self._observed_turn_counts.items()
+            if candidate_incoming == incoming_lane
+        )
+        return observed / total if total else None
+
+    def _record_turn_observations(
+        self,
+        observations: tuple[SafetyVehicleState, ...],
+    ) -> None:
+        if self._movement_state_builder is None:
+            return
+        movements = set(self._movement_state_builder.movement_keys)
+        incoming_lanes = {movement.incoming_lane for movement in movements}
+        outgoing_lanes = {movement.outgoing_lane for movement in movements}
+        active_vehicle_ids = {observation.vehicle_id for observation in observations}
+        for observation in observations:
+            if observation.lane_id in incoming_lanes:
+                self._approach_lanes_by_vehicle[observation.vehicle_id] = (
+                    observation.lane_id
+                )
+                continue
+            incoming_lane = self._approach_lanes_by_vehicle.get(
+                observation.vehicle_id
+            )
+            if incoming_lane is None:
+                continue
+            if observation.lane_id in outgoing_lanes:
+                movement = (incoming_lane, observation.lane_id)
+                if any(
+                    key.incoming_lane == movement[0]
+                    and key.outgoing_lane == movement[1]
+                    for key in movements
+                ):
+                    self._observed_turn_counts[movement] += 1
+                self._approach_lanes_by_vehicle.pop(observation.vehicle_id, None)
+            elif not observation.lane_id.startswith(":"):
+                self._approach_lanes_by_vehicle.pop(observation.vehicle_id, None)
+        for vehicle_id in set(self._approach_lanes_by_vehicle) - active_vehicle_ids:
+            self._approach_lanes_by_vehicle.pop(vehicle_id, None)
+
+    def get_controlled_links(self, tls_id: str) -> object:
+        return traci.trafficlight.getControlledLinks(tls_id)
+
+    def request_gui_frame(self, view_id: str = "View #0") -> bool:
+        """Schedule a GUI screenshot for the next SUMO simulation step."""
+        if self.artifacts is None:
+            return False
+        if (
+            sys.platform == "win32"
+            and _is_sumo_gui_binary(self.binary)
+            and isinstance(self._owned_pid, int)
+            and self._owned_pid > 0
+        ):
+            if self._pending_native_frame:
+                return False
+            self._pending_native_frame = True
+            return True
+        if self._pending_frame_path is not None:
+            return False
+        temporary = self.artifacts.run_dir / f".frame-{uuid4().hex}.png"
+        try:
+            traci.gui.screenshot(view_id, str(temporary))
+            self._pending_frame_path = temporary
+            return True
+        except Exception:
+            logger.debug("SUMO GUI frame request unavailable", exc_info=True)
+            temporary.unlink(missing_ok=True)
+            return False
+
+    def capture_gui_frame(self, view_id: str = "View #0") -> FrameRecord | None:
+        """Collect the screenshot produced by the preceding simulation step."""
+        if self._pending_native_frame:
+            self._pending_native_frame = False
+            png = _capture_gui_window_png(int(self._owned_pid or 0))
+            if not png:
+                return None
+            self._frame_sequence += 1
+            return FrameRecord(
+                self.artifacts.run_id,
+                self._frame_sequence,
+                float(traci.simulation.getTime()),
+                png,
+                time.time(),
+            )
+        temporary = self._pending_frame_path
+        self._pending_frame_path = None
+        if temporary is None:
+            return None
+        try:
+            png = temporary.read_bytes()
+            if not png:
+                return None
+            self._frame_sequence += 1
+            return FrameRecord(
+                self.artifacts.run_id,
+                self._frame_sequence,
+                float(traci.simulation.getTime()),
+                png,
+                time.time(),
+            )
+        except Exception:
+            logger.debug("SUMO GUI frame capture unavailable", exc_info=True)
+            return None
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def get_signal_program(self, tls_id: str) -> object:
+        programs = traci.trafficlight.getAllProgramLogics(tls_id)
+        active_program = traci.trafficlight.getProgram(tls_id)
+        return next(
+            (
+                candidate
+                for candidate in programs
+                if candidate.programID == active_program
+            ),
+            programs[0],
+        )
+
+    def get_lane_length(self, lane_id: str) -> float:
+        return float(traci.lane.getLength(lane_id))
+
+    def get_lane_halting_number(self, lane_id: str) -> float:
+        return float(traci.lane.getLastStepHaltingNumber(lane_id))
+
+    def get_lane_occupancy(self, lane_id: str) -> float:
+        return float(traci.lane.getLastStepOccupancy(lane_id)) / 100.0
+
+    @property
+    def movement_capacity_inputs(self) -> dict[str, float] | None:
+        if self._movement_state_builder is None:
+            return None
+        return dict(self._movement_state_builder.capacity_inputs)
+
+    @property
+    def conflict_definitions(self) -> tuple[ConflictDefinition, ...]:
+        return self._conflict_definitions
+
+    @property
+    def process_id(self) -> int | None:
+        """Return the exact SUMO child PID most recently owned by this bridge."""
+        return self._owned_pid
 
     def close(self) -> None:
-        """关闭本桥接器拥有的连接与 SUMO 进程；可重复调用。
-
-        对 sumo-gui 先请求窗口关闭（保存布局）再以非等待方式关闭连接。
-        KeyboardInterrupt 从连接关闭传播，但进程收割始终执行。
-        """
-        connection = self._connection
-        owned = self._owned_process
-        gui_close = owned is not None and str(self.binary).startswith("sumo-gui")
-        interrupted: BaseException | None = None
-        if connection is not None:
-            if gui_close:
-                pid = getattr(owned, "pid", None)
-                if pid is not None:
-                    _request_gui_window_close(pid)
+        """Close TraCI and reap only this bridge's recorded SUMO child."""
+        with _TRACI_LIFECYCLE_LOCK:
+            process = self._owned_process
+            connection = self._connection
+            if process is not None and self._owned_pid is None:
+                self._owned_pid = int(process.pid)
+            close_error: BaseException | None = None
             try:
-                connection.close(wait=not gui_close)
-            except KeyboardInterrupt:
-                interrupted = KeyboardInterrupt()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("owned connection close failed: %s", exc)
-        self._close_owned_connection_cleanup()
-        self._reap_owned_process()
-        if interrupted is not None:
-            raise interrupted
-
-    def _close_owned_connection_cleanup(self) -> None:
-        self._connection = None
-        self._connection_label = None
+                if connection is not None:
+                    connection.close(wait=False)
+            except BaseException as exc:
+                close_error = exc
+            try:
+                if process is not None and process.poll() is None:
+                    if _is_sumo_gui_binary(self.binary):
+                        _request_gui_window_close(int(process.pid))
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
+            finally:
+                if self._pending_frame_path is not None:
+                    self._pending_frame_path.unlink(missing_ok=True)
+                    self._pending_frame_path = None
+                self._pending_native_frame = False
+                self._owned_process = None
+                self._owned_pid = None
+                self._connection = None
+                self._connection_label = None
+            if close_error is not None:
+                raise close_error
 
     def step(self) -> Optional[float]:
         """推进一个仿真步。
@@ -435,25 +1095,13 @@ class TraCIBridge:
         if self.tls_id is None:
             raise RuntimeError("TraCIBridge 尚未 start()")
 
-        step = int(traci.simulation.getTime())
+        simulation_time = float(traci.simulation.getTime())
+        step = int(round(simulation_time / self.step_length))
         current_phase = traci.trafficlight.getPhase(self.tls_id)
-        programs = traci.trafficlight.getAllProgramLogics(self.tls_id)
-        active_program = traci.trafficlight.getProgram(self.tls_id)
-        program = next(
-            (
-                candidate
-                for candidate in programs
-                if candidate.programID == active_program
-            ),
-            programs[0],
-        )
+        program = self.get_signal_program(self.tls_id)
         phase_obj = program.phases[current_phase]
         phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
-        elapsed = (
-            traci.trafficlight.getPhaseDuration(self.tls_id)
-            - traci.trafficlight.getNextSwitch(self.tls_id)
-            + traci.simulation.getTime()
-        )
+        elapsed = traci.trafficlight.getSpentDuration(self.tls_id)
 
         queues: List[QueueState] = []
         flows: dict[str, float] = {}
@@ -476,9 +1124,25 @@ class TraCIBridge:
             # 流量近似：当前车辆数 × 3600（后续可改为检测器计数）
             flows[direction] = float(vehicle_count) * 3600.0
 
+        controlled_links = traci.trafficlight.getControlledLinks(self.tls_id)
+        vehicle_ids = list(traci.vehicle.getIDList())
+        safety_vehicles = self._collect_safety_vehicles(vehicle_ids)
+        self._record_turn_observations(safety_vehicles)
+        phase_movements = (
+            self._movement_state_builder.snapshot()
+            if self._movement_state_builder is not None
+            else ()
+        )
+        collisions = self._simulation_collisions()
+        starting_teleports = self._simulation_vehicle_ids(
+            "getStartingTeleportIDList"
+        )
+        ending_teleports = self._simulation_vehicle_ids(
+            "getEndingTeleportIDList"
+        )
         return JointState(
             step=step,
-            timestamp=float(step),
+            timestamp=simulation_time,
             tls_id=self.tls_id,
             current_phase=current_phase,
             current_phase_name=phase_name,
@@ -486,11 +1150,31 @@ class TraCIBridge:
             queues=queues,
             flows=flows,
             detector_values={},
-            vehicles=self._collect_vehicles(list(traci.vehicle.getIDList())),
+            vehicles=self._collect_vehicles(vehicle_ids),
             arrival_history=list(self._arrival_window),
-            phase_states=self._build_phase_states(
-                program,
-                traci.trafficlight.getControlledLinks(self.tls_id),
+            phase_states=self._build_phase_states(program, controlled_links),
+            phase_movements=phase_movements,
+            legal_phase_transitions=self._legal_phase_transitions(program),
+            safety_vehicles=safety_vehicles,
+            collisions=collisions,
+            collision_vehicle_ids=tuple(
+                sorted(
+                    {
+                        vehicle_id
+                        for collision in collisions
+                        for vehicle_id in (
+                            collision.collider_id,
+                            collision.victim_id,
+                        )
+                    }
+                )
+            ),
+            starting_teleport_vehicle_ids=starting_teleports,
+            ending_teleport_vehicle_ids=ending_teleports,
+            teleport_vehicle_ids=tuple(
+                sorted(
+                    set(starting_teleports) | set(ending_teleports)
+                )
             ),
         )
 
@@ -533,9 +1217,7 @@ class TraCIBridge:
             )
             occupancies = []
             for lane in outgoing_lanes:
-                occupancy = float(traci.lane.getLastStepOccupancy(lane))
-                if occupancy > 1.0:
-                    occupancy /= 100.0
+                occupancy = self.get_lane_occupancy(lane)
                 occupancies.append(min(1.0, max(0.0, occupancy)))
 
             states.append(
@@ -572,83 +1254,207 @@ class TraCIBridge:
             for v in ids
         ]
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
-        """将算法输出的控制动作写入 SUMO。
+    def _collect_safety_vehicles(
+        self,
+        ids: List[str],
+    ) -> tuple[SafetyVehicleState, ...]:
+        observations = []
+        for vehicle_id in ids:
+            try:
+                next_tls = traci.vehicle.getNextTLS(vehicle_id)
+                next_signal = next_tls[0] if next_tls else None
+                observations.append(
+                    SafetyVehicleState(
+                        vehicle_id=vehicle_id,
+                        lane_id=str(traci.vehicle.getLaneID(vehicle_id)),
+                        speed_mps=float(traci.vehicle.getSpeed(vehicle_id)),
+                        position_xy=tuple(
+                            float(value)
+                            for value in traci.vehicle.getPosition(vehicle_id)[:2]
+                        ),
+                        next_tls_id=(
+                            str(next_signal[0]) if next_signal is not None else None
+                        ),
+                        next_tls_link_index=(
+                            int(next_signal[1]) if next_signal is not None else None
+                        ),
+                        distance_to_tls_m=(
+                            float(next_signal[2]) if next_signal is not None else None
+                        ),
+                        next_tls_state=(
+                            str(next_signal[3]) if next_signal is not None else None
+                        ),
+                    )
+                )
+            except (
+                traci.exceptions.TraCIException,
+                traci.exceptions.FatalTraCIError,
+            ):
+                continue
+        return tuple(observations)
 
-        set_phase 的 value 必须是合法相位索引 int；每个动作均返回可审计的
-        ActionResult，拒绝原因由调用方写入事件日志。
+    @staticmethod
+    def _simulation_vehicle_ids(method_name: str) -> tuple[str, ...]:
+        try:
+            method = getattr(traci.simulation, method_name)
+            return tuple(sorted(set(str(value) for value in method())))
+        except (
+            traci.exceptions.TraCIException,
+            traci.exceptions.FatalTraCIError,
+        ):
+            return ()
+
+    @staticmethod
+    def _simulation_collisions() -> tuple[CollisionRecord, ...]:
+        try:
+            collisions = traci.simulation.getCollisions()
+        except (
+            AttributeError,
+            traci.exceptions.TraCIException,
+            traci.exceptions.FatalTraCIError,
+        ):
+            return ()
+        return tuple(
+            CollisionRecord(
+                collider_id=str(collision.collider),
+                victim_id=str(collision.victim),
+                collider_type=str(getattr(collision, "colliderType", "")),
+                victim_type=str(getattr(collision, "victimType", "")),
+                collider_speed_mps=float(collision.colliderSpeed),
+                victim_speed_mps=float(collision.victimSpeed),
+                collision_type=str(getattr(collision, "collisionType", "")),
+                lane_id=str(getattr(collision, "lane", "")),
+                position_m=float(collision.pos),
+            )
+            for collision in collisions
+        )
+
+    @staticmethod
+    def _legal_phase_transitions(program: object) -> tuple[tuple[int, int], ...]:
+        phases = tuple(program.phases)
+        if not phases:
+            return ()
+        transitions = []
+        for phase_index, phase in enumerate(phases):
+            configured = tuple(getattr(phase, "next", ()) or ())
+            targets = (
+                tuple(int(target) for target in configured)
+                if configured
+                else ((phase_index + 1) % len(phases),)
+            )
+            transitions.extend((phase_index, target) for target in targets)
+        return tuple(dict.fromkeys(transitions))
+
+    def _apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
+        """Write an executor-approved action batch to SUMO.
+
+        This private sink retains domain validation as defense in depth. Production
+        callers must enter through :meth:`engine.safety_executor.SafetyExecutor.apply`.
 
         Args:
-            actions: 控制动作列表，支持 set_phase / set_phase_duration /
-                set_program；未知类型打 warning 并跳过。
+            actions: Executor-approved set_phase / set_phase_duration / set_program
+                actions.
         """
         results: list[ActionResult] = []
         for action in actions:
-            value, error = validate_control_action(
+            known_tls_ids = self._tls_ids or (
+                (self.tls_id,) if self.tls_id is not None else ()
+            )
+            expected_tls_id = (
+                action.tls_id if action.tls_id in known_tls_ids else None
+            )
+            value, reason_code, error = validate_control_action(
                 action,
-                self.tls_id,
+                expected_tls_id,
             )
             if error is not None:
-                results.append(ActionResult(action, False, error))
+                results.append(ActionResult(action, False, error, reason_code or ""))
                 continue
+            active_program = ""
             if action.action_type in {"set_phase", "set_program"}:
                 try:
-                    phase_count, program_ids = self._control_action_domain()
+                    (
+                        phase_count,
+                        program_ids,
+                        current_phase,
+                        allowed_phase_targets,
+                        active_program,
+                    ) = self._control_action_domain(action.tls_id)
                 except RuntimeError as exc:
                     results.append(
                         ActionResult(
                             action,
                             False,
                             f"control domain unavailable: {exc}",
+                            "control_domain_unavailable",
                         )
                     )
                     continue
-                value, error = validate_control_action(
-                    action,
-                    self.tls_id,
-                    phase_count=phase_count,
-                    program_ids=program_ids,
-                )
-                if error is not None:
-                    results.append(ActionResult(action, False, error))
-                    continue
+                if not isinstance(value, dict):
+                    value, reason_code, error = validate_control_action(
+                        action,
+                        action.tls_id,
+                        phase_count=phase_count,
+                        program_ids=program_ids,
+                        current_phase=(
+                            current_phase
+                            if action.action_type == "set_phase"
+                            else None
+                        ),
+                        allowed_phase_targets=(
+                            allowed_phase_targets
+                            if action.action_type == "set_phase"
+                            else None
+                        ),
+                    )
+                    if error is not None:
+                        results.append(
+                            ActionResult(action, False, error, reason_code or "")
+                        )
+                        continue
             if action.action_type == "set_phase":
                 traci.trafficlight.setPhase(action.tls_id, value)
             elif action.action_type == "set_phase_duration":
                 traci.trafficlight.setPhaseDuration(action.tls_id, value)
             elif action.action_type == "set_program":
+                program_id = value["program_id"] if isinstance(value, dict) else value
                 if isinstance(value, dict):
-                    # Structured programs install a complete definition and
-                    # then switch to it; setProgram alone cannot take a dict.
-                    program_id = str(value.get("program_id", "plan_derived"))
                     phases = [
-                        traci.trafficlight.Phase(
-                            float(phase["duration"]), str(phase["state"])
-                        )
-                        for phase in value.get("phases", [])
+                        traci.trafficlight.Phase(phase["duration"], phase["state"])
+                        for phase in value["phases"]
                     ]
-                    logic = traci.trafficlight.Logic(
-                        programID=program_id,
-                        type=0,
-                        currentPhaseIndex=0,
-                        phases=phases,
+                    logic = traci.trafficlight.Logic(program_id, 0, 0, phases)
+                    traci.trafficlight.setProgramLogic(action.tls_id, logic)
+                traci.trafficlight.setProgram(action.tls_id, program_id)
+                try:
+                    replacement = MovementStateBuilder(self, action.tls_id)
+                except Exception as exc:
+                    traci.trafficlight.setProgram(action.tls_id, active_program)
+                    results.append(
+                        ActionResult(
+                            action,
+                            False,
+                            f"movement topology rebuild failed: {exc}",
+                            "topology_rebuild_failed",
+                        )
                     )
-                    traci.trafficlight.setCompleteRedYellowGreenDefinition(
-                        action.tls_id, logic
-                    )
-                    traci.trafficlight.setProgram(action.tls_id, program_id)
-                else:
-                    traci.trafficlight.setProgram(action.tls_id, value)
+                    continue
+                if action.tls_id == self.tls_id:
+                    self._movement_state_builder = replacement
             results.append(ActionResult(action, True, "applied"))
         return results
 
-    def _control_action_domain(self) -> tuple[int, set[str]]:
+    def _control_action_domain(
+        self,
+        tls_id: str,
+    ) -> tuple[int, set[str], int, set[int], str]:
         """Return the active phase count and available programs from SUMO."""
         try:
-            programs = list(traci.trafficlight.getAllProgramLogics(self.tls_id))
+            programs = list(traci.trafficlight.getAllProgramLogics(tls_id))
             if not programs:
                 raise RuntimeError("no signal programs returned")
-            active_program = traci.trafficlight.getProgram(self.tls_id)
+            active_program = traci.trafficlight.getProgram(tls_id)
+            current_phase = int(traci.trafficlight.getPhase(tls_id))
         except RuntimeError:
             raise
         except (traci.exceptions.TraCIException, traci.exceptions.FatalTraCIError) as exc:
@@ -665,6 +1471,13 @@ class TraCIBridge:
         return (
             len(active_logic.phases),
             {str(program.programID) for program in programs},
+            current_phase,
+            {
+                target
+                for source, target in self._legal_phase_transitions(active_logic)
+                if source == current_phase
+            },
+            str(active_program),
         )
 
     def get_lane_capacity(self, lane_id: str) -> float:

@@ -5,7 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Any
 
 from core.types import ControlAction, JointState, Scene
 
@@ -22,7 +22,7 @@ class BaseControlAlgorithm(ABC):
         ...
 
     @abstractmethod
-    def step(self, state: JointState) -> List[ControlAction]:
+    def step(self, state: JointState) -> list[ControlAction]:
         """每个仿真步调用一次，根据当前联合状态返回控制动作列表。
 
         返回空列表表示本步不干预 SUMO（例如固定配时基线）。
@@ -39,3 +39,8 @@ class BaseControlAlgorithm(ABC):
     def name(self) -> str:
         """算法名称，用于实验报告和对比。"""
         ...
+
+    @property
+    def manifest(self) -> dict[str, Any]:
+        """Return immutable-at-read-time algorithm provenance for run metadata."""
+        return {"name": self.name}

@@ -82,8 +82,13 @@ CA-MP 不再从车道名猜相位。每个 `PhaseTrafficState` 都携带真实
 
 ### ActionResult
 
-`TraCIBridge.apply_actions()` 返回 `list[ActionResult]`。接受和拒绝结果同时进入
-`events.csv`，可以直接审计应用动作数和拒绝动作数。
+`SafetyExecutor.apply(actions, state, bridge)` 是唯一的信号动作写入入口，返回与
+算法原始请求逐项关联的 `tuple[ActionResult, ...]`。执行器负责最小绿灯、黄灯和全红
+时长、60 仿真秒动作有效期、可达清空路径，以及仅限零步/零时刻/零相位已持续时间的
+固定配时程序安装；启动程序的每个服务绿灯和循环转换还必须独立满足当前最小绿灯、
+配置黄灯和纯全红时长。最小绿灯值在每批动作执行时从算法当前配置读取。只有执行器
+可以调用 TraCI bridge 的私有低层写入端。接受和拒绝结果同时进入 `events.csv`，可以直接审计
+应用动作数和拒绝动作数；计时拒绝不会被记作非法拓扑转换。
 
 ## CA-MP 控制路径
 
@@ -94,9 +99,10 @@ PhaseTrafficState
   -> predicted arrivals
   -> downstream overflow gate
   -> select legal green phase
-  -> min/max green guard
-  -> yellow/all-red transition
-  -> set_phase(int) + set_phase_duration(float)
+  -> max-green replacement and requested green duration
+  -> SafetyExecutor minimum-green guard
+  -> SafetyExecutor yellow/all-red transition
+  -> private bridge signal sink
 ```
 
 压力函数为“容量归一化上游压力 - 容量归一化下游压力 + 预测修正”。当下游占用率达到

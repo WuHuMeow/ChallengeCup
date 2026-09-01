@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from defusedxml import ElementTree as ET
 
 from engine.artifacts import RunArtifacts
+from core.types import MetricSummary
 
 
 @dataclass(frozen=True)
@@ -95,88 +97,76 @@ def parse_queue_metrics(path: Path) -> dict[str, float | None]:
     }
 
 
-SUMMARY_SCHEMA = "challenge-cup-run-summary"
-SUMMARY_SCHEMA_VERSION = 1
-
-
-def metric_summary_payload(run_id: str, summary, warmup_seconds: float) -> dict:
-    """Canonical, reader-verifiable serialization of one MetricSummary."""
-    metrics: dict[str, object] = {
-        "completed_vehicle_count": int(summary.completed_vehicle_count),
-        "unfinished_vehicle_count": int(summary.unfinished_vehicle_count),
-        "throughput": int(summary.throughput),
-        "avg_travel_time_seconds": summary.avg_travel_time_seconds,
-        "avg_delay_seconds": summary.avg_delay_seconds,
-        "avg_queue_length_vehicles": summary.avg_queue_length_vehicles,
-        "max_queue_length_vehicles": summary.max_queue_length_vehicles,
-        "total_stops": (
-            int(summary.total_stops) if summary.total_stops is not None else None
-        ),
-        "fuel_ml": summary.fuel_ml,
-        "co2_g": summary.co2_g,
-        "fuel_ml_per_completed": summary.fuel_ml_per_completed,
-        "co2_g_per_completed": summary.co2_g_per_completed,
-    }
-    for name in (
-        "collision",
-        "red_light",
-        "illegal_transition",
-        "harsh_braking",
-        "teleport",
-        "potential_conflict",
-    ):
-        metrics[f"{name}_count"] = int(summary.safety_counts.get(name, 0))
-    # Legacy alias keys keep older analysis scripts working; strict readers
-    # treat the canonical *_seconds/_ml/_g keys as authoritative.
-    metrics["avg_travel_time"] = summary.avg_travel_time_seconds
-    metrics["avg_delay"] = summary.avg_delay_seconds
-    metrics["avg_queue_length"] = summary.avg_queue_length_vehicles
-    metrics["max_queue_length"] = summary.max_queue_length_vehicles
-    metrics["fuel_consumption"] = summary.fuel_ml
+def metric_summary_payload(
+    run_id: str,
+    summary: MetricSummary,
+    warmup_seconds: float,
+) -> dict:
+    """Return canonical metrics plus additive legacy consumer aliases."""
+    metrics = asdict(summary)
+    metrics.update({
+        "avg_travel_time": summary.avg_travel_time_seconds,
+        "avg_delay": summary.avg_delay_seconds,
+        "avg_queue_length": summary.avg_queue_length_vehicles,
+        "max_queue_length": summary.max_queue_length_vehicles,
+        "fuel_consumption": summary.fuel_ml,
+    })
     return {
-        "schema": SUMMARY_SCHEMA,
-        "schema_version": SUMMARY_SCHEMA_VERSION,
+        "schema": "challenge-cup.metric-summary",
+        "schema_version": 1,
         "run_id": run_id,
         "warmup_seconds": float(warmup_seconds),
         "metrics": metrics,
         "units": {
-            "time_seconds": "s",
-            "queue_vehicles": "veh",
-            "fuel_ml": "ml",
-            "co2_g": "g",
-            "counts": "veh_or_events",
+            "completed_vehicle_count": "count",
+            "unfinished_vehicle_count": "count",
+            "throughput": "vehicles",
             "avg_travel_time_seconds": "s",
             "avg_travel_time": "s",
+            "avg_delay_seconds": "s",
             "avg_delay": "s",
-            "avg_queue_length": "vehicles",
-            "max_queue_length": "vehicles",
+            "total_stops": "count",
+            "fuel_ml": "ml",
             "fuel_consumption": "ml",
+            "co2_g": "g",
+            "fuel_ml_per_completed": "ml/vehicle",
+            "co2_g_per_completed": "g/vehicle",
+            "avg_queue_length_vehicles": "vehicles",
+            "avg_queue_length": "vehicles",
+            "max_queue_length_vehicles": "vehicles",
+            "max_queue_length": "vehicles",
+            **{f"{name}_count": "count" for name in summary.safety_counts},
         },
         "sources": {
-            "travel_time": "tripinfo.xml",
-            "delay": "tripinfo.xml",
-            "stops": "tripinfo.xml",
-            "fuel": "tripinfo.xml",
-            "co2": "tripinfo.xml",
+            "travel": "tripinfo.xml",
             "queue": "metrics.csv",
-            "safety_events": "events.csv",
+            "safety": "events.csv",
         },
     }
 
 
+def _atomic_json(path: Path, payload: dict) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def write_run_summary(
     artifacts: RunArtifacts,
-    warmup_seconds: float = 600.0,
+    warmup_seconds: float = 0.0,
+    summary: MetricSummary | None = None,
 ) -> dict:
-    """Write one canonical summary derived from raw outputs, atomically."""
-    from core.types import MetricSummary
-
-    summary = MetricSummary.from_raw_outputs(artifacts.run_dir, warmup_seconds)
-    payload = metric_summary_payload(artifacts.run_id, summary, warmup_seconds)
-    temporary = artifacts.summary.with_suffix(".json.tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    """Write one provenance-bearing summary from exact and snapshot sources."""
+    resolved = summary or MetricSummary.from_raw_outputs(
+        artifacts.run_dir,
+        warmup_seconds,
     )
-    temporary.replace(artifacts.summary)
+    payload = metric_summary_payload(artifacts.run_id, resolved, warmup_seconds)
+    _atomic_json(artifacts.summary, payload)
     return payload

@@ -205,6 +205,80 @@
           }
         }
       ],
+      "name": "Run Safety",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "runs",
+            "{{runId}}",
+            "safety"
+          ],
+          "raw": "{{baseUrl}}/api/runs/{{runId}}/safety"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "Run Frame",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "runs",
+            "{{runId}}",
+            "frame"
+          ],
+          "raw": "{{baseUrl}}/api/runs/{{runId}}/frame"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
       "name": "Stop Run",
       "request": {
         "header": [
@@ -225,6 +299,114 @@
             "stop"
           ],
           "raw": "{{baseUrl}}/api/runs/{{runId}}/stop"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "Run Result",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "results",
+            "{{runId}}"
+          ],
+          "raw": "{{baseUrl}}/api/results/{{runId}}"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "Results",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "GET",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "results"
+          ],
+          "raw": "{{baseUrl}}/api/results"
+        }
+      }
+    },
+    {
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('successful response', function () {",
+              "  pm.expect(pm.response.code).to.be.within(200, 299);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "name": "Native SUMO GUI",
+      "request": {
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "method": "POST",
+        "url": {
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "runs",
+            "{{runId}}",
+            "native-gui"
+          ],
+          "raw": "{{baseUrl}}/api/runs/{{runId}}/native-gui"
         }
       }
     },

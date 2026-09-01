@@ -93,7 +93,12 @@ def _postman_collection() -> dict[str, Any]:
             _request("Submit Run", "POST", "/api/runs", run_body),
             _request("Run Status", "GET", "/api/runs/{{runId}}"),
             _request("Run Metrics", "GET", "/api/runs/{{runId}}/metrics"),
+            _request("Run Safety", "GET", "/api/runs/{{runId}}/safety"),
+            _request("Run Frame", "GET", "/api/runs/{{runId}}/frame"),
             _request("Stop Run", "POST", "/api/runs/{{runId}}/stop"),
+            _request("Run Result", "GET", "/api/results/{{runId}}"),
+            _request("Results", "GET", "/api/results"),
+            _request("Native SUMO GUI", "POST", "/api/runs/{{runId}}/native-gui"),
             _request("Cloud Predict", "POST", "/api/cloud/predict", _state_body()),
             _request("Edge Control", "POST", "/api/edge/control", _state_body()),
         ],
@@ -105,15 +110,24 @@ def export_contracts(output_dir: Path = Path("docs/api")) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     openapi_path = output_dir / "openapi.json"
     postman_path = output_dir / "postman_collection.json"
+    openapi = create_app().openapi()
+    openapi["x-websocket-paths"] = {
+        "/api/runs/{run_id}/events": {
+            "description": "Run-scoped bounded realtime event stream",
+            "messages": ["status", "metrics", "action", "safety", "frame", "terminal"],
+        }
+    }
     openapi_path.write_text(
-        json.dumps(create_app().openapi(), ensure_ascii=False, indent=2, sort_keys=True)
+        json.dumps(openapi, ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     postman_path.write_text(
         json.dumps(_postman_collection(), ensure_ascii=False, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     return openapi_path, postman_path
 

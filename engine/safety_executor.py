@@ -102,14 +102,14 @@ class SafetyExecutor:
                     reason_code or "",
                 )
                 continue
-            value, detail = validate_control_action(
+            value, reason_code, detail = validate_control_action(
                 action,
                 state.tls_id,
                 phase_count=phase_count,
             )
             if detail is not None:
                 results[index] = ActionResult(
-                    action, False, detail, "invalid_control_action"
+                    action, False, detail, reason_code or ""
                 )
                 continue
             if action.action_type == "set_program" and (

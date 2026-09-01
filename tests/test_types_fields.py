@@ -1,5 +1,8 @@
 """core/types.py 新增字段契约测试（IB W1/W4）。"""
-from core.types import JointState, QueueState, VehicleState
+import pytest
+
+from core.movements import PhaseMovementState
+from core.types import JointState, QueueState, SafetyVehicleState, VehicleState
 
 
 def test_queue_state_capacity_defaults_zero():
@@ -23,3 +26,71 @@ def test_joint_state_new_fields_default_empty():
     assert state.vehicles == []
     assert state.arrival_history == []
     assert state.detector_values == {}
+    assert state.phase_movements == ()
+
+
+def test_joint_state_normalizes_phase_movements_to_tuple():
+    phase = PhaseMovementState(0, "Gr", (), 30.0)
+    source = [phase]
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls_0",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        phase_movements=source,
+    )
+    source.clear()
+
+    assert state.phase_movements == (phase,)
+
+
+def test_joint_state_rejects_non_phase_movement_items():
+    with pytest.raises(ValueError, match="phase_movements"):
+        JointState(
+            step=0,
+            timestamp=0.0,
+            tls_id="tls_0",
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=0.0,
+            phase_movements=[object()],
+        )
+
+
+def test_joint_state_preserves_movement_phase_state_tuple():
+    phase = PhaseMovementState(phase_index=0, signal_state="Gr", movements=(), nominal_duration=30.0)
+    state = JointState(
+        step=0, timestamp=0.0, tls_id="tls_0",
+        current_phase=0, current_phase_name="p0", elapsed_phase_time=0.0,
+        queues=[], flows={}, phase_movements=(phase,),
+    )
+
+    assert state.phase_movements == (phase,)
+
+
+def test_joint_state_normalizes_safety_observations_and_ids_to_tuples():
+    vehicle = SafetyVehicleState("veh", "in_0", 5.0, (0.0, 0.0))
+    vehicles = [vehicle]
+    collisions = ["veh"]
+    teleports = ["other"]
+
+    state = JointState(
+        step=0,
+        timestamp=0.0,
+        tls_id="tls_0",
+        current_phase=0,
+        current_phase_name="p0",
+        elapsed_phase_time=0.0,
+        safety_vehicles=vehicles,
+        collision_vehicle_ids=collisions,
+        teleport_vehicle_ids=teleports,
+    )
+    vehicles.clear()
+    collisions.clear()
+    teleports.clear()
+
+    assert state.safety_vehicles == (vehicle,)
+    assert state.collision_vehicle_ids == ("veh",)
+    assert state.teleport_vehicle_ids == ("other",)

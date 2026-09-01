@@ -5,9 +5,6 @@ from __future__ import annotations
 from algorithms.base import BaseControlAlgorithm
 from core.types import ControlAction, JointState, Scene
 
-# 经典基线的动作窗口：issued 后 60 仿真秒内有效（安全执行器可据此拒绝过期动作）。
-ACTION_WINDOW_SECONDS = 60.0
-
 
 class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
     """Classic unnormalised movement pressure with deterministic tie-breaking."""
@@ -48,7 +45,6 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
                 target,
                 f"classic_maxpressure target={target} pressure={pressures[target]:g}",
                 state.timestamp,
-                expires_at=state.timestamp + ACTION_WINDOW_SECONDS,
             )
         ]
 
@@ -71,8 +67,3 @@ class ClassicMaxPressureAlgorithm(BaseControlAlgorithm):
     @property
     def name(self) -> str:
         return "classic_maxpressure"
-
-    @property
-    def manifest(self) -> dict[str, object]:
-        """Classic baseline carries no capacity-aware enhancement flags."""
-        return {"name": self.name}

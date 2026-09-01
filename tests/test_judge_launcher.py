@@ -1313,6 +1313,7 @@ class _FakeUser32:
     def __init__(self, windows: dict[int, dict[str, object]]) -> None:
         self.windows = windows
         self.restored: list[int] = []
+        self.raised: list[int] = []
         self.foreground: list[int] = []
 
     def EnumWindows(self, callback, lparam):
@@ -1329,6 +1330,10 @@ class _FakeUser32:
 
     def ShowWindow(self, hwnd, _command):
         self.restored.append(hwnd)
+        return True
+
+    def BringWindowToTop(self, hwnd):
+        self.raised.append(hwnd)
         return True
 
     def SetForegroundWindow(self, hwnd):
@@ -1353,6 +1358,29 @@ def test_focus_window_enumerates_exact_pid_and_restores_only_that_window() -> No
     assert shown is True
     assert reason == "focused SUMO process 41005"
     assert user32.restored == [101]
+    assert user32.foreground == [101]
+
+
+def test_focus_window_succeeds_when_windows_refuses_keyboard_focus() -> None:
+    class _ForegroundRestrictedUser32(_FakeUser32):
+        def SetForegroundWindow(self, hwnd):
+            self.foreground.append(hwnd)
+            return False
+
+    user32 = _ForegroundRestrictedUser32(
+        {101: {"pid": 41005, "visible": True}}
+    )
+
+    shown, reason = run_judge.focus_window_for_pid(
+        41005,
+        platform_name="win32",
+        user32=user32,
+    )
+
+    assert shown is True
+    assert reason == "raised SUMO process 41005"
+    assert user32.restored == [101]
+    assert user32.raised == [101]
     assert user32.foreground == [101]
 
 

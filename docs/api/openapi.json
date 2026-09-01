@@ -8,6 +8,7 @@
             "type": "string"
           },
           "reason": {
+            "default": "",
             "title": "Reason",
             "type": "string"
           },
@@ -22,8 +23,7 @@
         "required": [
           "tls_id",
           "action_type",
-          "value",
-          "reason"
+          "value"
         ],
         "title": "ControlActionModel",
         "type": "object"
@@ -42,6 +42,78 @@
           "actions"
         ],
         "title": "ControlActionsModel",
+        "type": "object"
+      },
+      "DisturbanceSpecModel": {
+        "properties": {
+          "begin_seconds": {
+            "minimum": 0.0,
+            "title": "Begin Seconds",
+            "type": "number"
+          },
+          "end_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "End Seconds",
+            "type": "number"
+          },
+          "intensity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Intensity",
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "construction",
+              "event_demand",
+              "vehicle_failure"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "target": {
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "begin_seconds",
+          "end_seconds",
+          "target",
+          "intensity"
+        ],
+        "title": "DisturbanceSpecModel",
+        "type": "object"
+      },
+      "GuiDelayRequestModel": {
+        "properties": {
+          "delay_ms": {
+            "maximum": 2000.0,
+            "minimum": 0.0,
+            "title": "Delay Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delay_ms"
+        ],
+        "title": "GuiDelayRequestModel",
+        "type": "object"
+      },
+      "GuiDelayResponseModel": {
+        "properties": {
+          "delay_ms": {
+            "maximum": 2000.0,
+            "minimum": 0.0,
+            "title": "Delay Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delay_ms"
+        ],
+        "title": "GuiDelayResponseModel",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -94,6 +166,13 @@
             "title": "Flows",
             "type": "object"
           },
+          "phase_movements": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseMovementStateModel"
+            },
+            "title": "Phase Movements",
+            "type": "array"
+          },
           "phase_states": {
             "items": {
               "$ref": "#/components/schemas/PhaseTrafficStateModel"
@@ -139,6 +218,220 @@
           "elapsed_phase_time"
         ],
         "title": "JointStateModel",
+        "type": "object"
+      },
+      "LegacyRunRequestModel": {
+        "properties": {
+          "algorithm": {
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "algorithm_params": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Algorithm Params",
+            "type": "object"
+          },
+          "disturbance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisturbanceSpecModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_seconds": {
+            "default": 3600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "edge_delay_steps": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Edge Delay Steps",
+            "type": "integer"
+          },
+          "edge_directions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edge Directions",
+            "type": "array"
+          },
+          "flow_multiplier": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Flow Multiplier",
+            "type": "number"
+          },
+          "gui_delay_ms": {
+            "default": 100,
+            "maximum": 2000.0,
+            "minimum": 0.0,
+            "title": "Gui Delay Ms",
+            "type": "integer"
+          },
+          "intersection_id": {
+            "pattern": "^(?:[1-9]|1[0-9]|20)$",
+            "title": "Intersection Id",
+            "type": "string"
+          },
+          "seed": {
+            "default": 42,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "step_length_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Length Override"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/VariantSpecModel"
+          },
+          "warmup_seconds": {
+            "default": 600.0,
+            "minimum": 0.0,
+            "title": "Warmup Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "intersection_id",
+          "algorithm"
+        ],
+        "title": "LegacyRunRequestModel",
+        "type": "object"
+      },
+      "MovementStateModel": {
+        "properties": {
+          "downstream_capacity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Downstream Capacity",
+            "type": "number"
+          },
+          "downstream_occupancy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Downstream Occupancy",
+            "type": "number"
+          },
+          "downstream_queue_vehicles": {
+            "minimum": 0.0,
+            "title": "Downstream Queue Vehicles",
+            "type": "number"
+          },
+          "incoming_capacity": {
+            "exclusiveMinimum": 0.0,
+            "title": "Incoming Capacity",
+            "type": "number"
+          },
+          "incoming_lane": {
+            "title": "Incoming Lane",
+            "type": "string"
+          },
+          "outgoing_lane": {
+            "title": "Outgoing Lane",
+            "type": "string"
+          },
+          "queue_vehicles": {
+            "minimum": 0.0,
+            "title": "Queue Vehicles",
+            "type": "number"
+          },
+          "saturation_rate": {
+            "minimum": 0.0,
+            "title": "Saturation Rate",
+            "type": "number"
+          },
+          "turn_ratio": {
+            "minimum": 0.0,
+            "title": "Turn Ratio",
+            "type": "number"
+          }
+        },
+        "required": [
+          "incoming_lane",
+          "outgoing_lane",
+          "queue_vehicles",
+          "downstream_queue_vehicles",
+          "incoming_capacity",
+          "downstream_capacity",
+          "downstream_occupancy",
+          "saturation_rate",
+          "turn_ratio"
+        ],
+        "title": "MovementStateModel",
+        "type": "object"
+      },
+      "NativeGuiResponseModel": {
+        "properties": {
+          "status": {
+            "const": "shown",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "NativeGuiResponseModel",
+        "type": "object"
+      },
+      "PhaseMovementStateModel": {
+        "properties": {
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/MovementStateModel"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "nominal_duration": {
+            "exclusiveMinimum": 0.0,
+            "title": "Nominal Duration",
+            "type": "number"
+          },
+          "phase_index": {
+            "minimum": 0.0,
+            "title": "Phase Index",
+            "type": "integer"
+          },
+          "signal_state": {
+            "title": "Signal State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase_index",
+          "signal_state",
+          "nominal_duration"
+        ],
+        "title": "PhaseMovementStateModel",
         "type": "object"
       },
       "PhaseTrafficStateModel": {
@@ -250,6 +543,7 @@
             "type": "string"
           },
           "queue_length": {
+            "minimum": 0.0,
             "title": "Queue Length",
             "type": "number"
           },
@@ -259,6 +553,7 @@
             "type": "integer"
           },
           "waiting_time": {
+            "minimum": 0.0,
             "title": "Waiting Time",
             "type": "number"
           }
@@ -272,13 +567,112 @@
         "title": "QueueStateModel",
         "type": "object"
       },
+      "ResultDetailModel": {
+        "description": "Validated result payload that never exposes a filesystem path.",
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scene_id": {
+            "title": "Scene Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason",
+          "scene_id",
+          "summary"
+        ],
+        "title": "ResultDetailModel",
+        "type": "object"
+      },
+      "ResultListItemModel": {
+        "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scene_id": {
+            "title": "Scene Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "reason",
+          "scene_id",
+          "summary"
+        ],
+        "title": "ResultListItemModel",
+        "type": "object"
+      },
+      "ResultListModel": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResultListItemModel"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "ResultListModel",
+        "type": "object"
+      },
       "RunRequestModel": {
         "properties": {
           "algorithm": {
             "enum": [
               "fixed_time",
-              "actuated",
-              "ca_maxpressure"
+              "classic_maxpressure",
+              "capacity_aware_maxpressure",
+              "actuated"
             ],
             "title": "Algorithm",
             "type": "string"
@@ -289,6 +683,22 @@
             },
             "title": "Algorithm Params",
             "type": "object"
+          },
+          "disturbance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DisturbanceSpecModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duration_seconds": {
+            "default": 3600.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
           },
           "edge_delay_steps": {
             "default": 0,
@@ -309,7 +719,15 @@
             "title": "Flow Multiplier",
             "type": "number"
           },
+          "gui_delay_ms": {
+            "default": 100,
+            "maximum": 2000.0,
+            "minimum": 0.0,
+            "title": "Gui Delay Ms",
+            "type": "integer"
+          },
           "intersection_id": {
+            "pattern": "^(?:[1-9]|1[0-9]|20)$",
             "title": "Intersection Id",
             "type": "string"
           },
@@ -319,14 +737,38 @@
             "title": "Seed",
             "type": "integer"
           },
+          "step_length_override": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Length Override"
+          },
           "steps": {
-            "default": 36000,
-            "exclusiveMinimum": 0.0,
-            "title": "Steps",
-            "type": "integer"
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           },
           "variant": {
             "$ref": "#/components/schemas/VariantSpecModel"
+          },
+          "warmup_seconds": {
+            "default": 600.0,
+            "minimum": 0.0,
+            "title": "Warmup Seconds",
+            "type": "number"
           }
         },
         "required": [
@@ -338,6 +780,11 @@
       },
       "RunResultModel": {
         "properties": {
+          "algorithm": {
+            "default": "",
+            "title": "Algorithm",
+            "type": "string"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -351,8 +798,7 @@
             "type": "string"
           },
           "status": {
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/RunStatus"
           },
           "summary": {
             "anyOf": [
@@ -374,6 +820,152 @@
           "run_dir"
         ],
         "title": "RunResultModel",
+        "type": "object"
+      },
+      "RunStatus": {
+        "description": "Stable lifecycle states used by runners, services, APIs, and reports.",
+        "enum": [
+          "queued",
+          "starting",
+          "running",
+          "stopping",
+          "completed",
+          "stopped",
+          "ended_early",
+          "disconnected",
+          "interrupted",
+          "failed"
+        ],
+        "title": "RunStatus",
+        "type": "string"
+      },
+      "SafetyModel": {
+        "properties": {
+          "collision": {
+            "minimum": 0.0,
+            "title": "Collision",
+            "type": "integer"
+          },
+          "harsh_braking": {
+            "minimum": 0.0,
+            "title": "Harsh Braking",
+            "type": "integer"
+          },
+          "illegal_transition": {
+            "minimum": 0.0,
+            "title": "Illegal Transition",
+            "type": "integer"
+          },
+          "potential_conflict": {
+            "minimum": 0.0,
+            "title": "Potential Conflict",
+            "type": "integer"
+          },
+          "red_light": {
+            "minimum": 0.0,
+            "title": "Red Light",
+            "type": "integer"
+          },
+          "teleport": {
+            "minimum": 0.0,
+            "title": "Teleport",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "collision",
+          "red_light",
+          "illegal_transition",
+          "harsh_braking",
+          "teleport",
+          "potential_conflict"
+        ],
+        "title": "SafetyModel",
+        "type": "object"
+      },
+      "SceneManifestModel": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "intersection_id": {
+            "title": "Intersection Id",
+            "type": "string"
+          },
+          "lane_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lane Ids",
+            "type": "array"
+          },
+          "movement_count": {
+            "minimum": 0.0,
+            "title": "Movement Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scene_id": {
+            "title": "Scene Id",
+            "type": "string"
+          },
+          "sha256": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Sha256",
+            "type": "object"
+          },
+          "source_files": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Files",
+            "type": "object"
+          },
+          "step_length": {
+            "exclusiveMinimum": 0.0,
+            "title": "Step Length",
+            "type": "number"
+          },
+          "tls_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tls Ids",
+            "type": "array"
+          },
+          "validation_status": {
+            "title": "Validation Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scene_id",
+          "intersection_id",
+          "name",
+          "description",
+          "source_files",
+          "sha256",
+          "step_length",
+          "tls_ids",
+          "lane_ids",
+          "movement_count",
+          "validation_status",
+          "warnings"
+        ],
+        "title": "SceneManifestModel",
         "type": "object"
       },
       "StateRequestModel": {
@@ -500,6 +1092,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/algorithms": {
+      "get": {
+        "operationId": "list_algorithms_api_algorithms_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response List Algorithms Api Algorithms Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Algorithms"
+      }
+    },
     "/api/cloud/predict": {
       "post": {
         "operationId": "cloud_predict_api_cloud_predict_post",
@@ -596,6 +1214,66 @@
         "summary": "Health"
       }
     },
+    "/api/results": {
+      "get": {
+        "operationId": "list_results_api_results_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultListModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Results"
+      }
+    },
+    "/api/results/{run_id}": {
+      "get": {
+        "operationId": "get_result_api_results__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultDetailModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "validated result unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Result"
+      }
+    },
     "/api/runs": {
       "post": {
         "operationId": "submit_run_api_runs_post",
@@ -673,6 +1351,138 @@
         "summary": "Get Run"
       }
     },
+    "/api/runs/{run_id}/frame": {
+      "get": {
+        "operationId": "get_frame_api_runs__run_id__frame_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sequence"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "X-Frame-Sequence": {
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Run-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Simulation-Time": {
+                "schema": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "run or frame unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Frame"
+      }
+    },
+    "/api/runs/{run_id}/gui-delay": {
+      "put": {
+        "operationId": "set_gui_delay_api_runs__run_id__gui_delay_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuiDelayRequestModel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuiDelayResponseModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "unknown run_id"
+          },
+          "409": {
+            "description": "GUI delay unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Gui Delay"
+      }
+    },
     "/api/runs/{run_id}/metrics": {
       "get": {
         "operationId": "get_run_metrics_api_runs__run_id__metrics_get",
@@ -712,6 +1522,93 @@
           }
         },
         "summary": "Get Run Metrics"
+      }
+    },
+    "/api/runs/{run_id}/native-gui": {
+      "post": {
+        "operationId": "show_native_gui_api_runs__run_id__native_gui_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeGuiResponseModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "unknown run_id"
+          },
+          "409": {
+            "description": "native SUMO-GUI unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Show Native Gui"
+      }
+    },
+    "/api/runs/{run_id}/safety": {
+      "get": {
+        "operationId": "get_safety_api_runs__run_id__safety_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SafetyModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "validated safety unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Safety"
       }
     },
     "/api/runs/{run_id}/stop": {
@@ -762,10 +1659,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
+                    "$ref": "#/components/schemas/SceneManifestModel"
                   },
                   "title": "Response List Scenes Api Scenes Get",
                   "type": "array"
@@ -786,7 +1680,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RunRequestModel"
+                "$ref": "#/components/schemas/LegacyRunRequestModel"
               }
             }
           },
@@ -886,7 +1780,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RunRequestModel"
+                "$ref": "#/components/schemas/LegacyRunRequestModel"
               }
             }
           },
@@ -927,10 +1821,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "additionalProperties": {
-                      "type": "string"
-                    },
-                    "type": "object"
+                    "$ref": "#/components/schemas/SceneManifestModel"
                   },
                   "title": "Response Legacy Scenes Scenes Get",
                   "type": "array"
@@ -982,6 +1873,19 @@
         },
         "summary": "Legacy Status"
       }
+    }
+  },
+  "x-websocket-paths": {
+    "/api/runs/{run_id}/events": {
+      "description": "Run-scoped bounded realtime event stream",
+      "messages": [
+        "status",
+        "metrics",
+        "action",
+        "safety",
+        "frame",
+        "terminal"
+      ]
     }
   }
 }

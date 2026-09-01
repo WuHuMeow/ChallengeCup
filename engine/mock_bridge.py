@@ -117,19 +117,27 @@ class MockBridge:
         ]
         return vehicles[:: self.vehicle_sample_rate]
 
-    def apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
-        """Validate and record control actions without contacting SUMO."""
+    def _apply_actions(self, actions: List[ControlAction]) -> list[ActionResult]:
+        """Low-level sink used only by ``SafetyExecutor.apply``."""
         results: list[ActionResult] = []
         for action in actions:
-            _, error = validate_control_action(
+            _, reason_code, error = validate_control_action(
                 action,
                 self.tls_id,
                 phase_count=self.phase_count,
                 program_ids=self.program_ids,
+                current_phase=self._current_step % self.phase_count,
+                allowed_phase_targets={
+                    (self._current_step + 1) % self.phase_count
+                },
             )
             if error is not None:
-                results.append(ActionResult(action, False, error))
+                results.append(
+                    ActionResult(action, False, error, reason_code or "")
+                )
                 continue
+            if action.action_type == "set_program" and isinstance(action.value, dict):
+                self.program_ids.add(str(action.value["program_id"]))
             logger.debug(
                 "MockBridge 收到动作: tls_id=%s, type=%s, value=%s",
                 action.tls_id,
@@ -143,7 +151,3 @@ class MockBridge:
     def get_lane_capacity(self, lane_id: str) -> float:
         """确定性容量：20 辆（对应 150m 车道 / 7.5m）。"""
         return 20.0
-
-    def _apply_actions(self, actions):
-        """安全执行器的私有写入钩子（与 TraCIBridge 对齐）。"""
-        return self.apply_actions(actions)

@@ -125,16 +125,12 @@ class _PlannedAction:
     reason: str
 
     def control_action(self, simulation_seconds: float) -> ControlAction:
-        # Clearance timing is delegated to the safety executor via the
-        # 60-second action window; the controller itself never blocks on
-        # min_green once the executor owns the boundary.
         return ControlAction.for_simulation_time(
             self.tls_id,
             self.action_type,
             self.value,
             self.reason,
             simulation_seconds,
-            expires_at=simulation_seconds + 60.0,
         )
 
 
@@ -358,7 +354,6 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
             max_green=self.config.max_green,
             overflow_threshold=self.config.overflow_threshold,
             prediction_weight=self._capacity_prediction_weight,
-            delegation_mode=True,
         )
 
     def _build_legacy_plan(
@@ -398,7 +393,6 @@ class CapacityAwareMaxPressureAlgorithm(CAMaxPressureAlgorithm):
                 for action in legacy.actions
             ),
             legacy_plan=legacy,
-            cloud_plan=legacy.cloud_plan,
         )
 
     def _build_movement_plan(

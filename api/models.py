@@ -5,14 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, StrictInt, model_validator
+from pydantic import BaseModel, Field, field_validator
 
-from core.movements import (
-    MovementKey,
-    MovementState,
-    PhaseMovementState,
-)
-from core.run_models import DisturbanceSpec, RunRequest, RunResult, VariantSpec
+from algorithms.registry import canonicalize_algorithm_key
+from core.run_models import DisturbanceSpec, RunRequest, RunResult, RunStatus, VariantSpec
 from core.types import (
     ControlAction,
     JointState,
@@ -21,6 +17,7 @@ from core.types import (
     QueueState,
     VehicleState,
 )
+from core.movements import MovementKey, MovementState, PhaseMovementState
 
 
 class VariantSpecModel(BaseModel):
@@ -41,14 +38,24 @@ class VariantSpecModel(BaseModel):
 
 
 class RunRequestModel(BaseModel):
-    intersection_id: str
-    algorithm: Literal["fixed_time", "actuated", "ca_maxpressure"]
-    steps: int = Field(default=36000, gt=0)
+    intersection_id: str = Field(pattern=r"^(?:[1-9]|1[0-9]|20)$")
+    algorithm: Literal[
+        "fixed_time",
+        "classic_maxpressure",
+        "capacity_aware_maxpressure",
+        "actuated",
+    ]
+    steps: int | None = Field(default=None, gt=0)
     flow_multiplier: float = Field(default=1.0, gt=0)
     seed: int = Field(default=42, ge=0)
+    duration_seconds: float = Field(default=3600.0, gt=0)
+    warmup_seconds: float = Field(default=600.0, ge=0)
+    step_length_override: float | None = Field(default=None, gt=0)
+    gui_delay_ms: int = Field(default=100, ge=0, le=2000)
     edge_delay_steps: int = Field(default=0, ge=0)
     edge_directions: list[str] = Field(default_factory=list)
     variant: VariantSpecModel = Field(default_factory=VariantSpecModel)
+    disturbance: DisturbanceSpecModel | None = None
     algorithm_params: dict[str, float] = Field(default_factory=dict)
 
     def to_domain(self, output_root: Path | None = None) -> RunRequest:
@@ -58,107 +65,138 @@ class RunRequestModel(BaseModel):
             steps=self.steps,
             flow_multiplier=self.flow_multiplier,
             seed=self.seed,
+            duration_seconds=self.duration_seconds,
+            warmup_seconds=self.warmup_seconds,
+            step_length_override=self.step_length_override,
+            gui_delay_ms=self.gui_delay_ms,
             output_root=output_root,
             edge_delay_steps=self.edge_delay_steps,
             edge_directions=tuple(self.edge_directions),
             variant=self.variant.to_domain(),
+            disturbance=self.disturbance.to_domain() if self.disturbance else None,
             algorithm_params=self.algorithm_params,
         )
 
 
+class DisturbanceSpecModel(BaseModel):
+    kind: Literal["construction", "event_demand", "vehicle_failure"]
+    begin_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+    target: str = Field(min_length=1)
+    intensity: float = Field(gt=0)
+
+    def to_domain(self) -> DisturbanceSpec:
+        return DisturbanceSpec(**self.model_dump())
+
+
+class LegacyRunRequestModel(RunRequestModel):
+    algorithm: str
+
+    @field_validator("algorithm", mode="before")
+    @classmethod
+    def migrate_algorithm_alias(cls, value: object) -> str:
+        try:
+            return canonicalize_algorithm_key(str(value))
+        except KeyError as exc:
+            raise ValueError(str(exc)) from exc
+
+
 class RunResultModel(BaseModel):
     run_id: str
-    status: str
+    status: RunStatus
     reason: str
     run_dir: str
     summary: dict[str, Any] | None = None
+    algorithm: str = ""
 
     @classmethod
     def from_domain(cls, result: RunResult) -> "RunResultModel":
         return cls(
             run_id=result.run_id,
-            status=result.status.value,
+            status=result.status,
             reason=result.reason,
             run_dir=str(result.run_dir),
             summary=result.summary,
+            algorithm=result.algorithm,
         )
 
 
-class DisturbanceSpecModel(BaseModel):
-    """REST adapter for one bounded scene disturbance."""
+class ResultListItemModel(BaseModel):
+    run_id: str
+    status: RunStatus
+    reason: str
+    scene_id: str
+    summary: dict[str, Any]
+    algorithm: str = ""
 
-    kind: Literal["construction", "event_demand", "vehicle_failure"]
-    begin_seconds: float = Field(ge=0)
-    end_seconds: float = Field(gt=0)
-    target: str
-    intensity: float = Field(gt=0, le=1)
-
-    @model_validator(mode="after")
-    def _check_window(self) -> "DisturbanceSpecModel":
-        if self.end_seconds <= self.begin_seconds:
-            raise ValueError(
-                f"end_seconds must be greater than begin_seconds "
-                f"(begin={self.begin_seconds}, end={self.end_seconds})"
-            )
-        return self
-
-    def to_domain(self) -> "DisturbanceSpec":
-        return DisturbanceSpec(
-            kind=self.kind,
-            begin_seconds=self.begin_seconds,
-            end_seconds=self.end_seconds,
-            target=self.target,
-            intensity=self.intensity,
+    @classmethod
+    def from_domain(
+        cls,
+        result: RunResult,
+        *,
+        scene_id: str,
+    ) -> "ResultListItemModel":
+        if result.summary is None:
+            raise ValueError("validated result requires a summary")
+        return cls(
+            run_id=result.run_id,
+            status=result.status,
+            reason=result.reason,
+            scene_id=scene_id,
+            summary=result.summary,
+            algorithm=result.algorithm,
         )
 
 
-class MovementStateModel(BaseModel):
-    """REST adapter for one movement measurement."""
-
-    incoming_lane: str
-    outgoing_lane: str
-    queue_vehicles: float = Field(ge=0)
-    downstream_queue_vehicles: float = Field(ge=0)
-    incoming_capacity: float = Field(gt=0)
-    downstream_capacity: float = Field(gt=0)
-    downstream_occupancy: float = Field(ge=0, le=1)
-    saturation_rate: float = Field(ge=0)
-    turn_ratio: float = Field(ge=0)
-
-    def to_domain(self) -> MovementState:
-        return MovementState(
-            key=MovementKey(self.incoming_lane, self.outgoing_lane),
-            queue_vehicles=self.queue_vehicles,
-            downstream_queue_vehicles=self.downstream_queue_vehicles,
-            incoming_capacity=self.incoming_capacity,
-            downstream_capacity=self.downstream_capacity,
-            downstream_occupancy=self.downstream_occupancy,
-            saturation_rate=self.saturation_rate,
-            turn_ratio=self.turn_ratio,
-        )
+class ResultListModel(BaseModel):
+    items: list[ResultListItemModel]
+    count: int
 
 
-class PhaseMovementStateModel(BaseModel):
-    """REST adapter for one movement-level signal phase."""
+class ResultDetailModel(ResultListItemModel):
+    """Validated result payload that never exposes a filesystem path."""
 
-    phase_index: StrictInt = Field(ge=0)
-    signal_state: str
-    nominal_duration: float = Field(gt=0)
-    movements: list[MovementStateModel] = Field(default_factory=list)
 
-    def to_domain(self) -> PhaseMovementState:
-        return PhaseMovementState(
-            phase_index=self.phase_index,
-            signal_state=self.signal_state,
-            movements=tuple(model.to_domain() for model in self.movements),
-            nominal_duration=self.nominal_duration,
-        )
+class NativeGuiResponseModel(BaseModel):
+    status: Literal["shown"]
+
+
+class GuiDelayRequestModel(BaseModel):
+    delay_ms: int = Field(ge=0, le=2000)
+
+
+class GuiDelayResponseModel(BaseModel):
+    delay_ms: int = Field(ge=0, le=2000)
+
+
+class SafetyModel(BaseModel):
+    collision: int = Field(ge=0)
+    red_light: int = Field(ge=0)
+    illegal_transition: int = Field(ge=0)
+    harsh_braking: int = Field(ge=0)
+    teleport: int = Field(ge=0)
+    potential_conflict: int = Field(ge=0)
+
+
+class SceneManifestModel(BaseModel):
+    scene_id: str
+    intersection_id: str
+    name: str
+    description: str
+    source_files: dict[str, str]
+    sha256: dict[str, str]
+    step_length: float = Field(gt=0)
+    tls_ids: list[str]
+    lane_ids: list[str]
+    movement_count: int = Field(ge=0)
+    validation_status: str
+    warnings: list[str]
 
 
 class QueueStateModel(BaseModel):
     direction: str
-    queue_length: float
-    waiting_time: float
+    queue_length: float = Field(ge=0)
+    waiting_time: float = Field(ge=0)
     vehicle_count: int = Field(ge=0)
     capacity: float = Field(default=0.0, ge=0)
 
@@ -193,6 +231,48 @@ class PhaseTrafficStateModel(BaseModel):
         )
 
 
+class MovementStateModel(BaseModel):
+    incoming_lane: str
+    outgoing_lane: str
+    queue_vehicles: float = Field(ge=0, allow_inf_nan=False)
+    downstream_queue_vehicles: float = Field(ge=0, allow_inf_nan=False)
+    incoming_capacity: float = Field(gt=0, allow_inf_nan=False)
+    downstream_capacity: float = Field(gt=0, allow_inf_nan=False)
+    downstream_occupancy: float = Field(ge=0, le=1, allow_inf_nan=False)
+    saturation_rate: float = Field(ge=0, allow_inf_nan=False)
+    turn_ratio: float = Field(ge=0, allow_inf_nan=False)
+
+    def to_domain(self) -> MovementState:
+        return MovementState(
+            key=MovementKey(
+                incoming_lane=self.incoming_lane,
+                outgoing_lane=self.outgoing_lane,
+            ),
+            queue_vehicles=self.queue_vehicles,
+            downstream_queue_vehicles=self.downstream_queue_vehicles,
+            incoming_capacity=self.incoming_capacity,
+            downstream_capacity=self.downstream_capacity,
+            downstream_occupancy=self.downstream_occupancy,
+            saturation_rate=self.saturation_rate,
+            turn_ratio=self.turn_ratio,
+        )
+
+
+class PhaseMovementStateModel(BaseModel):
+    phase_index: int = Field(ge=0, strict=True)
+    signal_state: str
+    movements: list[MovementStateModel] = Field(default_factory=list)
+    nominal_duration: float = Field(gt=0, allow_inf_nan=False)
+
+    def to_domain(self) -> PhaseMovementState:
+        return PhaseMovementState(
+            phase_index=self.phase_index,
+            signal_state=self.signal_state,
+            movements=tuple(movement.to_domain() for movement in self.movements),
+            nominal_duration=self.nominal_duration,
+        )
+
+
 class VehicleStateModel(BaseModel):
     vehicle_id: str
     lane_id: str
@@ -215,6 +295,7 @@ class JointStateModel(BaseModel):
     vehicles: list[VehicleStateModel] = Field(default_factory=list)
     arrival_history: list[int] = Field(default_factory=list)
     phase_states: list[PhaseTrafficStateModel] = Field(default_factory=list)
+    phase_movements: list[PhaseMovementStateModel] = Field(default_factory=list)
 
     def to_domain(self) -> JointState:
         return JointState(
@@ -230,6 +311,7 @@ class JointStateModel(BaseModel):
             vehicles=[vehicle.to_domain() for vehicle in self.vehicles],
             arrival_history=self.arrival_history,
             phase_states=[phase.to_domain() for phase in self.phase_states],
+            phase_movements=tuple(phase.to_domain() for phase in self.phase_movements),
         )
 
 
@@ -255,7 +337,7 @@ class ControlActionModel(BaseModel):
     tls_id: str
     action_type: str
     value: Any
-    reason: str
+    reason: str = ""
 
     @classmethod
     def from_domain(cls, action: ControlAction) -> "ControlActionModel":

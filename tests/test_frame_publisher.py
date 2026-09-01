@@ -51,6 +51,24 @@ class _FrameBridge(MockBridge):
         )
 
 
+class _DeferredFrameBridge(_FrameBridge):
+    def __init__(self):
+        super().__init__()
+        self.frame_order: list[str] = []
+
+    def request_gui_frame(self, view_id="View #0"):
+        self.frame_order.append("request")
+        return True
+
+    def step(self):
+        self.frame_order.append("step")
+        return super().step()
+
+    def capture_gui_frame(self, view_id="View #0"):
+        self.frame_order.append("collect")
+        return super().capture_gui_frame(view_id)
+
+
 def test_frame_publisher_keeps_one_newest_frame_per_run():
     publisher = FramePublisher()
     assert publisher.publish(FrameRecord("run-1", 1, 1.0, b"old", 1.0)) is True
@@ -188,6 +206,47 @@ def test_runner_captures_frames_on_owner_thread_and_ignores_sink_failure():
     assert bridge.capture_calls == 3
     assert [frame.sequence for frame in frames] == [1, 2, 3]
     assert len(set(bridge.capture_threads)) == 1
+
+
+def test_runner_requests_deferred_gui_frame_before_advancing_simulation():
+    bridge = _DeferredFrameBridge()
+    frames = []
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        frame_interval_seconds=0.0,
+    )
+
+    runner.run(1, frame_sink=lambda frame: frames.append(frame))
+
+    assert bridge.frame_order[:3] == ["request", "step", "collect"]
+    assert [frame.sequence for frame in frames] == [1]
+
+
+def test_runner_leaves_one_plain_step_between_deferred_gui_frames(tmp_path):
+    bridge = _DeferredFrameBridge()
+    frames = []
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+        frame_interval_seconds=0.0,
+    )
+
+    runner.run(3, frame_sink=lambda frame: frames.append(frame))
+
+    assert bridge.frame_order == [
+        "request",
+        "step",
+        "collect",
+        "step",
+        "request",
+        "step",
+        "collect",
+    ]
+    assert [frame.sequence for frame in frames] == [1, 2]
 
 
 def test_runner_skips_capture_when_the_frame_slot_is_unread():

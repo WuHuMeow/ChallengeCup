@@ -25,8 +25,8 @@
 | `scripts/check_outputs.py` | `python scripts/check_outputs.py --root output/runs/matrix` | 含 `run_metadata.json` 的运行根目录 | 递归检查每个运行的 7 类必需输出 |
 | `scripts/check_seed_repro.py` | `python scripts/check_seed_repro.py --steps 300 --output-root output/runs/seed-repro` | 路口 1、固定时制算法、seed 42 和 7 | 三个隔离运行目录及复现性断言 |
 | `scripts/stress_memory.py` | `python scripts/stress_memory.py --algorithm actuated --intersections 1 11 16 --steps 3600 --output-root output/runs/stress` | 路口 ID、步数、1.5 倍流量 | `stress_results.json`、输出大小和 Python 峰值 |
-| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick` | 路口、3 算法、2 流量、3 种子 | 可恢复矩阵、`matrix.csv`、`matrix_state.json` 和隔离运行产物 |
-| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full` | PDF 完整 360 组实验 | 360 个 `run_id` 目录与矩阵索引 |
+| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick` | 路口、3 算法、2 流量、3 种子 | 可恢复矩阵、`matrix.csv`、`matrix_state.json` 和隔离运行产物 |
+| `scripts/run_pdf_matrix.py` | `python scripts/run_pdf_matrix.py --profile formal --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal` | PDF 完整 360 组实验 | 360 个 `run_id` 目录与矩阵索引 |
 | `scripts/package_offline.py` | `python scripts/package_offline.py --output-dir output/offline` | 仓库源码、依赖、可选 Docker 镜像和第二机器证据 | 源码 ZIP、SHA-256、`offline_manifest.json` |
 | `scripts/verify_ia_ib.py` | `python scripts/verify_ia_ib.py --quick --output-root output/runs/ia-ib-quick` | IA/IB 全套验收命令 | `verification.json` 与最终 Markdown 报告 |
 | `quality/lint_check.sh` | `bash scripts/quality/lint_check.sh` | `engine/`、`cloud/`、`experiments/` 中跟踪和未跟踪的源码 | 成功时仅打印 `clean` |

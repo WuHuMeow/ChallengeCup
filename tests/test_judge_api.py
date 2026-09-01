@@ -122,6 +122,7 @@ class FakeJudgeService:
         self.realtime_hub = RealtimeHub()
         self.max_workers = 1
         self.native_gui = None
+        self.gui_delay_calls: list[tuple[str, int]] = []
         self.shutdown_calls = 0
 
     def submit(self, request: RunRequest) -> RunResult:
@@ -147,6 +148,15 @@ class FakeJudgeService:
             return False
         self.records[run_id] = replace(result, status=RunStatus.INTERRUPTED)
         return True
+
+    def set_gui_delay(self, run_id: str, delay_ms: int) -> int:
+        result = self.records.get(run_id)
+        if result is None:
+            raise KeyError(run_id)
+        if result.status is not RunStatus.RUNNING:
+            raise RuntimeError("GUI delay is available only while a GUI run is running")
+        self.gui_delay_calls.append((run_id, delay_ms))
+        return delay_ms
 
     def shutdown(self, wait: bool = True) -> None:
         self.shutdown_calls += 1
@@ -297,7 +307,7 @@ def test_default_static_root_serves_committed_judge_build(tmp_path):
     with TestClient(create_app(service)) as isolated_client:
         response = isolated_client.get("/")
         assert response.status_code == 200
-        assert "Judge Simulation Console" in response.text
+        assert "交通信号控制仿真评审台" in response.text
         for asset_path in re.findall(r'(?:src|href)="(/assets/[^\"]+)"', response.text):
             assert isolated_client.get(asset_path).status_code == 200
 
@@ -365,6 +375,48 @@ def test_events_websocket_releases_idle_subscription_on_disconnect(service):
             assert service.realtime_hub._subscribers.get("run-1", set()) == set()
 
     asyncio.run(exercise_disconnect())
+
+
+def test_gui_delay_endpoint_updates_a_running_gui_run(client, service):
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.RUNNING, "", service.root / "run-1", algorithm="fixed_time"
+    )
+
+    response = client.put(
+        "/api/runs/run-1/gui-delay",
+        json={"delay_ms": 300},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"delay_ms": 300}
+    assert service.gui_delay_calls == [("run-1", 300)]
+
+
+@pytest.mark.parametrize("delay_ms", [-1, 2001])
+def test_gui_delay_endpoint_rejects_out_of_range_values(client, delay_ms):
+    response = client.put(
+        "/api/runs/run-1/gui-delay",
+        json={"delay_ms": delay_ms},
+    )
+
+    assert response.status_code == 422
+
+
+def test_gui_delay_endpoint_distinguishes_missing_and_inactive_runs(client, service):
+    missing = client.put(
+        "/api/runs/missing/gui-delay",
+        json={"delay_ms": 100},
+    )
+    service.records["run-1"] = RunResult(
+        "run-1", RunStatus.COMPLETED, "", service.root / "run-1", algorithm="fixed_time"
+    )
+    inactive = client.put(
+        "/api/runs/run-1/gui-delay",
+        json={"delay_ms": 100},
+    )
+
+    assert missing.status_code == 404
+    assert inactive.status_code == 409
 
 
 def test_native_gui_returns_409_when_launcher_unavailable(client, service):

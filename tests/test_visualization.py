@@ -3,9 +3,23 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
+from core.run_models import RunStatus
+from core.types import MetricSummary
+from engine.artifacts import RunArtifacts
+from engine.events import EVENT_FIELDS
+from experiments.evidence import (
+    EvidenceWriter,
+    RunManifest,
+    canonical_mapping_sha256,
+)
 from visualization.plots import plot_heatmap
-from visualization.report import collect_summaries, generate_matrix_figures
+from visualization.report import (
+    collect_summaries,
+    generate_matrix_figures,
+    generate_run_figures,
+)
 
 
 def _write_summary_csv(path):
@@ -26,54 +40,106 @@ def _sample_matrix(root):
         ("2", "fixed_time", 30.0),
         ("2", "ca_maxpressure", 21.0),
     ]:
-        run_dir = root / f"i{intersection}" / algorithm / "x1" / "s42" / "run1"
-        run_dir.mkdir(parents=True)
-        (run_dir / "summary.json").write_text(
-            json.dumps({
-                "run_id": f"{intersection}-{algorithm}",
-                "metrics": {
-                    "avg_travel_time": value,
-                    "avg_delay": value / 2,
-                    "avg_queue_length": value / 10,
-                    "max_queue_length": value / 5,
-                    "throughput": 100,
-                    "total_stops": 10,
-                    "fuel_consumption": value * 100,
-                },
-                "sources": {"travel": "tripinfo.xml", "queue": "metrics.csv"},
-            }),
-            encoding="utf-8",
+        artifacts = RunArtifacts.create(
+            root,
+            intersection,
+            algorithm,
+            1.0,
+            42,
+            run_id="run1",
         )
-        (run_dir / "run_metadata.json").write_text(
-            json.dumps({
-                "run_id": f"{intersection}-{algorithm}",
-                "intersection_id": intersection,
-                "algorithm": algorithm,
-                "flow_multiplier": 1.0,
-                "seed": 42,
-                "status": "completed",
-            }),
-            encoding="utf-8",
-        )
-        with (run_dir / "metrics.csv").open(
+        source_hashes = {"net": "b" * 64, "sumocfg": "c" * 64}
+        writer = EvidenceWriter(artifacts.run_dir)
+        writer.begin(RunManifest(
+            run_id=artifacts.run_id,
+            code_commit="a" * 40,
+            scene_manifest_sha256=canonical_mapping_sha256(source_hashes),
+            algorithm=algorithm,
+            parameters={},
+            flow_multiplier=1.0,
+            seed=42,
+            duration_seconds=100.0,
+            warmup_seconds=0.0,
+            derived_steps=100,
+            sumo_version="1.27.1",
+            python_version="3.12.13",
+            prediction_enabled=False,
+            scene_id=intersection,
+            scene_source_sha256=source_hashes,
+            step_length=1.0,
+            requested_seconds=100.0,
+        ))
+        with artifacts.metrics.open(
             "w", newline="", encoding="utf-8"
         ) as output:
             writer = csv.DictWriter(
                 output,
-                fieldnames=["step", "avg_queue_length", "max_queue_length"],
+                fieldnames=[
+                    "step",
+                    "timestamp",
+                    "avg_queue_length",
+                    "max_queue_length",
+                ],
             )
             writer.writeheader()
             writer.writerows([
-                {"step": 0, "avg_queue_length": 1, "max_queue_length": 2},
-                {"step": 10, "avg_queue_length": 2, "max_queue_length": 4},
+                {
+                    "step": 0,
+                    "timestamp": 0,
+                    "avg_queue_length": 1,
+                    "max_queue_length": 2,
+                },
+                {
+                    "step": 10,
+                    "timestamp": 10,
+                    "avg_queue_length": 2,
+                    "max_queue_length": 4,
+                },
             ])
-        (run_dir / "tripinfo.xml").write_text("<tripinfos/>", encoding="utf-8")
-        (run_dir / "traj.xml").write_text(
+        artifacts.step_log.write_text(
+            "step,timestamp,current_phase\n0,0,0\n10,10,0\n",
+            encoding="utf-8",
+        )
+        with artifacts.events.open("w", newline="", encoding="utf-8") as output:
+            csv.DictWriter(output, fieldnames=list(EVENT_FIELDS)).writeheader()
+        artifacts.tripinfo.write_text(
+            '<tripinfos><tripinfo id="v0" depart="0" '
+            f'arrival="{value}" duration="{value}" timeLoss="{value / 2}" '
+            f'waitingCount="10"><emissions fuel_abs="{value * 100}" '
+            'CO2_abs="1000"/></tripinfo></tripinfos>',
+            encoding="utf-8",
+        )
+        artifacts.stats.write_text("<summary/>", encoding="utf-8")
+        artifacts.trajectory.write_text(
             "<fcd-export><timestep time='0'><vehicle id='v0' lane='E0_0' "
             "pos='1'/></timestep><timestep time='1'><vehicle id='v0' "
             "lane='E0_0' pos='5'/></timestep></fcd-export>",
             encoding="utf-8",
         )
+        artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
+        summary = MetricSummary.from_raw_outputs(
+            artifacts.run_dir,
+            warmup_seconds=0.0,
+        )
+        writer = EvidenceWriter(artifacts.run_dir)
+        writer.finalize(RunStatus.COMPLETED, summary)
+        artifacts.write_status("queued", "")
+        artifacts.write_status("starting", "")
+        artifacts.write_status("running", "")
+        artifacts.write_metadata(
+            "completed",
+            "",
+            list(artifacts.run_dir.iterdir()),
+            started_at="2026-08-22T00:00:00+00:00",
+            ended_at="2026-08-22T00:01:40+00:00",
+            sumo_version="1.27.1",
+            requested_steps=100,
+            requested_seconds=100.0,
+            warmup_seconds=0.0,
+            final_simulation_time=100.0,
+            step_length=1.0,
+        )
+        writer.seal()
     return root
 
 
@@ -95,6 +161,109 @@ def test_collect_summaries_reads_run_identity_and_exact_metrics(tmp_path):
     assert set(frame["algorithm"]) == {"fixed_time", "ca_maxpressure"}
     assert "avg_travel_time" in frame.columns
     assert all(Path(path).is_file() for path in frame["summary_path"])
+
+
+def test_generate_run_figures_rejects_unvalidated_evidence(tmp_path):
+    run_dir = tmp_path / "unverified-run"
+    run_dir.mkdir()
+    (run_dir / "summary.json").write_text(
+        json.dumps({"metrics": {"throughput": 999}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="strict evidence"):
+        generate_run_figures(run_dir)
+
+    assert not (run_dir / "figures").exists()
+
+
+@pytest.mark.parametrize(
+    ("reader_name", "artifact_name", "output_name"),
+    [
+        ("_queue_timeseries", "metrics.csv", "queue_timeseries.png"),
+        ("_trajectory_plot", "traj.xml", "trajectory.png"),
+    ],
+)
+def test_generate_run_figures_rejects_evidence_changed_during_source_read(
+    tmp_path,
+    monkeypatch,
+    reader_name,
+    artifact_name,
+    output_name,
+):
+    from visualization import report
+
+    matrix = _sample_matrix(tmp_path / "matrix")
+    run_dir = next(matrix.rglob("summary.json")).parent
+    original_reader = getattr(report, reader_name)
+
+    def mutate_after_read(source, output):
+        original_reader(source, output)
+        source.write_text("tampered after read", encoding="utf-8")
+
+    monkeypatch.setattr(report, reader_name, mutate_after_read)
+
+    with pytest.raises(ValueError, match="evidence changed"):
+        generate_run_figures(run_dir)
+
+    assert not (run_dir / "figures").exists()
+    assert not list(run_dir.parent.glob(f".{run_dir.name}.figures.*.tmp"))
+
+
+def test_generate_run_figures_restores_previous_publication_if_swap_fails(
+    tmp_path,
+    monkeypatch,
+):
+    matrix = _sample_matrix(tmp_path / "matrix")
+    run_dir = next(matrix.rglob("summary.json")).parent
+    output_dir = run_dir / "figures"
+    output_dir.mkdir()
+    (output_dir / "previous.txt").write_text("trusted previous", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_staging_publication(path, target):
+        if path.name.endswith(".tmp") and Path(target) == output_dir:
+            raise OSError("figure publication unavailable")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staging_publication)
+
+    with pytest.raises(OSError, match="figure publication unavailable"):
+        generate_run_figures(run_dir)
+
+    assert (output_dir / "previous.txt").read_text(encoding="utf-8") == (
+        "trusted previous"
+    )
+    assert not list(run_dir.parent.glob(f".{run_dir.name}.figures.*.tmp"))
+    assert not list(run_dir.parent.glob(".figures.*.backup"))
+
+
+@pytest.mark.parametrize(
+    "reader_name",
+    ["_queue_timeseries", "_trajectory_plot"],
+)
+def test_generate_matrix_figures_publishes_nothing_if_source_changes(
+    tmp_path,
+    monkeypatch,
+    reader_name,
+):
+    from visualization import report
+
+    matrix = _sample_matrix(tmp_path / "matrix")
+    output_dir = tmp_path / "aggregate-figures"
+    original_reader = getattr(report, reader_name)
+
+    def mutate_after_read(source, output):
+        original_reader(source, output)
+        source.write_text("tampered after read", encoding="utf-8")
+
+    monkeypatch.setattr(report, reader_name, mutate_after_read)
+
+    with pytest.raises(ValueError, match="evidence changed"):
+        generate_matrix_figures(matrix, output_dir)
+
+    assert not output_dir.exists()
+    assert not list(tmp_path.glob(".aggregate-figures.*.tmp"))
 
 
 def test_every_figure_has_provenance_manifest(tmp_path):

@@ -4,6 +4,7 @@ import { SimulationView } from "./components/SimulationView";
 import { ComparisonView } from "./components/ComparisonView";
 import { HistoryView } from "./components/HistoryView";
 import { SceneView } from "./components/SceneView";
+import { localizeMessage } from "./localization";
 import { runStore, type RunStoreSnapshot } from "./state/runStore";
 
 const api = createApiClient();
@@ -17,12 +18,6 @@ interface EventSubscription {
   runId: string;
   close: () => void;
   intentional: boolean;
-}
-
-interface TerminalWaiter {
-  resolve: () => void;
-  reject: (error: Error) => void;
-  timer: number;
 }
 
 function useRunSnapshot(): RunStoreSnapshot {
@@ -54,11 +49,12 @@ export default function App() {
   const [resultsError, setResultsError] = useState<string | null>(null);
   const [openedResult, setOpenedResult] = useState<Awaited<ReturnType<typeof api.getResult>> | null>(null);
   const [startPending, setStartPending] = useState(false);
+  const [guiDelayPending, setGuiDelayPending] = useState(false);
   const mounted = useRef(true);
   const resultsRequest = useRef(0);
   const startPendingRef = useRef(false);
   const subscriptionRef = useRef<EventSubscription | null>(null);
-  const terminalWaiters = useRef(new Map<string, TerminalWaiter>());
+  const nativeGuiAutofocusRun = useRef<string | null>(null);
 
   const loadResults = useCallback(async () => {
     const requestId = ++resultsRequest.current;
@@ -70,7 +66,7 @@ export default function App() {
       setResultsError(null);
     } catch (error: unknown) {
       if (!mounted.current || requestId !== resultsRequest.current) return;
-      setResultsError(error instanceof Error ? error.message : "Unable to load sealed run results");
+      setResultsError(localizeMessage(error instanceof Error ? error.message : "无法加载封存运行结果"));
     } finally {
       if (mounted.current && requestId === resultsRequest.current) setResultsLoading(false);
     }
@@ -94,7 +90,7 @@ export default function App() {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        const message = error instanceof Error ? error.message : "Unable to load judge metadata";
+        const message = localizeMessage(error instanceof Error ? error.message : "无法加载评审元数据");
         setSceneError(message);
         runStore.setError({ kind: "network", message });
       })
@@ -112,12 +108,8 @@ export default function App() {
     return () => {
       mounted.current = false;
       resultsRequest.current += 1;
+      nativeGuiAutofocusRun.current = null;
       closeSubscription();
-      for (const [runId, waiter] of terminalWaiters.current) {
-        window.clearTimeout(waiter.timer);
-        waiter.reject(new Error(`Judge console closed while waiting for ${runId}`));
-      }
-      terminalWaiters.current.clear();
     };
   }, []);
 
@@ -125,38 +117,38 @@ export default function App() {
     if (view === "comparison" || view === "history") void loadResults();
   }, [loadResults, view]);
 
-  useEffect(() => {
-    const runId = snapshot.activeRun?.run_id;
-    if (!runId || snapshot.connection === "idle" || isTerminalStatus(snapshot.activeRun?.status)) return;
-    let cancelled = false;
-    let timer: number | null = null;
-    const schedule = () => {
+  const focusNativeGuiWhenReady = async (runId: string) => {
+    const maxAttempts = 8;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const current = runStore.getSnapshot();
-      if (cancelled || current.activeRun?.run_id !== runId || current.connection === "idle" || isTerminalStatus(current.activeRun?.status)) return;
-      timer = window.setTimeout(() => void poll(), 80);
-    };
-    const poll = async () => {
-      const before = runStore.getSnapshot();
-      if (cancelled || before.activeRun?.run_id !== runId || before.connection === "idle" || isTerminalStatus(before.activeRun?.status)) return;
+      if (
+        !mounted.current
+        || nativeGuiAutofocusRun.current !== runId
+        || current.activeRun?.run_id !== runId
+        || isTerminalStatus(current.activeRun.status)
+      ) return;
       try {
-        const frame = await api.getFrame(runId, before.frameSequence);
-        const current = runStore.getSnapshot();
-        if (!cancelled && current.activeRun?.run_id === runId && !isTerminalStatus(current.activeRun.status)) runStore.acceptFrame(frame);
+        await api.openNativeGui(runId);
+        if (nativeGuiAutofocusRun.current === runId) nativeGuiAutofocusRun.current = null;
+        return;
       } catch (error: unknown) {
-        const current = runStore.getSnapshot();
-        if (!cancelled && current.activeRun?.run_id === runId && (error as { status?: number }).status !== 404) {
-          runStore.setError({ kind: "frame", message: error instanceof Error ? error.message : "Frame unavailable" });
+        const typed = error as { message?: string; status?: number };
+        if (typed.status === 409 && attempt < maxAttempts) {
+          await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
+          continue;
         }
-      } finally {
-        schedule();
+        if (runStore.getSnapshot().activeRun?.run_id === runId) {
+          runStore.setError({
+            kind: "http",
+            message: localizeMessage(typed.message ?? "Native SUMO GUI unavailable"),
+            status: typed.status,
+          });
+        }
+        if (nativeGuiAutofocusRun.current === runId) nativeGuiAutofocusRun.current = null;
+        return;
       }
-    };
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [snapshot.activeRun?.run_id, snapshot.activeRun?.status, snapshot.connection]);
+    }
+  };
 
   const onEvent = (runId: string, event: RunEvent) => {
     if (event.run_id !== runId || runStore.getSnapshot().activeRun?.run_id !== runId) return;
@@ -185,13 +177,11 @@ export default function App() {
     }
     if (event.type === "status" && typeof event.status === "string") {
       runStore.setRunStatus(event.status as RunStatus);
+      if (event.status === "running" && nativeGuiAutofocusRun.current === runId) {
+        void focusNativeGuiWhenReady(runId);
+      }
       if (isTerminalStatus(event.status)) {
-        const waiter = terminalWaiters.current.get(runId);
-        if (waiter) {
-          window.clearTimeout(waiter.timer);
-          terminalWaiters.current.delete(runId);
-          waiter.resolve();
-        }
+        if (nativeGuiAutofocusRun.current === runId) nativeGuiAutofocusRun.current = null;
         closeSubscription(runId);
         void loadResults();
         void api.getSafety(runId).then((safety) => runStore.setSafety(safety)).catch(() => undefined);
@@ -215,13 +205,7 @@ export default function App() {
         const current = runStore.getSnapshot();
         if (!isTerminalStatus(current.activeRun?.status)) {
           runStore.setConnection("disconnected");
-          runStore.setError({ kind: "disconnected", message: "Realtime connection closed" });
-          const waiter = terminalWaiters.current.get(runId);
-          if (waiter) {
-            window.clearTimeout(waiter.timer);
-            terminalWaiters.current.delete(runId);
-            waiter.reject(new Error("Realtime connection closed before the demo completed"));
-          }
+          runStore.setError({ kind: "disconnected", message: "实时连接已关闭" });
         }
       },
       () => {
@@ -238,15 +222,21 @@ export default function App() {
     subscriptionRef.current = subscription;
   };
 
-  const submitDemo = async (algorithm: AlgorithmKey, waitForTerminal = false) => {
+  const submitDemo = async (algorithm: AlgorithmKey) => {
     closeSubscription();
+    nativeGuiAutofocusRun.current = null;
     runStore.resetRun();
     runStore.setSelection({ selectedAlgorithm: algorithm });
     const selection = runStore.getSnapshot();
-    const durationSeconds = boundedNumber(selection.selectedDuration, 5, 3600, 30);
+    const durationSeconds = boundedNumber(selection.selectedDuration, 5, 3600, 300);
     const warmupSeconds = boundedNumber(selection.selectedWarmup, 0, Math.max(0, durationSeconds - 1), 0);
+    const guiDelayMs = Math.round(boundedNumber(selection.selectedGuiDelayMs, 0, 2000, 100));
     const flowMultiplier = boundedNumber(selection.selectedLoad, 0.5, 2, 1);
     const scene = scenes.find((candidate) => candidate.intersection_id === selection.selectedScene);
+    const sceneStepLength = scene?.step_length && scene.step_length > 0 ? scene.step_length : 1;
+    const stepLength = Number.isFinite(selection.selectedStepLength) && selection.selectedStepLength > 0
+      ? selection.selectedStepLength
+      : sceneStepLength;
     const laneTarget = scene?.lane_ids[0] ?? "lane-1";
     const edgeTarget = laneTarget.includes("_")
       ? laneTarget.slice(0, laneTarget.lastIndexOf("_"))
@@ -269,23 +259,16 @@ export default function App() {
         seed: boundedNumber(selection.selectedSeed, 0, 2147483647, 42),
         duration_seconds: durationSeconds,
         warmup_seconds: warmupSeconds,
+        gui_delay_ms: guiDelayMs,
+        step_length_override: stepLength,
         disturbance,
       });
       if (!mounted.current) return;
       runStore.setActiveRun(run);
-      const terminalPromise = waitForTerminal
-        ? new Promise<void>((resolve, reject) => {
-            const timer = window.setTimeout(() => {
-              terminalWaiters.current.delete(run.run_id);
-              reject(new Error("Judge demo timed out before terminal status"));
-            }, 180_000);
-            terminalWaiters.current.set(run.run_id, { resolve, reject, timer });
-          })
-        : Promise.resolve();
+      nativeGuiAutofocusRun.current = run.run_id;
       connectEvents(run.run_id);
-      await terminalPromise;
     } catch (error: unknown) {
-      runStore.setError({ kind: "network", message: error instanceof Error ? error.message : "Unable to start demo" });
+      runStore.setError({ kind: "network", message: localizeMessage(error instanceof Error ? error.message : "无法启动演示") });
       throw error;
     }
   };
@@ -304,23 +287,6 @@ export default function App() {
     }
   };
 
-  const runJudgeSequence = async () => {
-    if (startPendingRef.current) return;
-    startPendingRef.current = true;
-    setStartPending(true);
-    try {
-      await submitDemo("fixed_time", true);
-      await submitDemo("capacity_aware_maxpressure", true);
-      await loadResults();
-      if (mounted.current) setView("comparison");
-    } catch {
-      // submitDemo already exposes the actionable error in the console.
-    } finally {
-      startPendingRef.current = false;
-      if (mounted.current) setStartPending(false);
-    }
-  };
-
   const reconnectEvents = () => {
     const runId = runStore.getSnapshot().activeRun?.run_id;
     if (runId && !isTerminalStatus(runStore.getSnapshot().activeRun?.status)) connectEvents(runId);
@@ -331,18 +297,13 @@ export default function App() {
     if (!runId) return;
     try {
       const result = await api.stopRun(runId);
-      const waiter = terminalWaiters.current.get(runId);
-      if (waiter) {
-        window.clearTimeout(waiter.timer);
-        terminalWaiters.current.delete(runId);
-        waiter.reject(new Error("Judge sequence stopped by the user"));
-      }
+      if (nativeGuiAutofocusRun.current === runId) nativeGuiAutofocusRun.current = null;
       closeSubscription(runId);
       runStore.setActiveRun(result);
       runStore.setConnection("idle");
       void loadResults();
     } catch (error: unknown) {
-      runStore.setError({ kind: "http", message: error instanceof Error ? error.message : "Unable to stop run" });
+      runStore.setError({ kind: "http", message: localizeMessage(error instanceof Error ? error.message : "无法停止运行") });
     }
   };
 
@@ -353,7 +314,37 @@ export default function App() {
       await api.openNativeGui(runId);
     } catch (error: unknown) {
       const typed = error as { message?: string; status?: number };
-      runStore.setError({ kind: "http", message: typed.message ?? "Native SUMO GUI unavailable", status: typed.status });
+      runStore.setError({ kind: "http", message: localizeMessage(typed.message ?? "Native SUMO GUI unavailable"), status: typed.status });
+    }
+  };
+
+  const changeGuiDelay = async (requestedDelayMs: number) => {
+    if (guiDelayPending) return;
+    const delayMs = Math.round(boundedNumber(requestedDelayMs, 0, 2000, 100));
+    const current = runStore.getSnapshot().activeRun;
+    if (current?.status !== "running") {
+      runStore.setSelection({ selectedGuiDelayMs: delayMs });
+      return;
+    }
+    setGuiDelayPending(true);
+    try {
+      const confirmed = await api.setGuiDelay(current.run_id, delayMs);
+      if (
+        mounted.current
+        && runStore.getSnapshot().activeRun?.run_id === current.run_id
+      ) {
+        runStore.setSelection({ selectedGuiDelayMs: confirmed.delay_ms });
+        runStore.setError(null);
+      }
+    } catch (error: unknown) {
+      const typed = error as { message?: string; status?: number };
+      runStore.setError({
+        kind: "http",
+        message: localizeMessage(typed.message ?? "无法调整 GUI 步进延迟"),
+        status: typed.status,
+      });
+    } finally {
+      if (mounted.current) setGuiDelayPending(false);
     }
   };
 
@@ -361,7 +352,7 @@ export default function App() {
     try {
       setOpenedResult(await api.getResult(runId));
     } catch (error: unknown) {
-      setResultsError(error instanceof Error ? error.message : "Unable to load sealed summary");
+      setResultsError(localizeMessage(error instanceof Error ? error.message : "无法加载封存摘要"));
     }
   };
 
@@ -369,13 +360,13 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">XH-202613 · Judge release</p>
-          <h1>Judge Simulation Console</h1>
+          <p className="eyebrow">XH-202613 · 评审版本</p>
+          <h1>交通信号控制仿真评审台</h1>
         </div>
-        <nav aria-label="Primary">
-          {["simulation", "comparison", "history", "scene"].map((key) => (
+        <nav aria-label="主导航">
+          {Object.entries({ simulation: "实时仿真", comparison: "算法对比", history: "运行历史", scene: "场景清单" }).map(([key, label]) => (
             <button key={key} type="button" onClick={() => setView(key)} aria-current={view === key ? "page" : undefined}>
-              {key[0].toUpperCase() + key.slice(1)}
+              {label}
             </button>
           ))}
         </nav>
@@ -387,10 +378,11 @@ export default function App() {
           scenes={scenes}
           algorithms={algorithms}
           startPending={startPending}
+          guiDelayPending={guiDelayPending}
           onStart={() => void startQuickDemo()}
-          onSequence={() => void runJudgeSequence()}
           onStop={() => void stopRun()}
           onNativeGui={() => void showNativeGui()}
+          onGuiDelayChange={(delayMs) => void changeGuiDelay(delayMs)}
           onSceneChange={(selectedScene) => runStore.setSelection({ selectedScene })}
           onAlgorithmChange={(selectedAlgorithm) => runStore.setSelection({ selectedAlgorithm: selectedAlgorithm as RunStoreSnapshot["selectedAlgorithm"] })}
           onSelectionChange={(selection) => runStore.setSelection(selection)}
@@ -402,7 +394,7 @@ export default function App() {
       ) : view === "history" ? (
         <>
           <HistoryView results={results} loading={resultsLoading} error={resultsError} onOpenResult={(runId) => void openResult(runId)} />
-          {openedResult && <pre className="result-detail" aria-label="Sealed result detail">{JSON.stringify(openedResult, null, 2)}</pre>}
+          {openedResult && <pre className="result-detail" aria-label="封存结果详情">{JSON.stringify(openedResult, null, 2)}</pre>}
         </>
       ) : (
         <SceneView scenes={scenes} loading={scenesLoading} error={sceneError} />

@@ -9,10 +9,23 @@ import csv
 import logging
 from pathlib import Path
 from typing import List
+from uuid import uuid4
 
 from core.types import JointState, SimulationMetrics
 
 logger = logging.getLogger(__name__)
+
+
+def _write_csv_atomic(path: Path, fieldnames: list[str], rows: List[dict]) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        with temporary.open("w", newline="", encoding="utf-8") as output:
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class MetricsCollector:
@@ -51,10 +64,7 @@ class MetricsCollector:
             return
 
         fieldnames = list(self._rows[0].keys())
-        with open(self.output_file, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(self._rows)
+        _write_csv_atomic(self.output_file, fieldnames, self._rows)
 
         logger.info("已保存 %d 条记录到 %s", len(self._rows), self.output_file)
 
@@ -96,8 +106,5 @@ class StepLogger:
             logger.warning("没有数据可保存")
             return
         fieldnames = list(self._rows[0].keys())
-        with open(self.output_file, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(self._rows)
+        _write_csv_atomic(self.output_file, fieldnames, self._rows)
         logger.info("已保存每步日志 %d 行到 %s", len(self._rows), self.output_file)

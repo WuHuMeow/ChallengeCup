@@ -1,21 +1,41 @@
 import csv
 import json
+from pathlib import Path
 import threading
+import time
 
 import pytest
 from unittest.mock import patch
 
 from algorithms.fixed_time import FixedTimeAlgorithm
-from core.types import ControlAction, Scene, SceneMeta
+from algorithms.rule_adaptive import RuleAdaptiveAlgorithm
+from algorithms.capacity_aware_max_pressure import (
+    CapacityAwareConfig,
+    CapacityAwareMaxPressureAlgorithm,
+)
+from core.movements import MovementKey, MovementState, PhaseMovementState
+from core.run_models import RunStatus
+from core.timebase import SimulationWindow, seconds_for_steps
+from core.types import ActionResult, ControlAction, JointState, Scene, SceneMeta
 from engine.artifacts import RunArtifacts
-from engine.edge_channel import EdgeChannel
+from engine.edge_channel import EdgeChannel, EdgeMessage
 from engine.mock_bridge import MockBridge
 from engine.runner import SimulationRunner
+from experiments.evidence import (
+    EvidenceReader,
+    EvidenceWriter,
+    RunManifest,
+    canonical_mapping_sha256,
+)
+
+
+_VALID_NET = Path(__file__).resolve().parents[1] / "data" / "intersection_data" / "1" / "sumo工程" / "demo_1.net.xml"
 
 
 class CountingAlgorithm(FixedTimeAlgorithm):
     def __init__(self):
         self.steps: list[int] = []
+        self.resolved_timing_plan = None
 
     def step(self, state):
         self.steps.append(state.step)
@@ -30,12 +50,354 @@ class InvalidActionAlgorithm(FixedTimeAlgorithm):
         return [ControlAction(state.tls_id, "set_phase", "north", "bad phase")]
 
 
+class StaleActionAlgorithm(CountingAlgorithm):
+    def step(self, state):
+        return [
+            ControlAction(
+                state.tls_id,
+                "set_phase_duration",
+                5.0,
+                "stale delayed decision",
+                issued_at=0.0,
+                expires_at=0.0,
+            )
+        ]
+
+
+class RejectedCapacityActionBridge(MockBridge):
+    """Use the existing action validator to reject a legal algorithm target."""
+
+    def get_state(self):
+        return JointState(
+            step=self._current_step,
+            timestamp=float(self._current_step) * self.step_length,
+            tls_id=self.tls_id,
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=30.0,
+            phase_movements=(
+                PhaseMovementState(
+                    0,
+                    "G",
+                    (MovementState(
+                        MovementKey("in_current", "out_current"),
+                        1.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                    ),),
+                    30.0,
+                ),
+                PhaseMovementState(
+                    2,
+                    "G",
+                    (MovementState(
+                        MovementKey("in_target", "out_target"),
+                        5.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                    ),),
+                    30.0,
+                ),
+            ),
+            legal_phase_transitions=((0, 2),),
+        )
+
+
+class ClearanceCapacityActionBridge(MockBridge):
+    def __init__(self):
+        super().__init__(tls_id="tls_clearance", phase_count=4)
+        self._phases = (
+            PhaseMovementState(
+                0,
+                "Grr",
+                (MovementState(
+                    MovementKey("in_current", "out_current"),
+                    1.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                ),),
+                30.0,
+            ),
+            PhaseMovementState(1, "yrr", (), 3.0),
+            PhaseMovementState(2, "rrr", (), 1.0),
+            PhaseMovementState(
+                3,
+                "rGG",
+                (MovementState(
+                    MovementKey("in_target", "out_target"),
+                    9.0, 0.0, 10.0, 10.0, 0.0, 1.0, 1.0,
+                ),),
+                30.0,
+            ),
+        )
+
+    def get_state(self):
+        current_phase = (0, 1, 2, 3)[self._current_step]
+        elapsed = (10.0, 3.0, 1.0, 0.0)[self._current_step]
+        return JointState(
+            step=self._current_step,
+            timestamp=(0.0, 3.0, 4.0, 5.0)[self._current_step],
+            tls_id=self.tls_id,
+            current_phase=current_phase,
+            current_phase_name=f"p{current_phase}",
+            elapsed_phase_time=elapsed,
+            phase_movements=self._phases,
+            legal_phase_transitions=((0, 1), (1, 2), (2, 3)),
+        )
+
+    def step(self):
+        self._current_step += 1
+        return (0.0, 3.0, 4.0, 5.0)[self._current_step]
+
+
+class _SafetyExecutorSpy:
+    def __init__(self):
+        self.calls = []
+
+    def apply(self, actions, state, bridge):
+        self.calls.append((tuple(actions), state, bridge))
+        return ()
+
+
+class _PendingStartupProgramBridge(MockBridge):
+    def __init__(self):
+        super().__init__()
+        self._pending_startup_actions = (
+            ControlAction.for_simulation_time(
+                self.tls_id,
+                "set_program",
+                {
+                    "program_id": "variant_safe",
+                    "phases": [
+                        {"duration": 30.0, "state": "Gr"},
+                        {"duration": 3.0, "state": "yr"},
+                        {"duration": 1.0, "state": "rr"},
+                        {"duration": 30.0, "state": "rG"},
+                        {"duration": 3.0, "state": "ry"},
+                        {"duration": 1.0, "state": "rr"},
+                    ],
+                },
+                "install validated variant signal program",
+                0.0,
+            ),
+        )
+
+    def take_startup_actions(self):
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
+
+
+class _ReconnectStartupProgramBridge(_PendingStartupProgramBridge):
+    def __init__(self):
+        super().__init__()
+        self._pending_startup_actions = ()
+        self._reconnected = False
+
+    def step(self):
+        if not self._reconnected:
+            self._reconnected = True
+            self._current_step = 0
+            self._pending_startup_actions = (
+                ControlAction.for_simulation_time(
+                    self.tls_id,
+                    "set_program",
+                    {
+                        "program_id": "variant_safe",
+                        "phases": [
+                            {"duration": 30.0, "state": "Gr"},
+                            {"duration": 3.0, "state": "yr"},
+                            {"duration": 1.0, "state": "rr"},
+                            {"duration": 30.0, "state": "rG"},
+                            {"duration": 3.0, "state": "ry"},
+                            {"duration": 1.0, "state": "rr"},
+                        ],
+                    },
+                    "install validated variant signal program",
+                    0.0,
+                ),
+            )
+            return 0.0
+        return super().step()
+
+
+class _RejectedStartupProgramBridge(_PendingStartupProgramBridge):
+    def __init__(self):
+        super().__init__()
+        action = self._pending_startup_actions[0]
+        self._pending_startup_actions = (
+            ControlAction.for_simulation_time(
+                action.tls_id,
+                action.action_type,
+                {
+                    "program_id": "variant_unsafe",
+                    "phases": [
+                        {"duration": 30.0, "state": "Gr"},
+                        {"duration": 1.0, "state": "rr"},
+                        {"duration": 30.0, "state": "rG"},
+                        {"duration": 3.0, "state": "ry"},
+                        {"duration": 1.0, "state": "rr"},
+                    ],
+                },
+                action.reason,
+                0.0,
+            ),
+        )
+
+
+class _MultiTlsStartupProgramBridge(MockBridge):
+    def __init__(self):
+        super().__init__(tls_id="tls_main")
+        self._pending_startup_actions = self._startup_actions()
+        self._reconnected = False
+
+    @staticmethod
+    def _startup_actions():
+        safe_phases = [
+            {"duration": 30.0, "state": "Gr"},
+            {"duration": 3.0, "state": "yr"},
+            {"duration": 1.0, "state": "rr"},
+            {"duration": 30.0, "state": "rG"},
+            {"duration": 3.0, "state": "ry"},
+            {"duration": 1.0, "state": "rr"},
+        ]
+        unsafe_phases = [
+            {"duration": 30.0, "state": "Gr"},
+            {"duration": 1.0, "state": "rr"},
+            {"duration": 30.0, "state": "rG"},
+            {"duration": 3.0, "state": "ry"},
+            {"duration": 1.0, "state": "rr"},
+        ]
+        return (
+            ControlAction.for_simulation_time(
+                "tls_main",
+                "set_program",
+                {"program_id": "variant_main", "phases": safe_phases},
+                "install validated variant signal program",
+                0.0,
+            ),
+            ControlAction.for_simulation_time(
+                "tls_side",
+                "set_program",
+                {"program_id": "variant_side", "phases": unsafe_phases},
+                "install validated variant signal program",
+                0.0,
+            ),
+        )
+
+    def take_startup_actions(self):
+        actions = self._pending_startup_actions
+        self._pending_startup_actions = ()
+        return actions
+
+    def get_startup_state(self, tls_id):
+        return JointState(
+            step=0,
+            timestamp=0.0,
+            tls_id=tls_id,
+            current_phase=0,
+            current_phase_name="p0",
+            elapsed_phase_time=0.0,
+        )
+
+    def _apply_actions(self, actions):
+        results = []
+        for action in actions:
+            if action.tls_id not in {"tls_main", "tls_side"}:
+                results.append(
+                    ActionResult(action, False, "unknown tls", "unknown_tls")
+                )
+                continue
+            self._applied_actions.append(action)
+            results.append(ActionResult(action, True, "applied"))
+        return results
+
+    def step(self):
+        if not self._reconnected:
+            self._reconnected = True
+            self._pending_startup_actions = self._startup_actions()
+            return 0.0
+        return super().step()
+
+
 def make_scene() -> Scene:
     return Scene(SceneMeta(
         intersection_id="1", name="test",
-        sumo_net="x.net.xml", sumo_rou="x.rou.xml", sumo_flow="x.flow.xml",
+        sumo_net=_VALID_NET, sumo_rou="x.rou.xml", sumo_flow="x.flow.xml",
         sumo_turn="x.turn.xml", sumo_cfg="x.sumocfg", timing_xlsx="x.xlsx",
     ))
+
+
+class _FirstStepBridge(MockBridge):
+    def __init__(self, first_step: threading.Event):
+        super().__init__()
+        self.first_step = first_step
+
+    def step(self):
+        simulation_time = super().step()
+        if self._current_step == 1:
+            self.first_step.set()
+        return simulation_time
+
+
+def test_gui_delay_can_be_changed_while_runner_is_waiting(tmp_path):
+    first_step = threading.Event()
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=_FirstStepBridge(first_step),
+        sumo_binary="sumo-gui.exe",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=500,
+    )
+    worker = threading.Thread(target=lambda: runner.run(2), daemon=True)
+
+    worker.start()
+    assert first_step.wait(timeout=1)
+    assert worker.is_alive()
+    changed_at = time.monotonic()
+
+    assert runner.set_gui_delay(0) == 0
+    worker.join(timeout=0.3)
+
+    assert not worker.is_alive()
+    assert time.monotonic() - changed_at < 0.3
+
+
+def test_gui_delay_wait_is_interrupted_promptly_by_stop(tmp_path):
+    first_step = threading.Event()
+    stop_event = threading.Event()
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=_FirstStepBridge(first_step),
+        sumo_binary="sumo-gui",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=2000,
+    )
+    worker = threading.Thread(
+        target=lambda: runner.run(3, stop_event=stop_event),
+        daemon=True,
+    )
+
+    worker.start()
+    assert first_step.wait(timeout=1)
+    stopped_at = time.monotonic()
+    stop_event.set()
+    worker.join(timeout=0.3)
+
+    assert not worker.is_alive()
+    assert time.monotonic() - stopped_at < 0.3
+
+
+def test_headless_runner_ignores_gui_delay(tmp_path):
+    runner = SimulationRunner(
+        make_scene(),
+        CountingAlgorithm(),
+        bridge=MockBridge(),
+        sumo_binary="sumo",
+        output_csv=tmp_path / "metrics.csv",
+        gui_delay_ms=2000,
+    )
+
+    started_at = time.monotonic()
+    runner.run(2)
+
+    assert time.monotonic() - started_at < 0.3
 
 
 def test_delayed_channel_waits_without_stopping_simulation(tmp_path):
@@ -43,12 +405,311 @@ def test_delayed_channel_waits_without_stopping_simulation(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
     runner = SimulationRunner(
         make_scene(), algorithm, bridge=MockBridge(), artifacts=artifacts,
-        state_channel=EdgeChannel(delay_steps=2),
+        state_channel=EdgeChannel(delay_seconds=0.2),
     )
     runner.run(5)
     assert algorithm.steps == [0, 1, 2]
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
     assert [row["type"] for row in events].count("channel_wait") == 2
+
+
+def test_runner_consumes_an_edge_message_before_calling_the_algorithm(tmp_path):
+    """Removing the envelope adapter would make EdgeChannel reject the bare JointState."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(),
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.0),
+    )
+
+    runner.run(2)
+
+    assert algorithm.steps == [0, 1]
+
+
+def test_runner_binding_rejects_prebuffered_message_from_another_run(tmp_path):
+    """A stale pre-bound envelope must not reach the algorithm after Runner binding."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    channel = EdgeChannel(delay_seconds=0.0)
+    stale_state = MockBridge().get_state()
+    stale_state.step = 99
+    channel.send(EdgeMessage(
+        run_id="stale-run",
+        simulation_time=0.0,
+        sent_at=0.0,
+        expires_at=60.0,
+        payload_version="joint-state.v1",
+        payload=stale_state,
+    ))
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(),
+        artifacts=artifacts,
+        state_channel=channel,
+    )
+
+    runner.run(1)
+
+    assert algorithm.steps == [0]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [(row["type"], row["detail"]) for row in events if row["type"] == "message_rejected"] == [
+        ("message_rejected", "stale_run_id=stale-run"),
+    ]
+
+
+def _begin_strict_evidence(
+    artifacts: RunArtifacts,
+    *,
+    duration_seconds: float = 1.0,
+    warmup_seconds: float = 0.0,
+) -> None:
+    source_hashes = {"net": "c" * 64}
+    EvidenceWriter(artifacts.run_dir).begin(RunManifest(
+        run_id=artifacts.run_id,
+        code_commit="a" * 40,
+        scene_manifest_sha256=canonical_mapping_sha256(source_hashes),
+        algorithm=artifacts.algorithm,
+        parameters={},
+        flow_multiplier=artifacts.flow_multiplier,
+        seed=artifacts.seed,
+        duration_seconds=duration_seconds,
+        warmup_seconds=warmup_seconds,
+        derived_steps=int(duration_seconds),
+        sumo_version="1.27.1",
+        python_version="3.12.13",
+        prediction_enabled=False,
+        scene_id=artifacts.intersection_id,
+        scene_source_sha256=source_hashes,
+        step_length=1.0,
+        requested_seconds=duration_seconds,
+    ))
+
+
+def test_runner_routes_every_action_batch_through_the_safety_executor(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = MockBridge()
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+    )
+    safety_executor = _SafetyExecutorSpy()
+    runner.safety_executor = safety_executor
+
+    runner.run(1)
+
+    assert len(safety_executor.calls) == 1
+    actions, state, called_bridge = safety_executor.calls[0]
+    assert actions == ()
+    assert state.timestamp == 0.0
+    assert called_bridge is bridge
+
+
+def test_runner_applies_and_records_pending_startup_program_through_safety(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _PendingStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    assert [action.action_type for action in bridge._applied_actions] == [
+        "set_program"
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [row["type"] for row in events[:2]] == [
+        "run_start",
+        "action_applied",
+    ]
+    applied = [row for row in events if row["type"] == "action_applied"]
+    assert len(applied) == 1
+    assert applied[0]["action_type"] == "set_program"
+    assert applied[0]["status"] == "accepted"
+    assert applied[0]["accepted"] == "true"
+    assert applied[0]["simulation_seconds"] == "0.0"
+    assert "install validated variant signal program" in applied[0]["detail"]
+
+
+def test_runner_reapplies_a_variant_program_through_safety_after_reconnect(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _ReconnectStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(2)
+
+    assert [action.action_type for action in bridge._applied_actions] == [
+        "set_program"
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert len([row for row in events if row["type"] == "action_applied"]) == 1
+
+
+def test_fixed_time_continues_after_rejected_variant_startup_program(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _RejectedStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = [row for row in events if row["type"] == "action_rejected"]
+    assert [row["reason"] for row in rejected] == ["unsafe_startup_program"]
+
+
+def test_runner_correlates_each_tls_startup_result_on_start_and_reconnect(tmp_path):
+    algorithm = CountingAlgorithm()
+    bridge = _MultiTlsStartupProgramBridge()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(2)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    startup_results = [
+        row for row in events
+        if row["type"] in {"action_applied", "action_rejected"}
+        and "install validated variant signal program" in row["detail"]
+    ]
+    assert [
+        (
+            json.loads(row["entity_ids"]),
+            row["status"],
+            row["reason"],
+        )
+        for row in startup_results
+    ] == [
+        (["tls_main"], "accepted", ""),
+        (["tls_side"], "rejected", "unsafe_startup_program"),
+        (["tls_main"], "accepted", ""),
+        (["tls_side"], "rejected", "unsafe_startup_program"),
+    ]
+
+
+def test_runner_records_rejected_channel_event_at_message_simulation_time(tmp_path):
+    """Channel rejection evidence must retain envelope time rather than runner step."""
+    bridge = MockBridge(step_length=12.5)
+    bridge._current_step = 1
+    artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=bridge,
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.0, allowed_directions=["north"]),
+    )
+
+    runner.run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = next(row for row in events if row["type"] == "message_rejected")
+    assert rejected["detail"] == "disallowed_direction=east"
+    assert rejected["simulation_seconds"] == "12.5"
+
+
+def test_runner_records_stale_action_rejection_and_safe_fallback(tmp_path):
+    bridge = MockBridge()
+    bridge._current_step = 1
+    artifacts = RunArtifacts.create(tmp_path, "1", "stale", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        StaleActionAlgorithm(),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    rejected = next(row for row in events if row["type"] == "action_rejected")
+    assert rejected["reason"] == "stale_action"
+    assert "fallback=fixed_timing_unchanged" in rejected["detail"]
+    assert bridge._applied_actions == []
+
+
+def test_half_second_channel_releases_after_exactly_two_ticks(tmp_path):
+    """A two-step delay is one simulation second, and delivers states 0, 1, 2."""
+    algorithm = CountingAlgorithm()
+    artifacts = RunArtifacts.create(tmp_path, "1", algorithm.name, 1.0, 42)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=MockBridge(step_length=0.5),
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=1.0),
+    )
+
+    runner.run(5)
+
+    assert algorithm.steps == [0, 1, 2]
+
+
+@pytest.mark.parametrize("step_length", [1.0, 81 / 997])
+def test_explicit_window_executes_exact_tick_count(tmp_path, step_length):
+    """Catch floating-point seconds roundtrips adding an explicit smoke tick."""
+    algorithm = CountingAlgorithm()
+    bridge = MockBridge(step_length=step_length)
+    runner = SimulationRunner(
+        make_scene(),
+        algorithm,
+        bridge=bridge,
+        output_csv=tmp_path / "metrics.csv",
+        step_length=step_length,
+    )
+
+    runner.run(SimulationWindow(
+        seconds_for_steps(100, step_length),
+        0.0,
+        explicit_steps=100,
+    ))
+
+    assert len(algorithm.steps) == 100
+    assert bridge._current_step == 100
+
+
+def test_delayed_valid_control_action_is_applied_before_message_expiry(tmp_path):
+    bridge = MockBridge(step_length=0.1)
+    artifacts = RunArtifacts.create(tmp_path, "1", "actuated", 1.0, 42)
+
+    SimulationRunner(
+        make_scene(),
+        RuleAdaptiveAlgorithm(
+            min_green=0.1,
+            max_green=60.0,
+            queue_threshold=0.0,
+        ),
+        bridge=bridge,
+        artifacts=artifacts,
+        state_channel=EdgeChannel(delay_seconds=0.2),
+    ).run(5)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert not any(row["reason"] == "stale_action" for row in events)
+    assert any(row["type"] == "action_applied" for row in events)
+    assert bridge._applied_actions[0].issued_at == 0.1
+    assert bridge._applied_actions[0].expires_at == 60.1
 
 
 def test_successful_run_writes_completed_metadata(tmp_path):
@@ -64,6 +725,181 @@ def test_successful_run_writes_completed_metadata(tmp_path):
     assert payload["sumo_version"]
 
 
+def test_capacity_aware_run_metadata_records_the_frozen_prediction_manifest(tmp_path):
+    """Dropping algorithm provenance would leave prediction units unauditable in a real run."""
+    artifacts = RunArtifacts.create(tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42)
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(),
+        bridge=MockBridge(),
+        artifacts=artifacts,
+    ).run(1)
+
+    manifest = json.loads(artifacts.metadata.read_text(encoding="utf-8"))["algorithm_manifest"]
+    assert manifest["prediction_enabled"] is False
+    assert manifest["horizon_seconds"] == 300.0
+    assert manifest["prediction_weight"] == 0.15
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audit = next(json.loads(row["detail"]) for row in events if row["type"] == "algorithm_audit")
+    assert audit["layer"] == "M3"
+    assert audit["safety_boundary"] == "safety_executor"
+    assert audit["final_decision"]["action"] == "no_action"
+
+
+def test_runner_audit_correlates_shared_rejected_action_result(tmp_path):
+    """The persisted decision must include the validator result from apply_actions()."""
+    artifacts = RunArtifacts.create(tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42)
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m4()),
+        bridge=RejectedCapacityActionBridge(),
+        artifacts=artifacts,
+    ).run(1)
+
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audit = next(json.loads(row["detail"]) for row in events if row["type"] == "algorithm_audit")
+    rejected = next(row for row in events if row["type"] == "action_rejected")
+    outcome = audit["final_decision"]["action_results"][0]
+    assert rejected["detail"].startswith("type=set_phase value=2")
+    assert outcome["action_type"] == "set_phase"
+    assert outcome["value"] == 2
+    assert outcome["accepted"] is False
+    assert outcome["reason_code"] == "clearance_path_unavailable"
+
+
+def test_runner_audit_keeps_green_request_while_bridge_executes_clearance(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "capacity_aware_maxpressure", 1.0, 42
+    )
+    bridge = ClearanceCapacityActionBridge()
+
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(CapacityAwareConfig.m3()),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(3)
+
+    assert [
+        (action.action_type, action.value) for action in bridge._applied_actions
+    ] == [
+        ("set_phase", 1),
+        ("set_phase_duration", 3.0),
+        ("set_phase", 2),
+        ("set_phase_duration", 1.0),
+        ("set_phase", 3),
+        ("set_phase_duration", 30.0),
+    ]
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    audits = [
+        json.loads(row["detail"])
+        for row in events
+        if row["type"] == "algorithm_audit"
+    ]
+    assert [audit["selected_phase"] for audit in audits] == [3, 3, 3]
+    assert [
+        [
+            (result["action_type"], result["value"], result["accepted"])
+            for result in audit["final_decision"]["action_results"]
+        ]
+        for audit in audits
+    ] == [
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+        [("set_phase", 3, True), ("set_phase_duration", 30.0, True)],
+    ]
+
+
+def test_runner_uses_capacity_algorithm_non_default_minimum_green(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path,
+        "1",
+        "capacity_aware_maxpressure",
+        1.0,
+        42,
+    )
+    bridge = ClearanceCapacityActionBridge()
+    config = CapacityAwareConfig(True, True, False, 12.0, 30.0, 0.9)
+
+    SimulationRunner(
+        make_scene(),
+        CapacityAwareMaxPressureAlgorithm(config),
+        bridge=bridge,
+        artifacts=artifacts,
+    ).run(1)
+
+    assert bridge._applied_actions == []
+    events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
+    assert [
+        row["reason"]
+        for row in events
+        if row["type"] == "action_rejected"
+    ] == ["minimum_green_violation", "phase_change_rejected"]
+
+
+class _StartRecordingBridge(MockBridge):
+    def __init__(self):
+        super().__init__()
+        self.start_calls = 0
+
+    def start(self):
+        self.start_calls += 1
+        super().start()
+
+
+def test_invalid_fixed_plan_fails_before_starting_the_bridge(tmp_path):
+    invalid_net = tmp_path / "invalid.net.xml"
+    invalid_net.write_text("<net/>", encoding="utf-8")
+    scene = Scene(
+        SceneMeta(
+            intersection_id="invalid",
+            name="invalid",
+            sumo_net=invalid_net,
+            sumo_rou=tmp_path / "routes.rou.xml",
+            sumo_flow=tmp_path / "flow.xml",
+            sumo_turn=tmp_path / "turn.xml",
+            sumo_cfg=tmp_path / "run.sumocfg",
+            timing_xlsx=tmp_path / "timing.xlsx",
+        )
+    )
+    bridge = _StartRecordingBridge()
+    artifacts = RunArtifacts.create(tmp_path, "invalid", "fixed_time", 1.0, 42)
+
+    with pytest.raises(ValueError, match="timing plan"):
+        SimulationRunner(scene, FixedTimeAlgorithm(), bridge=bridge, artifacts=artifacts).run(1)
+
+    assert bridge.start_calls == 0
+
+
+def test_capacity_aware_invalid_lane_capacity_fails_before_starting_bridge(tmp_path):
+    """Capacity-aware formal validation must name bad lanes before TraCI starts."""
+    net = tmp_path / "invalid-capacity.net.xml"
+    net.write_text(
+        "<net><edge id='in'><lane id='in_0' length='0'/></edge>"
+        "<edge id='out'><lane id='out_0' length='20'/></edge>"
+        "<tlLogic id='tls' type='static' programID='0' offset='0'>"
+        "<phase duration='30' state='G'/></tlLogic>"
+        "<connection from='in' to='out' fromLane='0' toLane='0' tl='tls' linkIndex='0'/>"
+        "</net>",
+        encoding="utf-8",
+    )
+    scene = Scene(SceneMeta(
+        intersection_id="invalid", name="invalid", sumo_net=net,
+        sumo_rou=tmp_path / "routes.rou.xml", sumo_flow=tmp_path / "flow.xml",
+        sumo_turn=tmp_path / "turn.xml", sumo_cfg=tmp_path / "run.sumocfg",
+        timing_xlsx=tmp_path / "timing.xlsx",
+    ))
+    bridge = _StartRecordingBridge()
+    artifacts = RunArtifacts.create(tmp_path, "invalid", "capacity_aware_maxpressure", 1.0, 42)
+
+    with pytest.raises(ValueError, match="in_0"):
+        SimulationRunner(
+            scene, CapacityAwareMaxPressureAlgorithm(), bridge=bridge, artifacts=artifacts
+        ).run(1)
+
+    assert bridge.start_calls == 0
+
+
 def test_invalid_action_is_logged_and_does_not_stop_run(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "invalid", 1.0, 42)
     SimulationRunner(
@@ -76,7 +912,7 @@ def test_invalid_action_is_logged_and_does_not_stop_run(tmp_path):
     assert payload["status"] == "completed"
 
 
-def test_stop_event_writes_stopped_terminal_state(tmp_path):
+def test_stop_event_writes_interrupted_terminal_state(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     stop_event = threading.Event()
     stop_event.set()
@@ -90,9 +926,9 @@ def test_stop_event_writes_stopped_terminal_state(tmp_path):
 
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     events = list(csv.DictReader(artifacts.events.open(encoding="utf-8")))
-    assert payload["status"] == "stopped"
+    assert payload["status"] == "interrupted"
     assert [row["detail"] for row in events if row["type"] == "terminal"] == [
-        "stopped"
+        "interrupted"
     ]
 
 
@@ -194,17 +1030,48 @@ class _OutputBridge(MockBridge):
     def __init__(self, artifacts):
         super().__init__()
         self.artifacts = artifacts
+        self.sumo_version = "1.27.1"
 
     def close(self):
         self.artifacts.tripinfo.write_text(
-            '<tripinfos><tripinfo id="v0" duration="10" timeLoss="2" '
-            'waitingCount="1"><emissions fuel_abs="0.5"/></tripinfo>'
+            '<tripinfos><tripinfo id="v0" depart="0" arrival="10" '
+            'duration="10" timeLoss="2" waitingCount="1">'
+            '<emissions fuel_abs="0.5" CO2_abs="1000"/></tripinfo>'
             "</tripinfos>",
             encoding="utf-8",
         )
         self.artifacts.stats.write_text("<summary/>", encoding="utf-8")
         self.artifacts.trajectory.write_text("<fcd-export/>", encoding="utf-8")
+        self.artifacts.collisions.write_text("<collisions/>", encoding="utf-8")
         super().close()
+
+
+class _MalformedOutputBridge(_OutputBridge):
+    def close(self):
+        super().close()
+        self.artifacts.tripinfo.write_text("<tripinfos>", encoding="utf-8")
+
+
+class _BodyAndCloseInterruptBridge(MockBridge):
+    primary = KeyboardInterrupt("runner primary interrupt")
+    secondary = KeyboardInterrupt("runner cleanup interrupt")
+
+    def get_state(self):
+        raise type(self).primary
+
+    def close(self):
+        raise type(self).secondary
+
+
+class _BodyExitAndCloseInterruptBridge(MockBridge):
+    primary = SystemExit("runner requested exit")
+    secondary = KeyboardInterrupt("runner cleanup interrupt")
+
+    def get_state(self):
+        raise type(self).primary
+
+    def close(self):
+        raise type(self).secondary
 
 
 def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
@@ -222,6 +1089,169 @@ def test_completed_run_writes_exact_summary_after_bridge_close(tmp_path):
     assert payload["metrics"]["avg_travel_time"] == 10
     metadata = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert "summary.json" in metadata["generated_files"]
+
+
+def test_runner_primary_keyboard_interrupt_survives_cleanup_base_exception(
+    tmp_path,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-primary-interrupt"
+    )
+    _begin_strict_evidence(artifacts)
+    _BodyAndCloseInterruptBridge.primary = KeyboardInterrupt(
+        "runner primary interrupt"
+    )
+    _BodyAndCloseInterruptBridge.secondary = KeyboardInterrupt(
+        "runner cleanup interrupt"
+    )
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_BodyAndCloseInterruptBridge(),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert caught.value is _BodyAndCloseInterruptBridge.primary
+    assert json.loads(
+        artifacts.status.read_text(encoding="utf-8")
+    )["status"] == "interrupted"
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_runner_primary_system_exit_survives_cleanup_base_exception(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-primary-exit"
+    )
+    _begin_strict_evidence(artifacts)
+    _BodyExitAndCloseInterruptBridge.primary = SystemExit("runner requested exit")
+    _BodyExitAndCloseInterruptBridge.secondary = KeyboardInterrupt(
+        "runner cleanup interrupt"
+    )
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_BodyExitAndCloseInterruptBridge(),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(SystemExit) as caught:
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert caught.value is _BodyExitAndCloseInterruptBridge.primary
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == "failed"
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_completed_runner_materializes_then_terminalizes_and_seals_evidence(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-completed"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    result = runner.run(SimulationWindow(1.0, 0.0))
+
+    assert result.status is RunStatus.COMPLETED
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+    assert artifacts.hashes.is_file()
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == (
+        "completed"
+    )
+
+
+def test_terminal_event_save_failure_downgrades_without_leaving_completed_summary(
+    tmp_path,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-one-event-save"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+    original_save = runner.event_logger.save
+
+    def fail_for_terminal_save():
+        if any(row["type"] == "terminal" for row in runner.event_logger.rows):
+            raise RuntimeError("terminal event save failed")
+        return original_save()
+
+    with patch.object(
+        runner.event_logger,
+        "save",
+        side_effect=fail_for_terminal_save,
+    ):
+        with pytest.raises(RuntimeError, match="terminal event save failed"):
+            runner.run(SimulationWindow(1.0, 0.0))
+
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == (
+        "failed"
+    )
+    assert not artifacts.summary.exists()
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+def test_completed_materialization_failure_becomes_verifiable_failed_evidence(tmp_path):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id="run-malformed"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_MalformedOutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    with pytest.raises(Exception):
+        runner.run(SimulationWindow(1.0, 0.0))
+
+    assert json.loads(artifacts.status.read_text(encoding="utf-8"))["status"] == "failed"
+    assert not artifacts.summary.exists()
+    assert EvidenceReader.validate(artifacts.run_dir) == []
+
+
+@pytest.mark.parametrize("failing_method", ["write_metadata", "write_status"])
+def test_terminal_metadata_failure_never_leaves_publishable_summary(
+    tmp_path,
+    failing_method,
+):
+    artifacts = RunArtifacts.create(
+        tmp_path, "1", "fixed_time", 1.0, 42, run_id=f"run-{failing_method}"
+    )
+    _begin_strict_evidence(artifacts)
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=_OutputBridge(artifacts),
+        artifacts=artifacts,
+    )
+
+    with patch.object(
+        RunArtifacts,
+        failing_method,
+        side_effect=OSError(f"{failing_method} unavailable"),
+    ):
+        with pytest.raises(OSError, match="unavailable"):
+            runner.run(SimulationWindow(1.0, 0.0))
+
+    assert not artifacts.summary.exists()
+    manifest = json.loads(artifacts.manifest.read_text(encoding="utf-8"))
+    assert manifest["end_status"] == "failed"
+    if artifacts.metadata.exists():
+        metadata = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
+        assert metadata["status"] != "completed"
 
 
 def test_close_failure_marks_metadata_failed(tmp_path):
@@ -257,7 +1287,7 @@ def test_cleanup_failure_still_closes_bridge_and_writes_metadata(tmp_path):
 def test_metadata_uses_traci_server_version(tmp_path):
     artifacts = RunArtifacts.create(tmp_path, "1", "fixed_time", 1.0, 42)
     with patch(
-        "engine.runner.traci.getVersion", return_value=("SUMO 1.27.1", 27)
+        "engine.runner.traci.getVersion", return_value=(22, "SUMO 1.27.1")
     ) as get_version:
         SimulationRunner(
             make_scene(), FixedTimeAlgorithm(), bridge=MockBridge(), artifacts=artifacts
@@ -266,3 +1296,47 @@ def test_metadata_uses_traci_server_version(tmp_path):
     payload = json.loads(artifacts.metadata.read_text(encoding="utf-8"))
     assert payload["sumo_version"] == "1.27.1"
     get_version.assert_called_once()
+
+
+class _TerminalLogFailure:
+    def log(self, _step, event_type, *_args, **_kwargs):
+        if event_type == "terminal":
+            raise RuntimeError("terminal event log failed")
+
+    def save(self):
+        return None
+
+
+def test_terminal_event_uses_final_status_after_cleanup_failure():
+    events = []
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        event_sink=events.append,
+    )
+    runner.event_logger = _TerminalLogFailure()
+
+    with pytest.raises(RuntimeError, match="terminal event log failed"):
+        runner.run(2)
+
+    terminal = [event for event in events if event["type"] == "terminal"]
+    assert terminal[-1]["status"] == "failed"
+    assert terminal[-1]["reason"] == "terminal event log failed"
+
+
+def test_runtime_metrics_event_exposes_actual_signal_phase():
+    events = []
+    runner = SimulationRunner(
+        make_scene(),
+        FixedTimeAlgorithm(),
+        bridge=MockBridge(),
+        event_sink=events.append,
+    )
+
+    runner.run(1)
+
+    metrics = next(event for event in events if event["type"] == "metrics")
+    assert metrics["metrics"]["current_phase"] == 0
+    assert metrics["metrics"]["current_phase_name"] == "phase_0"
+    assert metrics["metrics"]["elapsed_phase_time"] == 0.0

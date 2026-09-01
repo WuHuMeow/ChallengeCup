@@ -1,65 +1,209 @@
 """Shared validation for traffic-signal control actions."""
 
 import math
+from collections.abc import Mapping
 
 from core.types import ControlAction
 
 
-def _fmt(value: float) -> str:
-    """Format one simulation-second value the way rejection details read."""
-    return f"{float(value):g}"
-
-
-def validate_control_action(
+def validate_action_window(
     action: ControlAction,
-    tls_id: str | None,
+    simulation_seconds: float,
+) -> tuple[str | None, str | None]:
+    """Validate optional action issue/expiry metadata in simulation seconds."""
+    if action.issued_at is None and action.expires_at is None:
+        return None, None
+    if action.issued_at is None or action.expires_at is None:
+        return (
+            "invalid_action_window",
+            "action validity requires both issued_at and expires_at",
+        )
+    try:
+        issued_at = float(action.issued_at)
+        expires_at = float(action.expires_at)
+        current = float(simulation_seconds)
+    except (TypeError, ValueError):
+        return "invalid_action_window", "action validity must be numeric"
+    if not all(math.isfinite(value) for value in (issued_at, expires_at, current)):
+        return "invalid_action_window", "action validity must be finite"
+    if issued_at < 0 or expires_at < issued_at:
+        return (
+            "invalid_action_window",
+            f"invalid action window issued={issued_at:g} expires={expires_at:g}",
+        )
+    if current < issued_at:
+        return (
+            "action_not_yet_valid",
+            f"action issued at simulation_seconds={issued_at:g}; current={current:g}",
+        )
+    if current >= expires_at:
+        return (
+            "stale_action",
+            f"action expired at simulation_seconds={expires_at:g}; "
+            f"current={current:g} issued={issued_at:g}",
+        )
+    return None, None
+
+
+def validate_startup_program_safety(
+    program: Mapping[str, object],
     *,
-    phase_count: int | None = None,
-    program_ids: set[str] | None = None,
-) -> tuple[object | None, str | None]:
-    """Return a normalized value or an explicit rejection reason."""
-    if action.tls_id != tls_id:
-        return None, f"unknown tls_id: {action.tls_id!r}"
-    if action.action_type == "set_phase":
-        if isinstance(action.value, bool) or not isinstance(action.value, int):
-            return None, f"set_phase value must be an integer: {action.value!r}"
-        if action.value < 0 or (
-            phase_count is not None and action.value >= phase_count
-        ):
-            upper = phase_count - 1 if phase_count is not None else "unbounded"
+    min_green_seconds: float,
+    yellow_seconds: float,
+    all_red_seconds: float,
+) -> tuple[str | None, str | None]:
+    """Validate one normalized fixed-time program against the safety policy."""
+    phases = program["phases"]
+    service_greens = [
+        index
+        for index, phase in enumerate(phases)
+        if any(signal in phase["state"] for signal in "Gg")
+        and not any(signal in phase["state"] for signal in "Yy")
+    ]
+    if not service_greens:
+        return "unsafe_startup_program", "startup program has no service green phase"
+
+    for index in service_greens:
+        duration = float(phases[index]["duration"])
+        if duration < min_green_seconds:
             return (
-                None,
-                f"set_phase value out of range 0..{upper}: {action.value!r}",
+                "unsafe_startup_program",
+                f"startup program phase={index} green duration={duration:g} "
+                f"requires min_green={min_green_seconds:g}",
             )
-        return action.value, None
-    if action.action_type == "set_phase_duration":
+
+    phase_count = len(phases)
+    for position, green_index in enumerate(service_greens):
+        next_green = service_greens[(position + 1) % len(service_greens)]
+        clearance: list[int] = []
+        cursor = (green_index + 1) % phase_count
+        while cursor != next_green:
+            clearance.append(cursor)
+            cursor = (cursor + 1) % phase_count
+        if not clearance:
+            return (
+                "unsafe_startup_program",
+                f"startup program has direct green-to-green transition "
+                f"phase={green_index}->{next_green}",
+            )
+
+        departing_greens = {
+            signal_index
+            for signal_index, signal in enumerate(phases[green_index]["state"])
+            if signal in "Gg"
+        }
+        yellow_duration_by_signal = {
+            signal_index: 0.0 for signal_index in departing_greens
+        }
+        all_red_duration = 0.0
+        all_red_started = False
+        for index in clearance:
+            phase = phases[index]
+            state = phase["state"]
+            duration = float(phase["duration"])
+            if any(signal in state for signal in "Yy"):
+                if all_red_started:
+                    return (
+                        "unsafe_startup_program",
+                        f"startup program phase={green_index}->{next_green} "
+                        "has yellow after all-red clearance",
+                    )
+                for signal_index in departing_greens:
+                    if state[signal_index] in "Yy":
+                        yellow_duration_by_signal[signal_index] += duration
+            elif all(signal in "rR" for signal in state):
+                all_red_started = True
+                all_red_duration += duration
+            else:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={index} is not yellow or all-red "
+                    f"clearance before green phase={next_green}",
+                )
+
+        for signal_index, yellow_duration in sorted(
+            yellow_duration_by_signal.items()
+        ):
+            if yellow_duration == 0.0:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={green_index}->{next_green} "
+                    f"signal_index={signal_index} is missing yellow clearance; "
+                    f"requires {yellow_seconds:g} simulation seconds",
+                )
+            if yellow_duration < yellow_seconds:
+                return (
+                    "unsafe_startup_program",
+                    f"startup program phase={green_index}->{next_green} "
+                    f"signal_index={signal_index} yellow "
+                    f"clearance={yellow_duration:g} requires {yellow_seconds:g} "
+                    "simulation seconds",
+                )
+        if all_red_duration == 0.0:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} "
+                f"is missing all-red clearance; requires {all_red_seconds:g} "
+                "simulation seconds",
+            )
+        if all_red_duration < all_red_seconds:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={green_index}->{next_green} all-red "
+                f"clearance={all_red_duration:g} requires {all_red_seconds:g} "
+                "simulation seconds",
+            )
+    return None, None
+
+
+def validate_plan_program_safety(
+    program: Mapping[str, object],
+) -> tuple[str | None, str | None]:
+    """Structural validation for startup programs derived from official plans.
+
+    Official multi-stage plans legitimately keep some signal groups green
+    while other groups clear, and may go green-to-all-red without yellow, so
+    the strict algorithm-program policy (min green / yellow / all-red per
+    transition) does not apply to them.  What must still hold: executable
+    structure — numeric positive durations, at least one service green
+    phase, and a consistent signal-state width.
+    """
+    phases = program["phases"]
+    if not isinstance(phases, list) or not phases:
+        return "unsafe_startup_program", "startup program has no phases"
+    widths: set[int] = set()
+    total_duration = 0.0
+    service_greens = 0
+    for index, phase in enumerate(phases):
+        if not isinstance(phase, Mapping):
+            return "unsafe_startup_program", f"startup program phase={index} is malformed"
+        state = str(phase.get("state", ""))
         try:
-            duration = float(action.value)
+            duration = float(phase.get("duration"))
         except (TypeError, ValueError):
             return (
-                None,
-                f"set_phase_duration value must be numeric: {action.value!r}",
+                "unsafe_startup_program",
+                f"startup program phase={index} duration is not numeric",
             )
-        if not math.isfinite(duration):
-            return None, f"set_phase_duration value must be finite: {duration!r}"
-        if duration <= 0:
-            return None, f"set_phase_duration value must be positive: {duration!r}"
-        return duration, None
-    if action.action_type == "set_program":
-        raw = action.value
-        if isinstance(raw, dict):
-            # Structured programs carry their own provenance and are
-            # safety-validated by the executor's program branch.
-            return (raw if raw else None), (
-                None if raw else "set_program value must be non-empty"
+        if not math.isfinite(duration) or duration <= 0:
+            return (
+                "unsafe_startup_program",
+                f"startup program phase={index} duration={duration:g} is invalid",
             )
-        program = str(raw).strip()
-        if not program:
-            return None, "set_program value must be non-empty"
-        if program_ids is not None and program not in program_ids:
-            return None, f"unknown signal program: {program!r}"
-        return program, None
-    return None, f"unknown action_type: {action.action_type!r}"
+        total_duration += duration
+        widths.add(len(state))
+        if any(signal in state for signal in "Gg"):
+            service_greens += 1
+    if len(widths) > 1:
+        return (
+            "unsafe_startup_program",
+            "startup program phases have inconsistent signal-state widths",
+        )
+    if service_greens == 0:
+        return "unsafe_startup_program", "startup program has no service green phase"
+    if total_duration <= 0:
+        return "unsafe_startup_program", "startup program cycle is empty"
+    return None, None
 
 
 def validate_phase_change_timing(
@@ -71,20 +215,18 @@ def validate_phase_change_timing(
     reason_code: str,
     requirement: str,
 ) -> tuple[str | None, str | None]:
-    """Reject a phase change before its required minimum has elapsed.
-
-    A no-op on the current phase is always allowed. The boundary itself
-    (elapsed == required) is accepted.
-    """
-    if action.action_type == "set_phase" and action.value == current_phase:
+    """Return a structured rejection when a phase clearance is incomplete."""
+    if (
+        action.action_type != "set_phase"
+        or action.value == current_phase
+        or elapsed_phase_time >= required_seconds
+    ):
         return None, None
-    if float(elapsed_phase_time) < float(required_seconds):
-        return (
-            reason_code,
-            f"{requirement} requires {_fmt(required_seconds)} simulation "
-            f"seconds; elapsed={_fmt(elapsed_phase_time)}",
-        )
-    return None, None
+    return (
+        reason_code,
+        f"{requirement} requires {required_seconds:g} simulation seconds; "
+        f"elapsed={elapsed_phase_time:g}",
+    )
 
 
 def validate_clearance_duration(
@@ -95,154 +237,136 @@ def validate_clearance_duration(
     reason_code: str,
     requirement: str,
 ) -> tuple[str | None, str | None]:
-    """Reject a phase-duration extension shorter than the clearance need."""
-    remaining = float(required_seconds) - float(elapsed_phase_time)
-    try:
-        requested = float(action.value)
-    except (TypeError, ValueError):
-        requested = float("nan")
-    if remaining > 0 and (not math.isfinite(requested) or requested < remaining):
-        return (
-            reason_code,
-            f"{requirement} requires {_fmt(required_seconds)} simulation "
-            f"seconds; elapsed={_fmt(elapsed_phase_time)} "
-            f"remaining={_fmt(remaining)} requested_duration={_fmt(requested)}",
-        )
-    return None, None
-
-
-def validate_action_window(
-    action: ControlAction,
-    current_simulation_seconds: float,
-) -> tuple[str | None, str | None]:
-    """Reject actions whose expiry has passed; no window stays compatible."""
-    expires_at = action.expires_at
-    if expires_at is None:
+    """Reject a duration that would end yellow/all-red clearance too early."""
+    if action.action_type != "set_phase_duration":
         return None, None
-    if float(current_simulation_seconds) >= float(expires_at):
-        issued = action.issued_at
-        return (
-            "stale_action",
-            f"action expired at simulation_seconds={_fmt(expires_at)}; "
-            f"current={_fmt(current_simulation_seconds)} "
-            f"issued={_fmt(issued) if issued is not None else 'unknown'}",
-        )
-    return None, None
+    try:
+        duration = float(action.value)
+    except (TypeError, ValueError):
+        return None, None
+    remaining = max(0.0, required_seconds - elapsed_phase_time)
+    if duration >= remaining:
+        return None, None
+    return (
+        reason_code,
+        f"{requirement} requires {required_seconds:g} simulation seconds; "
+        f"elapsed={elapsed_phase_time:g} remaining={remaining:g} "
+        f"requested_duration={duration:g}",
+    )
 
 
-def validate_plan_program_safety(program: dict) -> tuple[str | None, str | None]:
-    """Reject a startup signal program that cannot safely serve traffic."""
-    phases = program.get("phases") or []
-    if not phases:
-        return "unsafe_startup_program", "program has no phases"
-    widths: set[int] = set()
-    has_service_green = False
-    for index, phase in enumerate(phases):
-        try:
-            duration = float(phase.get("duration"))
-        except (TypeError, ValueError):
-            duration = float("nan")
-        state = str(phase.get("state", ""))
-        widths.add(len(state))
-        if not math.isfinite(duration) or duration <= 0:
-            return (
-                "unsafe_startup_program",
-                f"phase {index} has invalid duration={phase.get('duration')!r}",
-            )
-        if any(signal in state for signal in "Gg"):
-            has_service_green = True
-    if len(widths) > 1:
-        return (
-            "unsafe_startup_program",
-            f"phase state widths are inconsistent: {sorted(widths)}",
-        )
-    if not has_service_green:
-        return (
-            "unsafe_startup_program",
-            "program has no service green in any phase",
-        )
-    return None, None
-
-
-def validate_startup_program_safety(
-    program: dict,
+def validate_control_action(
+    action: ControlAction,
+    tls_id: str | None,
     *,
-    min_green_seconds: float = 10.0,
-    yellow_seconds: float = 3.0,
-    all_red_seconds: float = 1.0,
-) -> tuple[str | None, str | None]:
-    """Strict per-signal clearance validation for algorithm-authored programs.
+    phase_count: int | None = None,
+    program_ids: set[str] | None = None,
+    current_phase: int | None = None,
+    allowed_phase_targets: set[int] | None = None,
+) -> tuple[object | None, str | None, str | None]:
+    """Return normalized value, structured reason code, and rejection detail."""
+    if action.tls_id != tls_id:
+        return None, "unknown_tls", f"unknown tls_id: {action.tls_id!r}"
+    if action.action_type == "set_phase":
+        if isinstance(action.value, bool) or not isinstance(action.value, int):
+            return (
+                None,
+                "invalid_phase_type",
+                f"set_phase value must be an integer: {action.value!r}",
+            )
+        if action.value < 0 or (
+            phase_count is not None and action.value >= phase_count
+        ):
+            upper = phase_count - 1 if phase_count is not None else "unbounded"
+            return (
+                None,
+                "phase_out_of_range",
+                f"set_phase value out of range 0..{upper}: {action.value!r}",
+            )
+        if (
+            phase_count is not None
+            and current_phase is not None
+            and action.value
+            not in {current_phase, *(allowed_phase_targets or set())}
+        ):
+            return (
+                None,
+                "illegal_phase_transition",
+                f"set_phase transition must be sequential: "
+                f"{current_phase}->{action.value}",
+            )
+        return action.value, None, None
+    if action.action_type == "set_phase_duration":
+        try:
+            duration = float(action.value)
+        except (TypeError, ValueError):
+            return (
+                None,
+                "invalid_duration_type",
+                f"set_phase_duration value must be numeric: {action.value!r}",
+            )
+        if not math.isfinite(duration):
+            return (
+                None,
+                "duration_not_finite",
+                f"set_phase_duration value must be finite: {duration!r}",
+            )
+        if duration <= 0:
+            return (
+                None,
+                "duration_not_positive",
+                f"set_phase_duration value must be positive: {duration!r}",
+            )
+        return duration, None, None
+    if action.action_type == "set_program":
+        if isinstance(action.value, Mapping):
+            return _validate_program_definition(action.value)
+        if action.value is None:
+            return None, "program_empty", "set_program value must be non-empty"
+        program = str(action.value).strip()
+        if not program:
+            return None, "program_empty", "set_program value must be non-empty"
+        if program_ids is not None and program not in program_ids:
+            return None, "unknown_program", f"unknown signal program: {program!r}"
+        return program, None, None
+    return (
+        None,
+        "unknown_action_type",
+        f"unknown action_type: {action.action_type!r}",
+    )
 
-    Unlike plan-derived official baselines (validated structurally by
-    ``validate_plan_program_safety``), an algorithm-authored cycle must give
-    every service green at least ``min_green_seconds``, clear each green-out
-    with a yellow on the same signal lasting ``yellow_seconds``, and follow it
-    with an all-red interval of ``all_red_seconds``.
-    """
-    structural_reason, structural_detail = validate_plan_program_safety(program)
-    if structural_reason is not None:
-        return structural_reason, structural_detail
 
-    phases = program.get("phases") or []
-    violations: list[str] = []
-    previous_greens: set[int] = set()
-    for index, phase in enumerate(phases):
-        state = str(phase.get("state", ""))
+def _validate_program_definition(
+    payload: Mapping[object, object],
+) -> tuple[object | None, str | None, str | None]:
+    program_id = payload.get("program_id")
+    if not isinstance(program_id, str) or not program_id.strip():
+        return None, "program_empty", "set_program definition needs a program_id"
+    phases = payload.get("phases")
+    if not isinstance(phases, (list, tuple)) or not phases:
+        return None, "program_phases_empty", "set_program definition needs phases"
+    normalized_phases: list[dict[str, object]] = []
+    state_length: int | None = None
+    for phase in phases:
+        if not isinstance(phase, Mapping):
+            return None, "invalid_program_phase", "set_program phases must be mappings"
         try:
             duration = float(phase.get("duration"))
         except (TypeError, ValueError):
-            duration = float("nan")
-        greens = {i for i, signal in enumerate(state) if signal in "Gg"}
-        yellows = {i for i, signal in enumerate(state) if signal in "yY"}
-
-        if greens and duration < min_green_seconds:
-            violations.append(
-                f"service green duration={duration:g} shorter than "
-                f"min_green={min_green_seconds:g}"
-            )
-        if index > 0:
-            if greens and previous_greens:
-                violations.append(
-                    f"direct green-to-green between phases {index - 1}->{index}"
-                )
-            for signal in sorted(previous_greens - greens):
-                if signal not in yellows:
-                    violations.append(
-                        f"missing yellow clearance for signal_index={signal}"
-                    )
-                elif duration < yellow_seconds:
-                    violations.append(
-                        f"yellow clearance={duration:g} requires "
-                        f"{yellow_seconds:g}"
-                    )
-                else:
-                    if index + 1 >= len(phases):
-                        violations.append(
-                            f"missing all-red clearance for signal_index={signal}"
-                        )
-                        continue
-                    next_phase = phases[index + 1]
-                    next_state = str(next_phase.get("state", ""))
-                    try:
-                        next_duration = float(next_phase.get("duration"))
-                    except (TypeError, ValueError):
-                        next_duration = float("nan")
-                    if any(signal_char in "GgyY" for signal_char in next_state):
-                        violations.append(
-                            f"missing all-red clearance for signal_index={signal}"
-                        )
-                    elif next_duration < all_red_seconds:
-                        violations.append(
-                            f"all-red clearance={next_duration:g} requires "
-                            f"{all_red_seconds:g}"
-                        )
-            for signal in sorted(yellows - previous_greens - greens):
-                if previous_greens:
-                    violations.append(
-                        f"yellow on unrelated signal_index={signal}"
-                    )
-        previous_greens = greens
-
-    if violations:
-        return "unsafe_startup_program", "; ".join(violations)
-    return None, None
+            return None, "invalid_program_duration", "set_program phase duration must be numeric"
+        state = phase.get("state")
+        if not math.isfinite(duration) or duration <= 0:
+            return None, "invalid_program_duration", "set_program phase duration must be positive and finite"
+        if not isinstance(state, str) or not state:
+            return None, "invalid_program_state", "set_program phase state must be non-empty"
+        if any(signal not in "rRgGyYoOu" for signal in state):
+            return None, "invalid_program_state", "set_program phase state has an unsupported signal"
+        if state_length is None:
+            state_length = len(state)
+        elif len(state) != state_length:
+            return None, "invalid_program_state", "set_program phase states must have equal length"
+        normalized_phases.append({"duration": duration, "state": state})
+    return {
+        "program_id": program_id.strip(),
+        "phases": normalized_phases,
+    }, None, None

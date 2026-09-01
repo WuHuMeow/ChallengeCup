@@ -5,20 +5,20 @@
   "matrix_sha256": "30344ecb4c17d4bc6d2ee66771dc7953ce19cb497617bac146305af6d369d48a",
   "outputs": {
     "descriptive_stats": {
-      "path": "F:\\challenge-cup\\output\\evidence\\formal-reverify\\descriptive_stats.csv",
-      "sha256": "222f8183fcfa3d73614ea00f75fc120f2d0e4ad7d1f77711b20fe0b5d56647d1"
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\descriptive_stats.csv",
+      "sha256": "05501a3dd7ba4274c7e15e7b0d94a3020a7a3cf18b6d193bb1c7d454fc4fd145"
     },
     "disturbance_resilience": {
-      "path": "F:\\challenge-cup\\output\\evidence\\formal-reverify\\disturbance_resilience.csv",
-      "sha256": "a3970b89a086ddd860c5cdb06843f261e7e2320655cc6c2fab19f473fc20b22e"
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\disturbance_resilience.csv",
+      "sha256": "16a20ea09b3a2856bf8c0836da5b259dd019496e59d57926b15dfd08dceb7648"
     },
     "paired_tests": {
-      "path": "F:\\challenge-cup\\output\\evidence\\formal-reverify\\paired_tests.csv",
-      "sha256": "7c7412e2aa98e9b59cb988f42a0e1ae57bbe723162d967f01eda903b2c57b181"
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\paired_tests.csv",
+      "sha256": "366687cf4ad9c1aa9ea44113f2dcd78866d31e66bdc2853b66c1fb0d8535c72d"
     },
     "selection": {
-      "path": "F:\\challenge-cup\\output\\evidence\\formal-reverify\\selection.json",
-      "sha256": "dd0c5f39edb9a340cd7439638082b70e708a998998dc723691c47759df9fcac2"
+      "path": "F:\\challenge-cup\\output\\evidence\\formal\\selection.json",
+      "sha256": "4ef55fac6319c6288da870891767e2c0794cba685a585c8b36048d1fd43b54a6"
     }
   },
   "pair_keys": [
@@ -27,6 +27,5 @@
     "seed"
   ],
   "schema": "challenge-cup-formal-matrix-analysis",
-  "schema_version": 1,
-  "regenerated": "2026-09-01"
+  "schema_version": 1
 }

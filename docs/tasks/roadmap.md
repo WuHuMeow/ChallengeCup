@@ -54,9 +54,9 @@
 
 ## 四、技术架构
 
-![CA-MP 云-边-端三层协同架构](../architecture/images/architecture.svg)
+![统一运行容器架构与云端 / 边缘 / 终端映射](../architecture/images/architecture.svg)
 
-![仿真循环数据流](../architecture/images/simulation-loop.svg)
+![单次仿真控制循环与证据生成](../architecture/images/simulation-loop.svg)
 
 ---
 
@@ -118,7 +118,7 @@ ChallengeCup/
 │   ├── rule_adaptive.py         # 感应控制（Actuated 基线）
 │   └── ca_max_pressure.py       # CA-MP（核心创新）
 ├── cloud/                       # 云端策略层
-│   └── cloud_policy.py          # CloudCoordinator 全局参数下发 + EWMA 预测
+│   └── cloud_policy.py          # CloudPolicy 全局参数下发 + EWMA 预测
 ├── ml/                          # ML 模型模块（EWMA 参数校准）
 │   ├── train.py                 # EWMA 参数校准
 │   ├── features.py              # 特征工程

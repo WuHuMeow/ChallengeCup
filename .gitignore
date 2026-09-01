@@ -35,6 +35,9 @@ output/deliverables/*
 !output/evidence/
 output/evidence/*
 !output/evidence/README.md
+!output/evidence/*/
+output/evidence/*/*
+!output/evidence/*/README.md
 experiments/results/
 *.csv
 !data/intersection_data/metadata/*.csv
@@ -47,3 +50,8 @@ experiments/results/
 .agents/
 .pytest_cache/
 .worktrees/
+
+# Frontend dependencies and test artifacts
+web/node_modules/
+web/playwright-report/
+web/test-results/

@@ -1,78 +1,303 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" font-family="Microsoft YaHei, SimHei, sans-serif">
-  <defs>
-    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea"/><stop offset="100%" style="stop-color:#764ba2"/>
-    </linearGradient>
-    <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#f093fb"/><stop offset="100%" style="stop-color:#f5576c"/>
-    </linearGradient>
-    <linearGradient id="vehicleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#4facfe"/><stop offset="100%" style="stop-color:#00f2fe"/>
-    </linearGradient>
-    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
-      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-opacity="0.15"/>
-    </filter>
-    <marker id="arrP" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#667eea"/></marker>
-    <marker id="arrR" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#f5576c"/></marker>
-    <marker id="arrB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#4facfe"/></marker>
-  </defs>
-  <rect width="800" height="600" fill="#f8fafc"/>
-  <text x="400" y="35" text-anchor="middle" font-size="20" font-weight="bold" fill="#1a202c">CA-MP 云-边-端三层协同架构</text>
-  <!-- Cloud -->
-  <rect x="100" y="55" width="600" height="140" rx="12" fill="url(#cloudGrad)" opacity="0.12" filter="url(#shadow)"/>
-  <rect x="100" y="55" width="600" height="140" rx="12" fill="none" stroke="#667eea" stroke-width="2"/>
-  <text x="120" y="80" font-size="14" font-weight="bold" fill="#667eea">Cloud Layer（云端）</text>
-  <rect x="130" y="92" width="250" height="85" rx="8" fill="white" stroke="#667eea" stroke-width="1.5"/>
-  <text x="255" y="115" text-anchor="middle" font-size="12" font-weight="bold" fill="#4a5568">CloudCoordinator</text>
-  <text x="255" y="135" text-anchor="middle" font-size="10" fill="#718096">全局压力评估 → 周期性下发参数</text>
-  <text x="255" y="152" text-anchor="middle" font-size="10" fill="#718096">min_green / max_green / base_green</text>
-  <text x="255" y="169" text-anchor="middle" font-size="10" fill="#718096">EWMA 流量预测 → 修正压力值</text>
-  <rect x="420" y="92" width="250" height="85" rx="8" fill="white" stroke="#667eea" stroke-width="1.5"/>
-  <text x="545" y="115" text-anchor="middle" font-size="12" font-weight="bold" fill="#4a5568">EWMA Predictor</text>
-  <text x="545" y="135" text-anchor="middle" font-size="10" fill="#718096">指数加权移动平均（α=0.3）</text>
-  <text x="545" y="152" text-anchor="middle" font-size="10" fill="#718096">短期流量趋势预测</text>
-  <text x="545" y="169" text-anchor="middle" font-size="10" fill="#718096">轻量级，无需 GPU</text>
-  <!-- Arrow Cloud->Edge -->
-  <path d="M400,195 L400,225" stroke="#667eea" stroke-width="2.5" marker-end="url(#arrP)"/>
-  <text x="410" y="215" font-size="10" fill="#667eea">PredictionResult（周期性下发）</text>
-  <!-- Edge -->
-  <rect x="100" y="230" width="600" height="170" rx="12" fill="url(#edgeGrad)" opacity="0.10" filter="url(#shadow)"/>
-  <rect x="100" y="230" width="600" height="170" rx="12" fill="none" stroke="#f5576c" stroke-width="2"/>
-  <text x="120" y="255" font-size="14" font-weight="bold" fill="#f5576c">Edge Layer（边缘 / RSU）</text>
-  <rect x="130" y="267" width="170" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="215" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">EdgeNode</text>
-  <text x="215" y="310" text-anchor="middle" font-size="10" fill="#718096">接收 V2X 消息</text>
-  <text x="215" y="327" text-anchor="middle" font-size="10" fill="#718096">汇聚排队状态</text>
-  <text x="215" y="344" text-anchor="middle" font-size="10" fill="#718096">调用算法决策</text>
-  <text x="215" y="361" text-anchor="middle" font-size="10" fill="#718096">输出 ControlAction</text>
-  <rect x="320" y="267" width="180" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="410" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">CA-MP Controller</text>
-  <text x="410" y="310" text-anchor="middle" font-size="10" fill="#718096">1. 溢出门控: occ>90%→强制放行</text>
-  <text x="410" y="327" text-anchor="middle" font-size="10" fill="#718096">2. pressure = queue / capacity</text>
-  <text x="410" y="344" text-anchor="middle" font-size="10" fill="#718096">3. 选最大压力相位</text>
-  <text x="410" y="361" text-anchor="middle" font-size="10" fill="#718096">4. 动态绿灯时长</text>
-  <rect x="520" y="267" width="160" height="115" rx="8" fill="white" stroke="#f5576c" stroke-width="1.5"/>
-  <text x="600" y="290" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">Baselines</text>
-  <text x="600" y="315" text-anchor="middle" font-size="10" fill="#718096">FixedTime（固定配时）</text>
-  <text x="600" y="335" text-anchor="middle" font-size="10" fill="#718096">Actuated（感应控制）</text>
-  <text x="600" y="360" text-anchor="middle" font-size="10" fill="#718096">（对照组）</text>
-  <!-- Arrow Edge->Vehicle -->
-  <path d="M400,400 L400,430" stroke="#f5576c" stroke-width="2.5" marker-end="url(#arrR)"/>
-  <text x="410" y="420" font-size="10" fill="#f5576c">ControlAction（相位+时长）</text>
-  <!-- Vehicle -->
-  <rect x="100" y="435" width="600" height="130" rx="12" fill="url(#vehicleGrad)" opacity="0.10" filter="url(#shadow)"/>
-  <rect x="100" y="435" width="600" height="130" rx="12" fill="none" stroke="#4facfe" stroke-width="2"/>
-  <text x="120" y="460" font-size="14" font-weight="bold" fill="#4facfe">Vehicle Layer（车端 / SUMO）</text>
-  <rect x="130" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
-  <text x="255" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">SUMO 仿真车辆</text>
-  <text x="255" y="515" text-anchor="middle" font-size="10" fill="#718096">位置、速度、车道 → JointState</text>
-  <text x="255" y="532" text-anchor="middle" font-size="10" fill="#718096">TraCI 实时状态读取</text>
-  <rect x="420" y="472" width="250" height="75" rx="8" fill="white" stroke="#4facfe" stroke-width="1.5"/>
-  <text x="545" y="495" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">信号灯执行</text>
-  <text x="545" y="515" text-anchor="middle" font-size="10" fill="#718096">setPhase / setPhaseDuration</text>
-  <text x="545" y="532" text-anchor="middle" font-size="10" fill="#718096">setProgram</text>
-  <!-- Feedback -->
-  <path d="M250,435 L250,400" stroke="#4facfe" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arrB)"/>
-  <text x="140" y="420" font-size="10" fill="#4facfe">JointState（上报）</text>
-  <text x="400" y="590" text-anchor="middle" font-size="10" fill="#a0aec0">XH-202613 | CA-MP Capacity-Aware MaxPressure | 赛道 B（算法调优型）</text>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.3 (20260303.0454)
+ -->
+<!-- Title: architecture Pages: 1 -->
+<svg role="img" aria-labelledby="architecture-title architecture-desc" width="1765pt" height="389pt"
+ viewBox="0.00 0.00 1765.00 389.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <title id="architecture-title">统一运行容器架构与云端、边缘、终端映射</title>
+  <desc id="architecture-desc">命令行、接口和 PDF 矩阵入口统一进入 RunService，经过场景变体与仿真运行器，由控制算法和 TraCI 或 MockBridge 驱动 SUMO 或 Mock，并生成按 run_id 隔离的实验依据。</desc>
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(20.16 368.76)">
+<title>architecture</title>
+<polygon fill="white" stroke="none" points="-20.16,20.16 -20.16,-368.76 1745.02,-368.76 1745.02,20.16 -20.16,20.16"/>
+<text xml:space="preserve" text-anchor="middle" x="862.43" y="-328.4" font-family="Arial" font-size="18.00" fill="#17324d">统一运行容器架构与云端 / 边缘 / 终端映射</text>
+<g id="clust1" class="cluster">
+<title>cluster_entry</title>
+<path fill="#f7f9fb" stroke="#c8d4df" d="M20,-8C20,-8 126.1,-8 126.1,-8 132.1,-8 138.1,-14 138.1,-20 138.1,-20 138.1,-299 138.1,-299 138.1,-305 132.1,-311 126.1,-311 126.1,-311 20,-311 20,-311 14,-311 8,-305 8,-299 8,-299 8,-20 8,-20 8,-14 14,-8 20,-8"/>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-297.1" font-family="Arial" font-size="11.00" fill="#49647b">A · 输入与调用入口</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_core</title>
+<path fill="#fbfcfd" stroke="#a8c0d2" d="M186.1,-46C186.1,-46 967.52,-46 967.52,-46 973.52,-46 979.52,-52 979.52,-58 979.52,-58 979.52,-264 979.52,-264 979.52,-270 973.52,-276 967.52,-276 967.52,-276 186.1,-276 186.1,-276 180.1,-276 174.1,-270 174.1,-264 174.1,-264 174.1,-58 174.1,-58 174.1,-52 180.1,-46 186.1,-46"/>
+<text xml:space="preserve" text-anchor="middle" x="576.81" y="-262.1" font-family="Arial" font-size="11.00" fill="#49647b">B · 统一运行容器</text>
+</g>
+<g id="clust7" class="cluster">
+<title>cluster_outputs</title>
+<path fill="#fffdfa" stroke="#e1cfb1" d="M1027.52,-119C1027.52,-119 1704.86,-119 1704.86,-119 1710.86,-119 1716.86,-125 1716.86,-131 1716.86,-131 1716.86,-264 1716.86,-264 1716.86,-270 1710.86,-276 1704.86,-276 1704.86,-276 1027.52,-276 1027.52,-276 1021.52,-276 1015.52,-270 1015.52,-264 1015.52,-264 1015.52,-131 1015.52,-131 1015.52,-125 1021.52,-119 1027.52,-119"/>
+<text xml:space="preserve" text-anchor="middle" x="1366.19" y="-262.1" font-family="Arial" font-size="11.00" fill="#80633e">C · 运行时与证据输出</text>
+</g>
+<!-- cli -->
+<g id="node1" class="node">
+<title>cli</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M117.34,-281.4C117.34,-281.4 28.76,-281.4 28.76,-281.4 22.76,-281.4 16.76,-275.4 16.76,-269.4 16.76,-269.4 16.76,-246.6 16.76,-246.6 16.76,-240.6 22.76,-234.6 28.76,-234.6 28.76,-234.6 117.34,-234.6 117.34,-234.6 123.34,-234.6 129.34,-240.6 129.34,-246.6 129.34,-246.6 129.34,-269.4 129.34,-269.4 129.34,-275.4 123.34,-281.4 117.34,-281.4"/>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-266.1" font-family="Arial" font-size="9.00" fill="#17324d">命令行入口</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-255.3" font-family="Arial" font-size="9.00" fill="#17324d">python &#45;m api.server</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-244.5" font-family="Arial" font-size="9.00" fill="#17324d">experiments/runner.py</text>
+</g>
+<!-- runservice -->
+<g id="node5" class="node">
+<title>runservice</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M297.7,-143.8C297.7,-143.8 194.1,-143.8 194.1,-143.8 188.1,-143.8 182.1,-137.8 182.1,-131.8 182.1,-131.8 182.1,-98.2 182.1,-98.2 182.1,-92.2 188.1,-86.2 194.1,-86.2 194.1,-86.2 297.7,-86.2 297.7,-86.2 303.7,-86.2 309.7,-92.2 309.7,-98.2 309.7,-98.2 309.7,-131.8 309.7,-131.8 309.7,-137.8 303.7,-143.8 297.7,-143.8"/>
+<text xml:space="preserve" text-anchor="middle" x="245.9" y="-128.5" font-family="Arial" font-size="9.00" fill="#17324d">RunService</text>
+<text xml:space="preserve" text-anchor="middle" x="245.9" y="-117.7" font-family="Arial" font-size="9.00" fill="#17324d">RunRequest → RunResult</text>
+<text xml:space="preserve" text-anchor="middle" x="245.9" y="-106.9" font-family="Arial" font-size="9.00" fill="#17324d">统一运行服务</text>
+<text xml:space="preserve" text-anchor="middle" x="245.9" y="-96.1" font-family="Arial" font-size="9.00" fill="#17324d">api/server.py</text>
+</g>
+<!-- cli&#45;&gt;runservice -->
+<g id="edge1" class="edge">
+<title>cli&#45;&gt;runservice</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M121.86,-234.04C121.86,-199.81 121.86,-141 121.86,-141 121.86,-141 172.46,-141 172.46,-141"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="172.46,-143.52 179.66,-141 172.46,-138.48 172.46,-143.52"/>
+<rect x="73.13" y="-165.02" width="53.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="99.63" y="-155.02" font-family="Arial" font-size="8.00" fill="#41566b">RunRequest</text>
+</g>
+<!-- rest -->
+<g id="node2" class="node">
+<title>rest</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M103.33,-135.4C103.33,-135.4 42.77,-135.4 42.77,-135.4 36.77,-135.4 30.77,-129.4 30.77,-123.4 30.77,-123.4 30.77,-100.6 30.77,-100.6 30.77,-94.6 36.77,-88.6 42.77,-88.6 42.77,-88.6 103.33,-88.6 103.33,-88.6 109.33,-88.6 115.33,-94.6 115.33,-100.6 115.33,-100.6 115.33,-123.4 115.33,-123.4 115.33,-129.4 109.33,-135.4 103.33,-135.4"/>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-120.1" font-family="Arial" font-size="9.00" fill="#17324d">接口入口</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-109.3" font-family="Arial" font-size="9.00" fill="#17324d">POST /api/runs</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-98.5" font-family="Arial" font-size="9.00" fill="#17324d">统一请求入口</text>
+</g>
+<!-- rest&#45;&gt;runservice -->
+<g id="edge2" class="edge">
+<title>rest&#45;&gt;runservice</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M115.78,-112C115.78,-112 172.53,-112 172.53,-112"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="172.53,-114.52 179.73,-112 172.53,-109.48 172.53,-114.52"/>
+</g>
+<!-- pdf -->
+<g id="node3" class="node">
+<title>pdf</title>
+<path fill="#f3f7fb" stroke="#3d6f9e" stroke-width="1.15" d="M101.58,-208.4C101.58,-208.4 44.53,-208.4 44.53,-208.4 38.53,-208.4 32.53,-202.4 32.53,-196.4 32.53,-196.4 32.53,-173.6 32.53,-173.6 32.53,-167.6 38.53,-161.6 44.53,-161.6 44.53,-161.6 101.58,-161.6 101.58,-161.6 107.58,-161.6 113.58,-167.6 113.58,-173.6 113.58,-173.6 113.58,-196.4 113.58,-196.4 113.58,-202.4 107.58,-208.4 101.58,-208.4"/>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-193.1" font-family="Arial" font-size="9.00" fill="#17324d">PDF 矩阵 / 路线</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-182.3" font-family="Arial" font-size="9.00" fill="#17324d">批量实验入口</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-171.5" font-family="Arial" font-size="9.00" fill="#17324d">只读任务事实</text>
+</g>
+<!-- pdf&#45;&gt;runservice -->
+<g id="edge3" class="edge">
+<title>pdf&#45;&gt;runservice</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M72.86,-161.05C72.86,-149.54 72.86,-138.2 72.86,-138.2 72.86,-138.2 172.72,-138.2 172.72,-138.2"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="172.72,-140.72 179.92,-138.2 172.72,-135.68 172.72,-140.72"/>
+</g>
+<!-- input -->
+<g id="node4" class="node">
+<title>input</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M118.1,-62.4C118.1,-62.4 28,-62.4 28,-62.4 22,-62.4 16,-56.4 16,-50.4 16,-50.4 16,-27.6 16,-27.6 16,-21.6 22,-15.6 28,-15.6 28,-15.6 118.1,-15.6 118.1,-15.6 124.1,-15.6 130.1,-21.6 130.1,-27.6 130.1,-27.6 130.1,-50.4 130.1,-50.4 130.1,-56.4 124.1,-62.4 118.1,-62.4"/>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-47.1" font-family="Arial" font-size="9.00" fill="#17324d">只读场景输入</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-36.3" font-family="Arial" font-size="9.00" fill="#17324d">data/intersection_data/</text>
+<text xml:space="preserve" text-anchor="middle" x="73.05" y="-25.5" font-family="Arial" font-size="9.00" fill="#17324d">原始 SUMO 文件</text>
+</g>
+<!-- scene -->
+<g id="node6" class="node">
+<title>scene</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M438.26,-100.4C438.26,-100.4 380.69,-100.4 380.69,-100.4 374.69,-100.4 368.69,-94.4 368.69,-88.4 368.69,-88.4 368.69,-65.6 368.69,-65.6 368.69,-59.6 374.69,-53.6 380.69,-53.6 380.69,-53.6 438.26,-53.6 438.26,-53.6 444.26,-53.6 450.26,-59.6 450.26,-65.6 450.26,-65.6 450.26,-88.4 450.26,-88.4 450.26,-94.4 444.26,-100.4 438.26,-100.4"/>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-85.1" font-family="Arial" font-size="9.00" fill="#17324d">SceneRegistry</text>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-74.3" font-family="Arial" font-size="9.00" fill="#17324d">场景与变体注册</text>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-63.5" font-family="Arial" font-size="9.00" fill="#17324d">scenes/</text>
+</g>
+<!-- input&#45;&gt;scene -->
+<g id="edge4" class="edge">
+<title>input&#45;&gt;scene</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" stroke-dasharray="5,2" d="M130.5,-58C130.5,-58 358.93,-58 358.93,-58"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="358.93,-60.52 366.13,-58 358.93,-55.48 358.93,-60.52"/>
+<rect x="228.05" y="-60.80" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="238.05" y="-50.8" font-family="Arial" font-size="8.00" fill="#41566b">只读</text>
+</g>
+<!-- runservice&#45;&gt;scene -->
+<g id="edge5" class="edge">
+<title>runservice&#45;&gt;scene</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M310.08,-93.3C310.08,-93.3 359.33,-93.3 359.33,-93.3"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="359.33,-95.82 366.53,-93.3 359.33,-90.78 359.33,-95.82"/>
+</g>
+<!-- variant -->
+<g id="node7" class="node">
+<title>variant</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M445.25,-173.4C445.25,-173.4 373.7,-173.4 373.7,-173.4 367.7,-173.4 361.7,-167.4 361.7,-161.4 361.7,-161.4 361.7,-138.6 361.7,-138.6 361.7,-132.6 367.7,-126.6 373.7,-126.6 373.7,-126.6 445.25,-126.6 445.25,-126.6 451.25,-126.6 457.25,-132.6 457.25,-138.6 457.25,-138.6 457.25,-161.4 457.25,-161.4 457.25,-167.4 451.25,-173.4 445.25,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">VariantGenerator</text>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">原始场景 → 附加文件</text>
+<text xml:space="preserve" text-anchor="middle" x="409.48" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">experiments/</text>
+</g>
+<!-- scene&#45;&gt;variant -->
+<g id="edge6" class="edge">
+<title>scene&#45;&gt;variant</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M409.86,-100.9C409.86,-100.9 409.86,-117.05 409.86,-117.05"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="407.34,-117.05 409.86,-124.25 412.38,-117.05 407.34,-117.05"/>
+<rect x="383.27" y="-121.38" width="30.50" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="398.52" y="-111.38" font-family="Arial" font-size="8.00" fill="#41566b">Scene</text>
+</g>
+<!-- runner -->
+<g id="node8" class="node">
+<title>runner</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M591.83,-173.4C591.83,-173.4 521.25,-173.4 521.25,-173.4 515.25,-173.4 509.25,-167.4 509.25,-161.4 509.25,-161.4 509.25,-138.6 509.25,-138.6 509.25,-132.6 515.25,-126.6 521.25,-126.6 521.25,-126.6 591.83,-126.6 591.83,-126.6 597.83,-126.6 603.83,-132.6 603.83,-138.6 603.83,-138.6 603.83,-161.4 603.83,-161.4 603.83,-167.4 597.83,-173.4 591.83,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="556.54" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">SimulationRunner</text>
+<text xml:space="preserve" text-anchor="middle" x="556.54" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">观察 · 决策 · 执行</text>
+<text xml:space="preserve" text-anchor="middle" x="556.54" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">engine/runner.py</text>
+</g>
+<!-- variant&#45;&gt;runner -->
+<g id="edge7" class="edge">
+<title>variant&#45;&gt;runner</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M457.63,-150C457.63,-150 499.54,-150 499.54,-150"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="499.54,-152.52 506.74,-150 499.54,-147.48 499.54,-152.52"/>
+</g>
+<!-- cloud -->
+<g id="node9" class="node">
+<title>cloud</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M771.92,-100.4C771.92,-100.4 687.33,-100.4 687.33,-100.4 681.33,-100.4 675.33,-94.4 675.33,-88.4 675.33,-88.4 675.33,-65.6 675.33,-65.6 675.33,-59.6 681.33,-53.6 687.33,-53.6 687.33,-53.6 771.92,-53.6 771.92,-53.6 777.92,-53.6 783.92,-59.6 783.92,-65.6 783.92,-65.6 783.92,-88.4 783.92,-88.4 783.92,-94.4 777.92,-100.4 771.92,-100.4"/>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-85.1" font-family="Arial" font-size="9.00" fill="#17324d">CloudPolicy</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-74.3" font-family="Arial" font-size="9.00" fill="#17324d">预测 / 周期参数</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-63.5" font-family="Arial" font-size="9.00" fill="#17324d">cloud/cloud_policy.py</text>
+</g>
+<!-- runner&#45;&gt;cloud -->
+<g id="edge8" class="edge">
+<title>runner&#45;&gt;cloud</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" stroke-dasharray="5,2" d="M571.86,-126.19C571.86,-102.36 571.86,-69.2 571.86,-69.2 571.86,-69.2 665.65,-69.2 665.65,-69.2"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="665.65,-71.72 672.85,-69.2 665.65,-66.68 665.65,-71.72"/>
+<rect x="573.59" y="-72.00" width="20.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="583.59" y="-62" font-family="Arial" font-size="8.00" fill="#41566b">可选</text>
+</g>
+<!-- edgechannel -->
+<g id="node10" class="node">
+<title>edgechannel</title>
+<path fill="#f1faf8" stroke="#4f9a8c" stroke-width="1.15" d="M778.19,-173.4C778.19,-173.4 681.06,-173.4 681.06,-173.4 675.06,-173.4 669.06,-167.4 669.06,-161.4 669.06,-161.4 669.06,-138.6 669.06,-138.6 669.06,-132.6 675.06,-126.6 681.06,-126.6 681.06,-126.6 778.19,-126.6 778.19,-126.6 784.19,-126.6 790.19,-132.6 790.19,-138.6 790.19,-138.6 790.19,-161.4 790.19,-161.4 790.19,-167.4 784.19,-173.4 778.19,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">EdgeChannel</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">可选固定延迟</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">engine/edge_channel.py</text>
+</g>
+<!-- runner&#45;&gt;edgechannel -->
+<g id="edge9" class="edge">
+<title>runner&#45;&gt;edgechannel</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" stroke-dasharray="5,2" d="M604.3,-142.2C604.3,-142.2 659.46,-142.2 659.46,-142.2"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="659.46,-144.72 666.66,-142.2 659.46,-139.68 659.46,-144.72"/>
+</g>
+<!-- algorithm -->
+<g id="node11" class="node">
+<title>algorithm</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M791.42,-246.4C791.42,-246.4 667.83,-246.4 667.83,-246.4 661.83,-246.4 655.83,-240.4 655.83,-234.4 655.83,-234.4 655.83,-211.6 655.83,-211.6 655.83,-205.6 661.83,-199.6 667.83,-199.6 667.83,-199.6 791.42,-199.6 791.42,-199.6 797.42,-199.6 803.42,-205.6 803.42,-211.6 803.42,-211.6 803.42,-234.4 803.42,-234.4 803.42,-240.4 797.42,-246.4 791.42,-246.4"/>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-231.1" font-family="Arial" font-size="9.00" fill="#17324d">控制算法</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-220.3" font-family="Arial" font-size="9.00" fill="#17324d">fixed_time · actuated · CA&#45;MP</text>
+<text xml:space="preserve" text-anchor="middle" x="729.63" y="-209.5" font-family="Arial" font-size="9.00" fill="#17324d">algorithms/</text>
+</g>
+<!-- runner&#45;&gt;algorithm -->
+<g id="edge10" class="edge">
+<title>runner&#45;&gt;algorithm</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M604.27,-157.8C631.34,-157.8 659.86,-157.8 659.86,-157.8 659.86,-157.8 659.86,-189.85 659.86,-189.85"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="657.34,-189.85 659.86,-197.05 662.38,-189.85 657.34,-189.85"/>
+</g>
+<!-- artifacts -->
+<g id="node16" class="node">
+<title>artifacts</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M1302.41,-173.4C1302.41,-173.4 1204.86,-173.4 1204.86,-173.4 1198.86,-173.4 1192.86,-167.4 1192.86,-161.4 1192.86,-161.4 1192.86,-138.6 1192.86,-138.6 1192.86,-132.6 1198.86,-126.6 1204.86,-126.6 1204.86,-126.6 1302.41,-126.6 1302.41,-126.6 1308.41,-126.6 1314.41,-132.6 1314.41,-138.6 1314.41,-138.6 1314.41,-161.4 1314.41,-161.4 1314.41,-167.4 1308.41,-173.4 1302.41,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="1253.63" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">RunArtifacts</text>
+<text xml:space="preserve" text-anchor="middle" x="1253.63" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">metrics.csv · tripinfo.xml</text>
+<text xml:space="preserve" text-anchor="middle" x="1253.63" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">实验输出 / &lt;run_id&gt;/</text>
+</g>
+<!-- runner&#45;&gt;artifacts -->
+<g id="edge16" class="edge">
+<title>runner&#45;&gt;artifacts</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M540.86,-126.27C540.86,-119.29 540.86,-113.5 540.86,-113.5 540.86,-113.5 1253.86,-113.5 1253.86,-113.5 1253.86,-113.5 1253.86,-117.02 1253.86,-117.02"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="1251.34,-117.02 1253.86,-124.22 1256.38,-117.02 1251.34,-117.02"/>
+</g>
+<!-- cloud&#45;&gt;algorithm -->
+<g id="edge15" class="edge">
+<title>cloud&#45;&gt;algorithm</title>
+<path fill="none" stroke="#0f766e" stroke-width="1.35" stroke-dasharray="5,2" d="M674.98,-84.8C668.91,-84.8 664.86,-84.8 664.86,-84.8 664.86,-84.8 664.86,-190 664.86,-190"/>
+<polygon fill="#0f766e" stroke="#0f766e" stroke-width="1.35" points="662.34,-190 664.86,-197.2 667.38,-190 662.34,-190"/>
+<rect x="595.74" y="-135.14" width="80.00" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="635.74" y="-125.14" font-family="Arial" font-size="8.00" fill="#41566b">PredictionResult</text>
+</g>
+<!-- traci -->
+<g id="node12" class="node">
+<title>traci</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M957.27,-173.4C957.27,-173.4 869.67,-173.4 869.67,-173.4 863.67,-173.4 857.67,-167.4 857.67,-161.4 857.67,-161.4 857.67,-138.6 857.67,-138.6 857.67,-132.6 863.67,-126.6 869.67,-126.6 869.67,-126.6 957.27,-126.6 957.27,-126.6 963.27,-126.6 969.27,-132.6 969.27,-138.6 969.27,-138.6 969.27,-161.4 969.27,-161.4 969.27,-167.4 963.27,-173.4 957.27,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">TraCIBridge</text>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">set_action / get_state</text>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">engine/traci_bridge.py</text>
+</g>
+<!-- algorithm&#45;&gt;traci -->
+<g id="edge11" class="edge">
+<title>algorithm&#45;&gt;traci</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M796.86,-199.1C796.86,-177.81 796.86,-150 796.86,-150 796.86,-150 847.97,-150 847.97,-150"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="847.97,-152.52 855.17,-150 847.97,-147.48 847.97,-152.52"/>
+<rect x="788.63" y="-152.80" width="66.50" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="821.88" y="-142.8" font-family="Arial" font-size="8.00" fill="#41566b">ControlAction</text>
+</g>
+<!-- mock -->
+<g id="node13" class="node">
+<title>mock</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M959.52,-246.4C959.52,-246.4 867.42,-246.4 867.42,-246.4 861.42,-246.4 855.42,-240.4 855.42,-234.4 855.42,-234.4 855.42,-211.6 855.42,-211.6 855.42,-205.6 861.42,-199.6 867.42,-199.6 867.42,-199.6 959.52,-199.6 959.52,-199.6 965.52,-199.6 971.52,-205.6 971.52,-211.6 971.52,-211.6 971.52,-234.4 971.52,-234.4 971.52,-240.4 965.52,-246.4 959.52,-246.4"/>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-231.1" font-family="Arial" font-size="9.00" fill="#17324d">MockBridge</text>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-220.3" font-family="Arial" font-size="9.00" fill="#17324d">测试替身</text>
+<text xml:space="preserve" text-anchor="middle" x="913.47" y="-209.5" font-family="Arial" font-size="9.00" fill="#17324d">engine/mock_bridge.py</text>
+</g>
+<!-- algorithm&#45;&gt;mock -->
+<g id="edge12" class="edge">
+<title>algorithm&#45;&gt;mock</title>
+<path fill="none" stroke="#475569" stroke-width="1.35" stroke-dasharray="5,2" d="M803.87,-223C803.87,-223 845.82,-223 845.82,-223"/>
+<polygon fill="#475569" stroke="#475569" stroke-width="1.35" points="845.82,-225.52 853.02,-223 845.82,-220.48 845.82,-225.52"/>
+</g>
+<!-- sumo -->
+<g id="node14" class="node">
+<title>sumo</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M1128.86,-173.4C1128.86,-173.4 1035.52,-173.4 1035.52,-173.4 1029.52,-173.4 1023.52,-167.4 1023.52,-161.4 1023.52,-161.4 1023.52,-138.6 1023.52,-138.6 1023.52,-132.6 1029.52,-126.6 1035.52,-126.6 1035.52,-126.6 1128.86,-126.6 1128.86,-126.6 1134.86,-126.6 1140.86,-132.6 1140.86,-138.6 1140.86,-138.6 1140.86,-161.4 1140.86,-161.4 1140.86,-167.4 1134.86,-173.4 1128.86,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">SUMO / TraCI 运行时</text>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">sumo 1.19+ · sumo&#45;gui</text>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">外部仿真进程</text>
+</g>
+<!-- traci&#45;&gt;sumo -->
+<g id="edge13" class="edge">
+<title>traci&#45;&gt;sumo</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M969.65,-150C969.65,-150 1013.83,-150 1013.83,-150"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="1013.83,-152.52 1021.03,-150 1013.83,-147.48 1013.83,-152.52"/>
+<rect x="966.49" y="-152.80" width="30.50" height="13" rx="2" fill="#ffffff" stroke="#d7e0e7" stroke-width="0.6"/><text xml:space="preserve" text-anchor="middle" x="981.74" y="-142.8" font-family="Arial" font-size="8.00" fill="#41566b">TraCI</text>
+</g>
+<!-- mockrun -->
+<g id="node15" class="node">
+<title>mockrun</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M1120.21,-246.4C1120.21,-246.4 1044.16,-246.4 1044.16,-246.4 1038.16,-246.4 1032.16,-240.4 1032.16,-234.4 1032.16,-234.4 1032.16,-211.6 1032.16,-211.6 1032.16,-205.6 1038.16,-199.6 1044.16,-199.6 1044.16,-199.6 1120.21,-199.6 1120.21,-199.6 1126.21,-199.6 1132.21,-205.6 1132.21,-211.6 1132.21,-211.6 1132.21,-234.4 1132.21,-234.4 1132.21,-240.4 1126.21,-246.4 1120.21,-246.4"/>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-231.1" font-family="Arial" font-size="9.00" fill="#17324d">Mock 运行时</text>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-220.3" font-family="Arial" font-size="9.00" fill="#17324d">无 SUMO 的快速检查</text>
+<text xml:space="preserve" text-anchor="middle" x="1082.19" y="-209.5" font-family="Arial" font-size="9.00" fill="#17324d">测试与接口验证</text>
+</g>
+<!-- mock&#45;&gt;mockrun -->
+<g id="edge14" class="edge">
+<title>mock&#45;&gt;mockrun</title>
+<path fill="none" stroke="#1f4e79" stroke-width="1.35" d="M972.01,-223C972.01,-223 1022.38,-223 1022.38,-223"/>
+<polygon fill="#1f4e79" stroke="#1f4e79" stroke-width="1.35" points="1022.38,-225.52 1029.58,-223 1022.38,-220.48 1022.38,-225.52"/>
+</g>
+<!-- sumo&#45;&gt;artifacts -->
+<g id="edge17" class="edge">
+<title>sumo&#45;&gt;artifacts</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" stroke-dasharray="5,2" d="M1141.19,-150C1141.19,-150 1183.24,-150 1183.24,-150"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="1183.24,-152.52 1190.44,-150 1183.24,-147.48 1183.24,-152.52"/>
+</g>
+<!-- mockrun&#45;&gt;artifacts -->
+<g id="edge18" class="edge">
+<title>mockrun&#45;&gt;artifacts</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" stroke-dasharray="5,2" d="M1132.77,-223C1183.41,-223 1253.86,-223 1253.86,-223 1253.86,-223 1253.86,-183.15 1253.86,-183.15"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="1256.38,-183.15 1253.86,-175.95 1251.34,-183.15 1256.38,-183.15"/>
+</g>
+<!-- summary -->
+<g id="node17" class="node">
+<title>summary</title>
+<path fill="#fffaf2" stroke="#b5874a" stroke-width="1.15" d="M1518.27,-173.4C1518.27,-173.4 1378.41,-173.4 1378.41,-173.4 1372.41,-173.4 1366.41,-167.4 1366.41,-161.4 1366.41,-161.4 1366.41,-138.6 1366.41,-138.6 1366.41,-132.6 1372.41,-126.6 1378.41,-126.6 1378.41,-126.6 1518.27,-126.6 1518.27,-126.6 1524.27,-126.6 1530.27,-132.6 1530.27,-138.6 1530.27,-138.6 1530.27,-161.4 1530.27,-161.4 1530.27,-167.4 1524.27,-173.4 1518.27,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="1448.34" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">summary.json + run_metadata.json</text>
+<text xml:space="preserve" text-anchor="middle" x="1448.34" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">指标、状态、配置、种子</text>
+<text xml:space="preserve" text-anchor="middle" x="1448.34" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">按 run_id 隔离</text>
+</g>
+<!-- artifacts&#45;&gt;summary -->
+<g id="edge19" class="edge">
+<title>artifacts&#45;&gt;summary</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" stroke-dasharray="5,2" d="M1314.97,-150C1314.97,-150 1356.67,-150 1356.67,-150"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="1356.67,-152.52 1363.87,-150 1356.67,-147.48 1356.67,-152.52"/>
+</g>
+<!-- figures -->
+<g id="node18" class="node">
+<title>figures</title>
+<path fill="#ffffff" stroke="#a7b8c8" stroke-width="1.15" d="M1696.86,-173.4C1696.86,-173.4 1594.27,-173.4 1594.27,-173.4 1588.27,-173.4 1582.27,-167.4 1582.27,-161.4 1582.27,-161.4 1582.27,-138.6 1582.27,-138.6 1582.27,-132.6 1588.27,-126.6 1594.27,-126.6 1594.27,-126.6 1696.86,-126.6 1696.86,-126.6 1702.86,-126.6 1708.86,-132.6 1708.86,-138.6 1708.86,-138.6 1708.86,-161.4 1708.86,-161.4 1708.86,-167.4 1702.86,-173.4 1696.86,-173.4"/>
+<text xml:space="preserve" text-anchor="middle" x="1645.57" y="-158.1" font-family="Arial" font-size="9.00" fill="#17324d">可视化 / 清单</text>
+<text xml:space="preserve" text-anchor="middle" x="1645.57" y="-147.3" font-family="Arial" font-size="9.00" fill="#17324d">图表、路径、复现实录</text>
+<text xml:space="preserve" text-anchor="middle" x="1645.57" y="-136.5" font-family="Arial" font-size="9.00" fill="#17324d">scripts/package_offline.py</text>
+</g>
+<!-- summary&#45;&gt;figures -->
+<g id="edge20" class="edge">
+<title>summary&#45;&gt;figures</title>
+<path fill="none" stroke="#a8661d" stroke-width="1.35" stroke-dasharray="5,2" d="M1530.84,-150C1530.84,-150 1572.45,-150 1572.45,-150"/>
+<polygon fill="#a8661d" stroke="#a8661d" stroke-width="1.35" points="1572.45,-152.52 1579.65,-150 1572.45,-147.48 1572.45,-152.52"/>
+</g>
+</g>
 </svg>

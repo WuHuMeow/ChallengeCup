@@ -2,7 +2,7 @@
 
 ## 目的
 
-运行完整实验矩阵（20 路口 x 3 算法 x 2 流量等级 x 3 种子 = 360 次仿真），生成对比数据。
+运行形式实验矩阵（20 路口 x 3 算法 x 2 流量变体 x 3 种子 = 360 次正常 + 180 次扰动），生成密封对比证据。
 
 ## 前置条件
 
@@ -18,9 +18,9 @@
 python -m experiments.runner \
   --intersection 16 \
   --algorithm ca_maxpressure \
-  --flow-multiplier 1.5 \
+  --flow-multiplier 1.25 \
   --seed 42 \
-  --steps 36000 \
+  --duration-seconds 3600 --warmup-seconds 600 \
   --output-dir output/runs
 ```
 
@@ -55,8 +55,8 @@ print(f"完成 {len(results)} 次实验")
 ### 可恢复的 PDF 矩阵（推荐）
 
 ```bash
-python scripts/run_pdf_matrix.py --quick --output-root output/runs/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 --output-root output/runs/matrix-full
+python scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
+python scripts/run_pdf_matrix.py --profile formal --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal
 ```
 
 脚本把索引写入 `matrix.csv` 和 `matrix_state.json`。恢复时仅跳过终态为 `completed`、
@@ -90,5 +90,5 @@ A: 每次运行位于 `<root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/`，矩
 `matrix.csv` 和 `matrix_state.json`。
 
 **Q: 内存不够？**
-A: 用 `python scripts/stress_memory.py --intersections 16 --steps 36000 --output-root output/runs/stress`
+A: 用 `python scripts/stress_memory.py --intersections 16 --steps 3600 --output-root output/runs/stress`
 测试峰值。默认阈值为 1024MiB，可通过 `--max-python-mib` 调整。

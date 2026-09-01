@@ -52,7 +52,40 @@ CA-MP 参数只允许：
 
 原始 `data/intersection_data/` 是只读输入，不允许在原目录原地修改。
 
+### SceneManifest
+
+`SceneRegistry.list_scenes(formal_only=False)` 返回不可变的
+`tuple[SceneManifest, ...]`，提供正式场景的只读审计元数据；运行时调用继续使用
+`get_scene()` 和 `get_meta()`，其 `SceneMeta` 接口不变。每个 `SceneManifest` 包含：
+
+- `scene_id`、仓库相对的 `source_files` 及其流式计算的 `sha256`；
+- `step_length`（未在 `.sumocfg` 显式配置时为 SUMO 默认 `1.0`）、`tls_ids`、
+  `lane_ids` 和受控有效 lane-to-lane `movement_count`；
+- `validation_status`（`pass` 或 `fail`）与不被吞没的 `warnings`。
+
+`SceneValidator.validate(scene_root)` 使用 XML 和 Excel 的结构化解析预检 net、flow、
+route、turn、sumocfg 和配时输入。不存在合法受控 movement、无效步长、断开的路线或
+引用不存在的车道/边/信号程序时返回 `fail`。官方源已知的 `.sumocfg` 未直接引用
+flow/turn 输入会保留为 `source warning`，不作为没有告警的成功声明。
+
+`SceneImporter.import_scene(source_root, destination_root)` 先完成验证，只有 `pass` 时才
+将完整场景树复制为 `<destination_root>/<scene_id>/`；失败时抛出
+`SceneValidationError`，不会创建部分包，也绝不写回 `source_root`。
+
 ## 2. 运行状态与产物
+
+`RunArtifacts.required_output_names()` is the single completed-run checker
+contract. A `completed` run must retain non-empty `metrics.csv`,
+`simulation_log.csv`, `events.csv`, `tripinfo.xml`, `stats.xml`, `traj.xml`,
+and `summary.json`. The three XML files are raw SUMO provenance outputs;
+`queues.xml` remains optional when the source configuration enables it.
+
+`variants/` contains generated per-run inputs and is not an original-data
+directory. No intermediate file is written under `data/intersection_data/`
+or `engine/configs/`. `run_metadata.json` records the terminal lifecycle
+state and the actual existing names in `generated_files`; optional or cleaned
+files are not claimed there. Formal acceptance evidence is separate under
+`output/evidence/` and is never a run artifact.
 
 每次运行生成随机、碰撞安全的 `run_id`，目录固定为：
 
@@ -78,10 +111,12 @@ CA-MP 参数只允许：
 `RunStatus` 取值：
 
 ```text
-queued, running, completed, stopped, ended_early,
-disconnected, interrupted, failed
+queued, starting, running, stopping, completed, interrupted,
+ended_early, disconnected, failed, stopped
 ```
 
+`starting` 和 `stopping` 是运行中的生命周期状态。用户停止运行的规范终态是
+`interrupted`；`stopped` 仅用于读取旧产物的兼容，不会作为新的停止结果写入。
 只有 `completed` 表示正常完成。验收层另使用 `pass`、`fail`、`not_run`，其中
 `not_run` 表示环境或证据未执行，不能解释成通过。
 
@@ -105,7 +140,8 @@ class BaseControlAlgorithm(ABC):
 
 - `step()` 只做决策，不启动 SUMO、不写文件、不直接调用 TraCI。
 - 返回 `[]` 表示本步不干预。
-- 控制动作由 `TraCIBridge.apply_actions()` 执行并逐项返回 `ActionResult`。
+- 控制动作统一由 `SafetyExecutor.apply()` 验证和执行，并逐项返回与算法原始请求关联的
+  `ActionResult`；算法和 Runner 不直接调用 bridge 的私有信号写入端。
 
 ### JointState
 
@@ -123,6 +159,7 @@ class BaseControlAlgorithm(ABC):
 | `vehicles` | `list[VehicleState]` | 采样车辆，硬上限 500 |
 | `arrival_history` | `list[int]` | 最近 300 步到达历史 |
 | `phase_states` | `list[PhaseTrafficState]` | 合法相位的上下游交通状态 |
+| `phase_movements` | `tuple[PhaseMovementState, ...]` | 唯一用于 movement pressure 的相位-转向状态；默认空元组 |
 
 ### QueueState
 
@@ -141,18 +178,50 @@ class BaseControlAlgorithm(ABC):
 | `incoming_capacity` / `outgoing_capacity` | 上下游容量 |
 | `outgoing_occupancy` | 下游占用率，范围 `0..1` |
 
+### PhaseMovementState 与 MovementState
+
+`JointState.phase_movements` 是 movement pressure 的唯一算法输入；`queues` 保留用于兼容和展示。
+每个 `PhaseMovementState` 对应一个合法相位，包含 `phase_index`、`signal_state`、
+`nominal_duration`（仿真秒）及其 `movements`。每个 `MovementState` 以不可变的
+`MovementKey(incoming_lane, outgoing_lane)` 标识，包含：
+
+| 字段 | 说明 |
+|---|---|
+| `queue_vehicles` / `downstream_queue_vehicles` | 上游和下游排队，单位为车辆 |
+| `incoming_capacity` / `downstream_capacity` | 上游和下游容量，单位为车辆，必须大于 `0` |
+| `downstream_occupancy` | 下游占用率，范围 `0..1` |
+| `saturation_rate` | 饱和流率，单位为车辆/仿真秒 |
+| `turn_ratio` | 转向比例 |
+
 ### ControlAction 与 ActionResult
 
-`ControlAction` 字段为 `tls_id`、`action_type`、`value`、`reason`。
+`ControlAction` 字段为 `tls_id`、`action_type`、`value`、`reason`，以及可选的
+`issued_at`、`expires_at` 仿真秒有效期。两个有效期字段同时省略时保持历史调用兼容；
+生产算法按 `state.timestamp` 签发动作，并使用 60 仿真秒有效期。执行时刻满足
+`current >= expires_at` 的动作以 `stale_action` 拒绝。
 
 | `action_type` | `value` | TraCI 调用 |
 |---|---|---|
 | `set_phase` | 合法整数相位 | `trafficlight.setPhase` |
 | `set_phase_duration` | 秒数 | `trafficlight.setPhaseDuration` |
-| `set_program` | 程序 ID | `trafficlight.setProgram` |
+| `set_program` | 含 `program_id` 和相位定义的固定配时程序 | `trafficlight.setProgramLogic` + `trafficlight.setProgram` |
 
-`TraCIBridge.apply_actions(actions) -> list[ActionResult]`。每个结果包含原动作、
-`accepted` 和 `detail`；拒绝动作会写入事件日志，调用方不需要从 warning 文本猜测结果。
+`SafetyExecutor.apply(actions, state, bridge) -> tuple[ActionResult, ...]` 是唯一的信号
+动作写入入口。执行器验证动作有效期和仿真秒边界、从算法当前配置读取最小绿灯、拒绝
+会缩短当前或新进入绿灯的时长，并只沿可达黄灯/全红路径切换绿灯，再调用 bridge 的
+私有低层写入端。`set_program` 只接受通过结构校验且在 `step`、仿真时间、当前相位
+已持续时间均为零时安装的固定配时定义；定义中的每个服务绿灯和循环转换还必须独立
+满足当前最小绿灯、配置黄灯和纯全红清空时长。每个结果仍包含算法原始动作、
+`accepted`、`detail` 和结构化 `reason_code`；拒绝动作会写入事件日志，调用方不需要
+从 warning 文本猜测结果。只有非法拓扑边才生成 `illegal_transition` 安全事件，最小
+绿灯、黄灯和全红计时拒绝仅保留为结构化 `action_rejected`。
+
+`events.csv` keeps the legacy `step`, `type`, and `detail` columns and adds
+`run_id`, `intersection_id`, `algorithm`, `status`, `reason`, `accepted`,
+and action fields. Lifecycle events use `status`/`reason`; action rows use
+`accepted` plus the validation detail. This makes `run_start`,
+`action_applied`, `action_rejected`, `channel_wait`, `disconnected`, and
+`terminal` auditable without parsing warning text.
 
 ## 4. CA-MP 行为
 
@@ -161,10 +230,10 @@ class BaseControlAlgorithm(ABC):
 1. 上游排队和下游排队分别按容量归一化；
 2. 将 `CloudPolicy.predict()` 的预测到达量按 `prediction_weight` 加入压力；
 3. 当 `outgoing_occupancy >= overflow_occupancy_threshold` 时阻断该相位，避免向已饱和下游继续放行；
-4. 先满足 `min_green`，并在 `max_green` 到期时选择可行替代相位；
-5. 切换时优先经过真实 SUMO 黄灯/全红相位；
+4. 在 `max_green` 到期时选择可行替代相位，并把最终绿灯请求交给共享安全执行器；
+5. `SafetyExecutor` 按仿真秒执行 `min_green`，并插入真实 SUMO 黄灯/全红相位；
 6. 绿灯时长按相对压力动态计算，并限制在 `min_green..max_green`；
-7. `reset()` 清理待切换相位和云策略状态。
+7. `reset()` 清理控制器配置和云策略状态。
 
 校准使用 `experiments/tuning.py`：
 
@@ -227,16 +296,16 @@ deprecated 兼容端点。
 
 ```powershell
 python -m experiments.runner --intersection 1 --algorithm ca_maxpressure `
-  --flow-multiplier 1.5 --seed 42 --steps 36000 `
+  --flow-multiplier 1.25 --seed 42 --steps 7200 `
   --output-dir output/runs
 ```
 
 PDF 矩阵：
 
 ```powershell
-python scripts/run_pdf_matrix.py --quick `
+python scripts/run_pdf_matrix.py --profile quick `
   --output-root output/runs/matrix-quick
-python scripts/run_pdf_matrix.py --steps 36000 `
+python scripts/run_pdf_matrix.py --profile formal --duration-seconds 3600 `
   --output-root output/runs/matrix-full
 ```
 

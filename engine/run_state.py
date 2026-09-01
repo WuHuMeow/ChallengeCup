@@ -38,7 +38,6 @@ _ALLOWED_TRANSITIONS = {
     }),
     RunStatus.STOPPING: frozenset({
         RunStatus.COMPLETED,
-        RunStatus.STOPPED,
         RunStatus.ENDED_EARLY,
         RunStatus.DISCONNECTED,
         RunStatus.INTERRUPTED,
@@ -114,29 +113,5 @@ class RunStateMachine:
             artifacts = self._artifacts.get(run_id)
             if artifacts is not None and persist_artifact:
                 artifacts.write_status(new_status.value, reason)
-            self._records[run_id] = result
-            return result
-
-    def force_terminal(
-        self,
-        run_id: str,
-        new_status: RunStatus,
-        reason: str,
-        *,
-        summary: dict[str, object] | None = None,
-    ) -> RunResult:
-        """Terminalize in memory when status storage itself fails."""
-        with self._lock:
-            current = self._records.get(run_id)
-            if current is None:
-                raise KeyError(run_id)
-            result = RunResult(
-                run_id=current.run_id,
-                status=new_status,
-                reason=reason,
-                run_dir=current.run_dir,
-                summary=summary if summary is not None else current.summary,
-                algorithm=current.algorithm,
-            )
             self._records[run_id] = result
             return result

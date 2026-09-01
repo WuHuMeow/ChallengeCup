@@ -1,6 +1,5 @@
 import dataclasses
 import json
-from pathlib import Path
 
 import pytest
 
@@ -476,7 +475,7 @@ def test_audit_explains_equal_score_smallest_index_tie(state):
 
 def test_prediction_converts_hourly_flow_to_vehicles_over_the_horizon(state):
     """Using veh/h directly would produce 600 instead of the hand-derived 50 vehicles."""
-    policy = CloudPolicy(model_path=Path("nonexistent-model.pkl"))
+    policy = CloudPolicy()
     policy.horizon = 300
     predicted = policy.predict(dataclasses.replace(state, flows={"in_a": 600.0}))
 
@@ -485,7 +484,7 @@ def test_prediction_converts_hourly_flow_to_vehicles_over_the_horizon(state):
 
 def test_prediction_keeps_ewma_history_in_hourly_flow_units(state):
     """Storing horizon vehicles as EWMA history would make the second 600 veh/h forecast 36.25."""
-    policy = CloudPolicy(model_path=Path("nonexistent-model.pkl"))
+    policy = CloudPolicy()
     policy.horizon = 300
     hourly = dataclasses.replace(state, flows={"in_a": 600.0})
 

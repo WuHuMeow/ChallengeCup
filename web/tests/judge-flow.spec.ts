@@ -22,6 +22,9 @@ const scene = {
 
 async function mockJudgeApi(page: Page) {
   const startPayloads: Record<string, unknown>[] = [];
+  const guiDelayPayloads: Record<string, unknown>[] = [];
+  const frameRequests = { count: 0 };
+  const nativeGuiRequests: string[] = [];
   await page.route("**/api/scenes", (route) => route.fulfill({ json: [scene] }));
   await page.route("**/api/algorithms", (route) =>
     route.fulfill({
@@ -63,6 +66,7 @@ async function mockJudgeApi(page: Page) {
     });
   });
   await page.route("**/api/runs/run-quick/frame**", async (route) => {
+    frameRequests.count += 1;
     const requested = new URL(route.request().url()).searchParams.get("sequence");
     const sequence = requested === "2" ? 1 : 2;
     await route.fulfill({
@@ -88,6 +92,18 @@ async function mockJudgeApi(page: Page) {
       },
     }),
   );
+  await page.route("**/api/runs/run-quick/gui-delay", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    const body = route.request().postDataJSON();
+    guiDelayPayloads.push(body);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await route.fulfill({ status: 200, json: body });
+  });
+  await page.route("**/api/runs/run-quick/native-gui", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    nativeGuiRequests.push("run-quick");
+    await route.fulfill({ status: 200, json: { status: "shown" } });
+  });
   const formalResult = {
     run_id: "formal-1",
     status: "completed",
@@ -130,31 +146,119 @@ async function mockJudgeApi(page: Page) {
   };
   await page.route("**/api/results", (route) => route.fulfill({ status: 200, json: { items: [formalResult, otherSceneResult], count: 2 } }));
   await page.route("**/api/results/formal-1", (route) => route.fulfill({ status: 200, json: formalResult }));
-  return { startPayloads };
+  return { startPayloads, guiDelayPayloads, frameRequests, nativeGuiRequests };
 }
 
-test("judge can navigate the demo and see a real frame placeholder", async ({ page }) => {
-  const { startPayloads } = await mockJudgeApi(page);
+test("judge can configure a quick demo without the legacy browser viewers", async ({ page }) => {
+  const { startPayloads, frameRequests } = await mockJudgeApi(page);
   await page.goto("/");
-  await expect(page.getByRole("navigation")).toContainText("Simulation");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByRole("img", { name: "SUMO simulation frame" })).toHaveAttribute(
-    "src",
-    /data:image|\/api\/runs\/|blob:/,
-  );
-  await expect.poll(() => page.getByRole("img", { name: "SUMO simulation frame" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  await expect(page.getByText("Quick demo output")).toBeVisible();
-  await expect(page.getByText("Sealed individual-run evidence is shown only for verified results from the evidence API; formal matrix conclusions await Task 22.")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Safety counters" })).toContainText(/Collision\s*0/);
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page).toHaveTitle("交通信号控制仿真评审台");
+  await expect(page.getByRole("navigation", { name: "主导航" })).toContainText("实时仿真");
+  await expect(page.getByRole("img", { name: "SUMO 仿真画面" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "运行评审序列" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "仿真步长（秒）" })).toBeVisible();
+  await page.getByRole("button", { name: "自定义步长" }).click();
+  await page.getByLabel("自定义仿真步长（秒）").fill("0.25");
+
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+
+  await expect.poll(() => startPayloads.length).toBe(1);
+  await page.waitForTimeout(200);
+  expect(frameRequests.count).toBe(0);
+  await expect(page.getByText("快速演示输出")).toBeVisible();
+  await expect(page.getByText("仅展示由证据接口验证的单次运行封存结果；正式矩阵结论需等待任务 22 完成。")).toBeVisible();
+  await expect(page.getByRole("region", { name: "安全计数" })).toContainText(/碰撞\s*0/);
+  await expect(page.getByLabel("仿真时长（秒）")).toHaveValue("300");
+  await expect(page.getByTestId("simulation-progress")).toContainText("仿真进度：0/1200 步（0/300 秒）");
   expect(startPayloads[0]).toMatchObject({
     intersection_id: "1",
     algorithm: "fixed_time",
     flow_multiplier: 1,
     seed: 42,
-    duration_seconds: 30,
+    duration_seconds: 300,
     warmup_seconds: 0,
+    gui_delay_ms: 100,
+    step_length_override: 0.25,
     disturbance: null,
   });
+});
+
+test("quick demo retries until the native SUMO window is ready", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.unroute("**/api/runs/run-quick/native-gui");
+  let attempts = 0;
+  await page.route("**/api/runs/run-quick/native-gui", async (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({ status: 409, json: { detail: "SUMO process is not ready" } });
+      return;
+    }
+    await route.fulfill({ status: 200, json: { status: "shown" } });
+  });
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "running" }),
+        })), 20);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("judge can change the SUMO GUI delay while a run is active", async ({ page }) => {
+  const { guiDelayPayloads } = await mockJudgeApi(page);
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "running" }),
+        })), 20);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  const delayInput = page.getByLabel("GUI 步进延迟（毫秒）");
+  await expect(delayInput).toHaveValue("100");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：运行中")).toBeVisible();
+
+  await page.getByRole("button", { name: "延迟增加 50 毫秒" }).click();
+  await expect(delayInput).toHaveValue("100");
+  await expect.poll(() => guiDelayPayloads).toEqual([{ delay_ms: 150 }]);
+  await expect(delayInput).toHaveValue("150");
+
+  await page.getByRole("button", { name: "最快 0 毫秒" }).click();
+  await expect.poll(() => guiDelayPayloads).toEqual([
+    { delay_ms: 150 },
+    { delay_ms: 0 },
+  ]);
+  await expect(delayInput).toHaveValue("0");
 });
 
 test("typed run responses never retain server filesystem paths", async ({ page }) => {
@@ -169,6 +273,7 @@ test("typed run responses never retain server filesystem paths", async ({ page }
       seed: 42,
       duration_seconds: 30,
       warmup_seconds: 0,
+      gui_delay_ms: 100,
       disturbance: null,
     });
     return Object.prototype.hasOwnProperty.call(result, "run_dir");
@@ -179,12 +284,12 @@ test("typed run responses never retain server filesystem paths", async ({ page }
 test("selected run parameters are sent to the judge API", async ({ page }) => {
   const { startPayloads } = await mockJudgeApi(page);
   await page.goto("/");
-  await page.getByLabel("Flow multiplier").fill("1.5");
-  await page.getByLabel("Duration (s)").fill("60");
-  await page.getByLabel("Warmup (s)").fill("15");
-  await page.getByLabel("Seed").fill("77");
-  await page.getByLabel("Disturbance").selectOption("construction");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
+  await page.getByLabel("流量倍率").fill("1.5");
+  await page.getByLabel("仿真时长（秒）").fill("60");
+  await page.getByLabel("预热时长（秒）").fill("15");
+  await page.getByLabel("随机种子").fill("77");
+  await page.getByLabel("扰动设置").selectOption("construction");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
   await expect.poll(() => startPayloads.length).toBe(1);
   expect(startPayloads[0]).toMatchObject({
     flow_multiplier: 1.5,
@@ -201,31 +306,21 @@ test("selected run parameters are sent to the judge API", async ({ page }) => {
   });
 });
 
-test("one-click judge sequence runs fixed time then capacity-aware control", async ({ page }) => {
-  const { startPayloads } = await mockJudgeApi(page);
-  await page.unroute("**/api/runs");
-  await page.route("**/api/runs", async (route) => {
-    const body = route.request().postDataJSON();
-    startPayloads.push(body);
-    const runId = body.algorithm === "fixed_time" ? "run-fixed" : "run-capacity";
-    await route.fulfill({
-      status: 202,
-      json: { run_id: runId, status: "queued", reason: "", run_dir: "hidden", summary: null, algorithm: body.algorithm },
-    });
-  });
-  await page.route("**/api/runs/run-*/frame**", (route) => route.fulfill({ status: 404, json: { detail: "frame unavailable" } }));
+test("run progress uses the selected simulation step length", async ({ page }) => {
+  await mockJudgeApi(page);
   await page.addInitScript(() => {
     class MockSocket extends EventTarget {
       readyState = 1;
-      readonly runId: string;
 
-      constructor(url: string) {
+      constructor() {
         super();
-        this.runId = url.includes("run-capacity") ? "run-capacity" : "run-fixed";
         window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
         window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
-          data: JSON.stringify({ run_id: this.runId, type: "status", status: "completed" }),
-        })), 40);
+          data: JSON.stringify({ run_id: "run-quick", type: "metrics", simulation_time: 30, metrics: {} }),
+        })), 30);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "completed", simulation_time: 30 }),
+        })), 60);
       }
 
       close() {
@@ -237,45 +332,11 @@ test("one-click judge sequence runs fixed time then capacity-aware control", asy
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Run judge sequence" }).click();
-  await expect.poll(() => startPayloads.map((payload) => payload.algorithm)).toEqual([
-    "fixed_time",
-    "capacity_aware_maxpressure",
-  ]);
-  await expect(page.getByRole("heading", { name: "Comparison" })).toBeVisible();
-});
+  await page.getByLabel("仿真时长（秒）").fill("30");
+  await page.getByRole("button", { name: "0.5 秒步长" }).click();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
 
-test("stale frame responses never replace the accepted sequence", async ({ page }) => {
-  await mockJudgeApi(page);
-  await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByTestId("frame-sequence")).toContainText("2");
-  await expect(page.getByTestId("frame-sequence")).not.toContainText("1");
-});
-
-test("frame polling recovers when the first frame is not ready", async ({ page }) => {
-  await mockJudgeApi(page);
-  await page.unroute("**/api/runs/run-quick/frame**");
-  let requests = 0;
-  await page.route("**/api/runs/run-quick/frame**", (route) => {
-    requests += 1;
-    if (requests === 1) return route.fulfill({ status: 404, json: { detail: "frame unavailable" } });
-    return route.fulfill({
-      status: 200,
-      contentType: "image/png",
-      headers: {
-        "X-Run-Id": "run-quick",
-        "X-Frame-Sequence": "2",
-        "X-Simulation-Time": "2",
-      },
-      body: PNG,
-    });
-  });
-
-  await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByTestId("frame-sequence")).toContainText("Sequence 2");
-  expect(requests).toBeGreaterThan(1);
+  await expect(page.getByTestId("simulation-progress")).toContainText("仿真进度：60/60 步（30/30 秒）");
 });
 
 test("terminal websocket cleanup remains idle", async ({ page }) => {
@@ -309,9 +370,9 @@ test("terminal websocket cleanup remains idle", async ({ page }) => {
   await page.goto("/");
   await expect.poll(() => resultRequests).toBeGreaterThan(0);
   const initialResultRequests = resultRequests;
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByText("Status: completed")).toBeVisible();
-  await expect(page.getByText("Connection: idle")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：已完成")).toBeVisible();
+  await expect(page.getByText("连接：空闲")).toBeVisible();
   await expect.poll(() => resultRequests).toBeGreaterThan(initialResultRequests);
 });
 
@@ -341,10 +402,10 @@ test("unexpected websocket closure exposes a reconnect action", async ({ page })
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByRole("alert")).toContainText("Realtime connection closed");
-  await page.getByRole("button", { name: "Reconnect events" }).click();
-  await expect(page.getByText("Connection: connected")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByRole("alert")).toContainText("实时连接已关闭");
+  await page.getByRole("button", { name: "重新连接事件流" }).click();
+  await expect(page.getByText("连接：已连接")).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __socketCount: number }).__socketCount)).toBe(2);
 });
 
@@ -377,12 +438,12 @@ test("stale websocket callbacks cannot disconnect a successful reconnect", async
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByRole("alert")).toContainText("Realtime connection closed");
-  await page.getByRole("button", { name: "Reconnect events" }).click();
-  await expect(page.getByText("Connection: connected")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByRole("alert")).toContainText("实时连接已关闭");
+  await page.getByRole("button", { name: "重新连接事件流" }).click();
+  await expect(page.getByText("连接：已连接")).toBeVisible();
   await page.waitForTimeout(250);
-  await expect(page.getByText("Connection: connected")).toBeVisible();
+  await expect(page.getByText("连接：已连接")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -412,8 +473,8 @@ test("runtime metrics expose the actual current signal phase", async ({ page }) 
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByText("Phase: east-west green · 8 s")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("信号阶段：east-west green · 8 秒")).toBeVisible();
 });
 
 test("late websocket events cannot mutate a replacement run", async ({ page }) => {
@@ -468,18 +529,18 @@ test("late websocket events cannot mutate a replacement run", async ({ page }) =
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByText("Status: queued")).toBeVisible();
-  await page.getByRole("button", { name: "Stop run" }).click();
-  await expect(page.getByText("Status: stopped")).toBeVisible();
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByText("Status: queued")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：排队中")).toBeVisible();
+  await page.getByRole("button", { name: "停止运行" }).click();
+  await expect(page.getByText("状态：已停止")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：排队中")).toBeVisible();
   await page.waitForTimeout(350);
-  await expect(page.getByText("Status: queued")).toBeVisible();
+  await expect(page.getByText("状态：排队中")).toBeVisible();
   expect(startCount).toBe(2);
 });
 
-test("simulation exposes stop, frame metadata, and native GUI errors", async ({ page }) => {
+test("simulation exposes stop and native GUI errors", async ({ page }) => {
   await mockJudgeApi(page);
   let stopCalled = false;
   await page.route("**/api/runs/run-quick/stop", async (route) => {
@@ -501,33 +562,31 @@ test("simulation exposes stop, frame metadata, and native GUI errors", async ({ 
   );
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  await expect(page.getByTestId("frame-sequence")).toContainText("Sequence 2");
-  await expect(page.getByTestId("simulation-time")).toContainText("Simulation time 2 s");
-  await page.getByRole("button", { name: "Show native SUMO GUI" }).click();
-  await expect(page.getByRole("alert")).toContainText("display unavailable");
-  await page.getByRole("button", { name: "Stop run" }).click();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await page.getByRole("button", { name: "显示原生 SUMO 界面" }).click();
+  await expect(page.getByRole("alert")).toContainText("显示环境不可用");
+  await page.getByRole("button", { name: "停止运行" }).click();
   await expect.poll(() => stopCalled).toBe(true);
-  await expect(page.getByText("interrupted")).toBeVisible();
+  await expect(page.getByText("状态：已中断")).toBeVisible();
 });
 
 test("judge can inspect sealed run comparison, history, and scene provenance", async ({ page }) => {
   await mockJudgeApi(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Comparison" }).click();
-  await expect(page.getByRole("heading", { name: "Comparison" })).toBeVisible();
-  await expect(page.getByLabel("Comparison scene")).toHaveValue("1");
+  await page.getByRole("button", { name: "算法对比" }).click();
+  await expect(page.getByRole("heading", { name: "算法对比" })).toBeVisible();
+  await expect(page.getByLabel("对比场景")).toHaveValue("1");
   await expect(page.getByTestId("comparison-chart")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Sealed run result comparison" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "封存运行结果对比" })).toBeVisible();
   await expect(page.locator(".recharts-wrapper").first()).toBeVisible();
-  await expect(page.getByText("Unavailable")).toBeVisible();
+  await expect(page.getByText("不可用")).toBeVisible();
   await expect(page.getByText("formal-1")).toBeVisible();
   await expect(page.getByText("formal-2")).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: "Fuel ml" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "CO2 g" })).toBeVisible();
-  await expect(page.getByText("Hard safety gates: collisions, red-light violations, and illegal transitions.")).toBeVisible();
-  await expect(page.getByText("Observational safety: harsh braking, teleports, and potential conflicts.")).toBeVisible();
-  const formalRow = page.getByRole("row").filter({ hasText: "source: formal-1" });
+  await expect(page.getByRole("heading", { name: "燃油消耗 毫升" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "二氧化碳排放 克" })).toBeVisible();
+  await expect(page.getByText("硬性安全门槛：碰撞、闯红灯和非法相位切换。")).toBeVisible();
+  await expect(page.getByText("观测性安全指标：急刹车、车辆传送和潜在冲突。")).toBeVisible();
+  const formalRow = page.getByRole("row").filter({ hasText: "来源：formal-1" });
   const safetyCells = formalRow.getByRole("cell");
   await expect(safetyCells.nth(6)).toHaveText("1");
   await expect(safetyCells.nth(7)).toHaveText("2");
@@ -535,22 +594,22 @@ test("judge can inspect sealed run comparison, history, and scene provenance", a
   await expect(safetyCells.nth(9)).toHaveText("4");
   await expect(safetyCells.nth(10)).toHaveText("5");
   await expect(safetyCells.nth(11)).toHaveText("6");
-  await expect(page.getByText("Formal 95% CI has not yet been generated; it awaits Task 22's complete sealed 540-run matrix.")).toBeVisible();
-  await page.getByLabel("Comparison scene").selectOption("2");
+  await expect(page.getByText("正式的 95% 置信区间尚未生成，需等待任务 22 完成并封存 540 次运行矩阵。")).toBeVisible();
+  await page.getByLabel("对比场景").selectOption("2");
   await expect(page.getByText("formal-2")).toBeVisible();
   await expect(page.getByText("formal-1")).not.toBeVisible();
 
-  await page.getByRole("button", { name: "History" }).click();
+  await page.getByRole("button", { name: "运行历史" }).click();
   await expect(page.getByText("formal-1")).toBeVisible();
-  await expect(page.getByText("Sealed run evidence")).toBeVisible();
-  await expect(page.getByText("Scene 1").first()).toBeVisible();
+  await expect(page.getByText("封存运行证据")).toBeVisible();
+  await expect(page.getByText("场景 1").first()).toBeVisible();
   await expect(page.getByText("hidden")).not.toBeVisible();
-  await page.getByRole("button", { name: "Open sealed summary" }).first().click();
-  await expect(page.getByLabel("Sealed result detail")).toContainText('"scene_id": "1"');
+  await page.getByRole("button", { name: "打开封存摘要" }).first().click();
+  await expect(page.getByLabel("封存结果详情")).toContainText('"scene_id": "1"');
 
-  await page.getByRole("button", { name: "Scene" }).click();
+  await page.getByRole("button", { name: "场景清单" }).click();
   await expect(page.getByText("Test intersection")).toBeVisible();
-  await expect(page.getByText("pass", { exact: true })).toBeVisible();
+  await expect(page.getByText("通过", { exact: true })).toBeVisible();
   await expect(page.getByText("scene.net.xml")).toBeVisible();
   await expect(page.getByText("data/intersection_data", { exact: true })).not.toBeVisible();
   await expect(page.getByText("fixture warning")).toBeVisible();
@@ -561,9 +620,9 @@ test("failed scene manifests are never labeled as verified", async ({ page }) =>
   await page.unroute("**/api/scenes");
   await page.route("**/api/scenes", (route) => route.fulfill({ json: [{ ...scene, validation_status: "fail" }] }));
   await page.goto("/");
-  await page.getByRole("button", { name: "Scene" }).click();
-  await expect(page.getByText("Review manifest status")).toBeVisible();
-  await expect(page.getByText("All manifests pass")).not.toBeVisible();
+  await page.getByRole("button", { name: "场景清单" }).click();
+  await expect(page.getByText("请检查清单状态")).toBeVisible();
+  await expect(page.getByText("所有清单均已通过")).not.toBeVisible();
 });
 
 test("judge console remains usable on a narrow viewport", async ({ page }) => {
@@ -571,16 +630,16 @@ test("judge console remains usable on a narrow viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Simulation" })).toBeFocused();
-  await expect(page.getByRole("button", { name: "Start quick demo" })).toBeVisible();
-  const before = await page.locator(".sumo-frame__stage").boundingBox();
-  await page.getByRole("button", { name: "Start quick demo" }).click();
-  const after = await page.locator(".sumo-frame__stage").boundingBox();
+  await expect(page.getByRole("button", { name: "实时仿真" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "开始快速演示" })).toBeVisible();
+  const before = await page.locator(".simulation-grid").boundingBox();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  const after = await page.locator(".simulation-grid").boundingBox();
   expect(before).not.toBeNull();
   expect(after).not.toBeNull();
   expect(after?.width).toBe(before?.width);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-  for (const view of ["Comparison", "History", "Scene"]) {
+  for (const view of ["算法对比", "运行历史", "场景清单"]) {
     await page.getByRole("button", { name: view }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   }

@@ -352,7 +352,7 @@ class SafetyObservationCollector:
         events = []
         active_conflicts: set[tuple[str, str]] = set()
         for index, first in enumerate(candidates):
-            for second in candidates[index + 1:]:
+            for second in candidates[index + 1 :]:
                 if not self._is_potential_conflict(first, second):
                     continue
                 pair = tuple(sorted((first.vehicle_id, second.vehicle_id)))
