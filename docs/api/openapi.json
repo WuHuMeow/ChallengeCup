@@ -909,6 +909,10 @@
             "title": "Name",
             "type": "string"
           },
+          "route_generation_verified": {
+            "title": "Route Generation Verified",
+            "type": "boolean"
+          },
           "scene_id": {
             "title": "Scene Id",
             "type": "string"
@@ -963,6 +967,7 @@
           "lane_ids",
           "movement_count",
           "validation_status",
+          "route_generation_verified",
           "warnings"
         ],
         "title": "SceneManifestModel",

@@ -45,6 +45,14 @@ export function SimulationView({
     !presetStepLengths.includes(snapshot.selectedStepLength),
   );
   const active = Boolean(snapshot.activeRun);
+  const hasLiveRun = active && ![
+    "completed",
+    "stopped",
+    "ended_early",
+    "disconnected",
+    "interrupted",
+    "failed",
+  ].includes(snapshot.activeRun?.status ?? "");
   const guiDelayLocked = ["queued", "starting", "stopping"].includes(snapshot.activeRun?.status ?? "");
   const guiDelayDisabled = startPending || guiDelayPending || guiDelayLocked;
   const stepLength = snapshot.selectedStepLength > 0 ? snapshot.selectedStepLength : 1;
@@ -62,7 +70,7 @@ export function SimulationView({
         </div>
         <span className="demo-badge">快速演示输出</span>
       </div>
-      <p className="evidence-note">仅展示由证据接口验证的单次运行封存结果；正式矩阵结论需等待任务 22 完成。</p>
+      <p className="evidence-note">快速演示用于交互检查；正式矩阵已封存 540/540 次运行，结论以冻结证据为准。</p>
       <ErrorBanner error={snapshot.error} onDismiss={onDismissError} onReconnect={onReconnect} />
       <section className="control-panel" aria-label="仿真控制">
         <label>
@@ -77,7 +85,10 @@ export function SimulationView({
           算法
           <select value={snapshot.selectedAlgorithm} onChange={(event) => onAlgorithmChange(event.target.value)}>
             {(algorithms.length ? algorithms : [{ key: "fixed_time", display_name: "Fixed Time" } as AlgorithmSpec]).map((algorithm) => (
-              <option key={algorithm.key} value={algorithm.key}>{algorithmName(algorithm.key, algorithm.display_name)}</option>
+              <option key={algorithm.key} value={algorithm.key}>
+                {algorithmName(algorithm.key, algorithm.display_name)}
+                {!algorithm.formal && "（可选演示，未纳入正式矩阵）"}
+              </option>
             ))}
           </select>
         </label>
@@ -191,10 +202,10 @@ export function SimulationView({
           <button type="button" onClick={onStart} disabled={startPending || (active && snapshot.connection !== "idle")}>
             <Play size={16} aria-hidden="true" /> 开始快速演示
           </button>
-          <button type="button" onClick={onStop} disabled={!active}>
+          <button type="button" onClick={onStop} disabled={!hasLiveRun}>
             <Square size={16} aria-hidden="true" /> 停止运行
           </button>
-          <button type="button" onClick={onNativeGui} disabled={!active} title="显示原生 SUMO 界面">
+          <button type="button" onClick={onNativeGui} disabled={!hasLiveRun} title="显示原生 SUMO 界面">
             <MonitorPlay size={16} aria-hidden="true" /> 显示原生 SUMO 界面
           </button>
         </div>

@@ -10,6 +10,7 @@ const METRIC_NAMES: Record<string, string> = {
   max_queue_length: "最大排队长度",
   throughput: "通行量",
   total_throughput: "总通行量",
+  total_stops: "停车次数",
   avg_delay: "平均延误",
   avg_travel_time: "平均行程时间",
   fuel_ml: "燃油消耗",
@@ -43,6 +44,7 @@ const STATUS_NAMES: Record<string, string> = {
   queued: "排队中",
   starting: "启动中",
   running: "运行中",
+  stopping: "正在停止",
   completed: "已完成",
   stopped: "已停止",
   ended_early: "提前结束",
@@ -86,6 +88,10 @@ const MESSAGE_NAMES: Record<string, string> = {
   "display unavailable": "显示环境不可用",
   "frame unavailable": "SUMO 画面暂不可用",
   "judge requested stop": "评审端请求停止",
+  "stop requested": "已请求停止仿真",
+  "run cannot be stopped": "当前运行已结束，无法再次停止",
+  "source warning: sumocfg does not explicitly reference flow input": "源配置未显式引用流量输入文件",
+  "source warning: sumocfg does not explicitly reference turn input": "源配置未显式引用转向输入文件",
 };
 
 export function algorithmName(key: string, fallback = key): string {

@@ -55,7 +55,9 @@ class SceneValidator:
         )
         self._validate_routes(parsed.get("net"), parsed.get("flow"), parsed.get("route"), warnings)
         self._validate_turns(parsed.get("net"), parsed.get("turn"), warnings)
-        self._validate_sumocfg(parsed.get("sumocfg"), files, warnings)
+        route_generation_verified = self._validate_sumocfg(
+            parsed.get("sumocfg"), files, warnings
+        )
         self._validate_timing(files.get("timing"), warnings)
 
         status = "pass" if not warnings else "fail"
@@ -72,6 +74,7 @@ class SceneValidator:
             lane_ids=lane_ids,
             movement_count=movement_count,
             validation_status=status,
+            route_generation_verified=route_generation_verified,
             warnings=tuple(warnings),
         )
 
@@ -315,24 +318,101 @@ class SceneValidator:
                 warnings.append("turn relation has no network connection")
 
     @staticmethod
-    def _validate_sumocfg(config: ET.Element | None, files: dict[str, Path], warnings: list[str]) -> None:
+    def _route_generation_matches(files: dict[str, Path]) -> bool:
+        route_path = files.get("route")
+        if route_path is None:
+            return False
+        try:
+            text = route_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return False
+        start = text.find("<jtrrouterConfiguration")
+        closing = "</jtrrouterConfiguration>"
+        if start < 0:
+            start = text.find("<configuration")
+            closing = "</configuration>"
+        end = text.find(closing, start)
+        if start < 0 or end < 0:
+            return False
+        try:
+            recipe = ET.fromstring(text[start : end + len(closing)])
+        except ET.ParseError:
+            return False
+        if recipe.tag == "configuration":
+            schema = recipe.get(
+                "{http://www.w3.org/2001/XMLSchema-instance}noNamespaceSchemaLocation",
+                "",
+            )
+            if not schema.endswith("/jtrrouterConfiguration.xsd"):
+                return False
+
+        expected = {
+            "net-file": (files.get("net"), ".net.xml"),
+            "route-files": (files.get("flow"), ".flow.xml"),
+            "turn-ratio-files": (files.get("turn"), ".turn.xml"),
+            "output-file": (route_path, ".rou.xml"),
+        }
+        recipe_names: list[tuple[str, str]] = []
+        current_names: list[tuple[str, str]] = []
+        for tag, (path, suffix) in expected.items():
+            element = recipe.find(f".//{tag}")
+            value = element.get("value") if element is not None else None
+            if path is None or not value:
+                return False
+            recipe_names.append((value, suffix))
+            current_names.append((path.name, suffix))
+        if all(recipe == current for (recipe, _), (current, _) in zip(recipe_names, current_names)):
+            return True
+
+        # Some supplied scenes were renamed as one coherent package after jtrrouter
+        # generation (for example 1.* -> demo_11.*). Preserve the provenance only
+        # when every input and output uses the same old stem and the same new stem.
+        def common_stem(names: list[tuple[str, str]]) -> str | None:
+            if not all(name.endswith(suffix) for name, suffix in names):
+                return None
+            stems = {
+                name[: -len(suffix)]
+                for name, suffix in names
+            }
+            return next(iter(stems)) if len(stems) == 1 else None
+
+        return common_stem(recipe_names) is not None and common_stem(current_names) is not None
+
+    @classmethod
+    def _validate_sumocfg(
+        cls,
+        config: ET.Element | None,
+        files: dict[str, Path],
+        warnings: list[str],
+    ) -> bool:
         if config is None:
-            return
+            return False
         input_root = config.find("input")
         if input_root is None:
             warnings.append("sumocfg has no input section")
-            return
+            return False
         net_file = input_root.find("net-file")
         if net_file is None or net_file.get("value") != files.get("net", Path()).name:
             warnings.append("sumocfg does not reference its network")
         route_files = input_root.find("route-files")
-        if route_files is None or files.get("route", Path()).name not in route_files.get("value", "").split(","):
+        route_referenced = (
+            route_files is not None
+            and files.get("route", Path()).name
+            in route_files.get("value", "").split(",")
+        )
+        if not route_referenced:
             warnings.append("sumocfg does not reference its route input")
+        route_generation_verified = route_referenced and cls._route_generation_matches(files)
         configured = " ".join(element.get("value", "") for element in input_root)
         for key in ("flow", "turn"):
             path = files.get(key)
-            if path is not None and path.name not in configured:
+            if (
+                path is not None
+                and path.name not in configured
+                and not route_generation_verified
+            ):
                 warnings.append(f"source warning: sumocfg does not explicitly reference {key} input")
+        return route_generation_verified
 
     @staticmethod
     def _validate_timing(path: Path | None, warnings: list[str]) -> None:

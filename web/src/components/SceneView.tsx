@@ -49,10 +49,23 @@ export function SceneView({ scenes, loading = false, error = null }: SceneViewPr
               ))}
             </ul>
           </section>
+          {scene.route_generation_verified && (
+            <section className="route-provenance" aria-label="路由生成来源">
+              <h4>路由生成来源</h4>
+              <p>
+                <code>{displayFileName(scene.source_files.flow ?? "flow.xml")}</code>
+                {" + "}
+                <code>{displayFileName(scene.source_files.turn ?? "turn.xml")}</code>
+                {" → "}
+                <code>{displayFileName(scene.source_files.route ?? "rou.xml")}</code>
+              </p>
+              <span>jtrrouter 生成链路已验证</span>
+            </section>
+          )}
           {scene.warnings.length > 0 && (
             <section className="scene-warnings" aria-label="场景警告">
               <h4>警告</h4>
-              <ul>{scene.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+              <ul>{scene.warnings.map((warning) => <li key={warning}>{localizeMessage(warning)}</li>)}</ul>
             </section>
           )}
         </article>

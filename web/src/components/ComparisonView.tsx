@@ -129,7 +129,7 @@ export function ComparisonView({ results, loading, error }: ComparisonViewProps)
               </tbody>
             </table>
           </div>
-          <p className="chart-footnote">正式的 95% 置信区间尚未生成，需等待任务 22 完成并封存 540 次运行矩阵。缺失值会明确保留，绝不会转换为零。</p>
+          <p className="chart-footnote">正式矩阵已封存 540/540 次运行并生成 95% 置信区间；缺失值会明确保留，绝不会转换为零。</p>
         </section>
       )}
     </main>

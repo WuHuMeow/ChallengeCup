@@ -269,6 +269,41 @@ def test_get_state_uses_spent_duration_after_phase_duration_override():
     get_next.assert_not_called()
 
 
+def test_get_state_falls_back_when_sumo_phase_name_is_empty():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    bridge.tls_id = "tls"
+    program = SimpleNamespace(
+        programID="program_0",
+        phases=[SimpleNamespace(state="G", duration=30.0, name="")],
+    )
+    with (
+        patch.object(traci.simulation, "getTime", return_value=0.0),
+        patch.object(traci.trafficlight, "getPhase", return_value=0),
+        patch.object(traci.trafficlight, "getAllProgramLogics", return_value=[program]),
+        patch.object(traci.trafficlight, "getProgram", return_value="program_0"),
+        patch.object(traci.trafficlight, "getSpentDuration", return_value=0.0),
+        patch.object(traci.trafficlight, "getControlledLinks", return_value=[]),
+        patch.object(traci.vehicle, "getIDList", return_value=[]),
+    ):
+        state = bridge.get_state()
+
+    assert state.current_phase_name == "phase_0"
+
+
+def test_step_accumulates_completed_vehicle_count():
+    bridge = TraCIBridge(Path("demo_1.sumocfg"))
+    with (
+        patch.object(traci, "simulationStep"),
+        patch.object(traci.simulation, "getDepartedNumber", return_value=1),
+        patch.object(traci.simulation, "getArrivedNumber", side_effect=[2, 3]),
+        patch.object(traci.simulation, "getTime", side_effect=[1.0, 2.0]),
+    ):
+        bridge.step()
+        bridge.step()
+
+    assert bridge.completed_vehicle_count == 5
+
+
 def test_get_state_publishes_precise_movement_and_safety_observations():
     bridge = TraCIBridge(Path("demo_1.sumocfg"))
     bridge.tls_id = "tls"

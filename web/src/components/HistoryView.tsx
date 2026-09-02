@@ -1,5 +1,6 @@
 import type { ResultListItem } from "../api/client";
 import { algorithmName, localizeMessage, metricName, statusName } from "../localization";
+import { selectDisplayMetrics } from "../metricDisplay";
 
 interface HistoryViewProps {
   results: ResultListItem[];
@@ -12,7 +13,7 @@ function summaryRows(result: ResultListItem): Array<[string, string]> {
   const nested = result.summary.metrics;
   const metrics = typeof nested === "object" && nested !== null ? nested as Record<string, unknown> : result.summary;
   const rows: Array<[string, string]> = [];
-  for (const [key, value] of Object.entries(metrics)) {
+  for (const [key, value] of selectDisplayMetrics(metrics)) {
     if (value === null) rows.push([key, "不可用"]);
     else if (typeof value === "number" && Number.isFinite(value)) rows.push([key, value.toFixed(2)]);
     if (rows.length === 3) break;

@@ -17,6 +17,7 @@ const scene = {
   lane_ids: ["lane-1"],
   movement_count: 1,
   validation_status: "pass",
+  route_generation_verified: false,
   warnings: ["fixture warning"],
 };
 
@@ -45,7 +46,15 @@ async function mockJudgeApi(page: Page) {
             unavailable_reason: null,
           },
         ],
-        optional: [],
+        optional: [
+          {
+            key: "actuated",
+            display_name: "Actuated Control",
+            formal: false,
+            available: true,
+            unavailable_reason: null,
+          },
+        ],
       },
     }),
   );
@@ -167,7 +176,7 @@ test("judge can configure a quick demo without the legacy browser viewers", asyn
   await page.waitForTimeout(200);
   expect(frameRequests.count).toBe(0);
   await expect(page.getByText("快速演示输出")).toBeVisible();
-  await expect(page.getByText("仅展示由证据接口验证的单次运行封存结果；正式矩阵结论需等待任务 22 完成。")).toBeVisible();
+  await expect(page.getByText("快速演示用于交互检查；正式矩阵已封存 540/540 次运行，结论以冻结证据为准。")).toBeVisible();
   await expect(page.getByRole("region", { name: "安全计数" })).toContainText(/碰撞\s*0/);
   await expect(page.getByLabel("仿真时长（秒）")).toHaveValue("300");
   await expect(page.getByTestId("simulation-progress")).toContainText("仿真进度：0/1200 步（0/300 秒）");
@@ -374,6 +383,306 @@ test("terminal websocket cleanup remains idle", async ({ page }) => {
   await expect(page.getByText("状态：已完成")).toBeVisible();
   await expect(page.getByText("连接：空闲")).toBeVisible();
   await expect.poll(() => resultRequests).toBeGreaterThan(initialResultRequests);
+});
+
+test("optional actuated control is available for demos without claiming formal evidence", async ({ page }) => {
+  const { startPayloads } = await mockJudgeApi(page);
+  await page.goto("/");
+
+  const algorithm = page.getByLabel("算法");
+  await expect(algorithm.getByRole("option", {
+    name: "感应控制基线（可选演示，未纳入正式矩阵）",
+  })).toHaveCount(1);
+  await algorithm.selectOption("actuated");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+
+  await expect.poll(() => startPayloads.length).toBe(1);
+  expect(startPayloads[0]).toMatchObject({ algorithm: "actuated" });
+});
+
+test("completed run replaces realtime metrics with sealed metrics", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.route("**/api/runs/run-quick/metrics", (route) => route.fulfill({
+    status: 200,
+    json: {
+      avg_delay: 14.45375,
+      avg_delay_seconds: 14.45375,
+      avg_queue_length: 2.5,
+      avg_queue_length_vehicles: 2.5,
+      avg_travel_time: 31.25,
+      avg_travel_time_seconds: 31.25,
+      co2_g: 1200,
+      co2_g_per_completed: 48,
+      throughput: 8,
+      collision_count: 0,
+      teleport_count: 0,
+    },
+  }));
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "running" }),
+        })), 20);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({
+            run_id: "run-quick",
+            type: "metrics",
+            metrics: { avg_delay: 0, throughput: 0 },
+          }),
+        })), 40);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "completed" }),
+        })), 60);
+      }
+
+      close() {
+        this.readyState = 3;
+        window.setTimeout(() => this.dispatchEvent(new CloseEvent("close")), 0);
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：已完成")).toBeVisible();
+  const metricPanel = page.getByRole("region", { name: "实时指标" });
+  await expect(metricPanel).toContainText(/平均延误\s*14\.45/);
+  await expect(metricPanel).toContainText(/通行量\s*8\.00/);
+  await expect(metricPanel).not.toContainText("avg delay seconds");
+});
+
+test("late sealed metrics from a previous run cannot replace the current run", async ({ page }) => {
+  await mockJudgeApi(page);
+  let startCount = 0;
+  await page.unroute("**/api/runs");
+  await page.route("**/api/runs", (route) => {
+    startCount += 1;
+    return route.fulfill({
+      status: 202,
+      json: {
+        run_id: `run-${startCount}`,
+        status: "queued",
+        reason: "",
+        run_dir: "hidden",
+        summary: null,
+        algorithm: "fixed_time",
+      },
+    });
+  });
+  await page.route("**/api/runs/run-1/metrics", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await route.fulfill({ status: 200, json: { avg_delay: 99 } });
+  });
+  await page.route("**/api/runs/run-*/native-gui", (route) =>
+    route.fulfill({ status: 200, json: { status: "shown" } }),
+  );
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor(url: string) {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        const runId = /\/api\/runs\/([^/]+)\/events/.exec(url)?.[1];
+        if (runId === "run-1") {
+          window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+            data: JSON.stringify({ run_id: "run-1", type: "status", status: "completed" }),
+          })), 20);
+        }
+        if (runId === "run-2") {
+          window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+            data: JSON.stringify({ run_id: "run-2", type: "status", status: "running" }),
+          })), 20);
+        }
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：已完成")).toBeVisible();
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：运行中")).toBeVisible();
+  await page.waitForTimeout(250);
+  const metricPanel = page.getByRole("region", { name: "实时指标" });
+  await expect(metricPanel).toContainText("尚未收到指标数据");
+  await expect(metricPanel).not.toContainText("99.00");
+});
+
+test("completed run disables controls that require a live SUMO process", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "completed" }),
+        })), 20);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：已完成")).toBeVisible();
+  await expect(page.getByRole("button", { name: "停止运行" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "显示原生 SUMO 界面" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "开始快速演示" })).toBeEnabled();
+});
+
+test("stopped run displays the backend reason in Chinese", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.route("**/api/runs/run-quick/stop", (route) => route.fulfill({
+    status: 200,
+    json: {
+      run_id: "run-quick",
+      status: "interrupted",
+      reason: "stop requested",
+      run_dir: "hidden",
+      summary: null,
+      algorithm: "fixed_time",
+    },
+  }));
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await page.getByRole("button", { name: "停止运行" }).click();
+  await expect(page.getByText("状态：已中断")).toBeVisible();
+  await expect(page.getByText("已请求停止仿真", { exact: true })).toBeVisible();
+});
+
+test("stopping status is displayed in Chinese", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.route("**/api/runs/run-quick/stop", (route) => route.fulfill({
+    status: 200,
+    json: {
+      run_id: "run-quick",
+      status: "stopping",
+      reason: "stop requested",
+      run_dir: "hidden",
+      summary: null,
+      algorithm: "fixed_time",
+    },
+  }));
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+      }
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await page.getByRole("button", { name: "停止运行" }).click();
+
+  await expect(page.getByText("状态：正在停止")).toBeVisible();
+});
+
+test("interrupted websocket terminal does not request sealed-only endpoints", async ({ page }) => {
+  await mockJudgeApi(page);
+  let metricsRequests = 0;
+  let safetyRequests = 0;
+  await page.route("**/api/runs/run-quick/metrics", (route) => {
+    metricsRequests += 1;
+    return route.fulfill({ status: 404, json: { detail: "sealed metrics unavailable" } });
+  });
+  await page.route("**/api/runs/run-quick/safety", (route) => {
+    safetyRequests += 1;
+    return route.fulfill({ status: 404, json: { detail: "sealed safety unavailable" } });
+  });
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "interrupted" }),
+        })), 30);
+      }
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await expect(page.getByText("状态：已中断")).toBeVisible();
+  await page.waitForTimeout(100);
+
+  expect(metricsRequests).toBe(0);
+  expect(safetyRequests).toBe(0);
+});
+
+test("stop rejection displays a Chinese error", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.route("**/api/runs/run-quick/stop", (route) => route.fulfill({
+    status: 409,
+    json: { detail: "run cannot be stopped" },
+  }));
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "开始快速演示" }).click();
+  await page.getByRole("button", { name: "停止运行" }).click();
+  await expect(page.getByRole("alert")).toContainText("当前运行已结束，无法再次停止");
 });
 
 test("unexpected websocket closure exposes a reconnect action", async ({ page }) => {
@@ -594,7 +903,7 @@ test("judge can inspect sealed run comparison, history, and scene provenance", a
   await expect(safetyCells.nth(9)).toHaveText("4");
   await expect(safetyCells.nth(10)).toHaveText("5");
   await expect(safetyCells.nth(11)).toHaveText("6");
-  await expect(page.getByText("正式的 95% 置信区间尚未生成，需等待任务 22 完成并封存 540 次运行矩阵。")).toBeVisible();
+  await expect(page.getByText("正式矩阵已封存 540/540 次运行并生成 95% 置信区间；缺失值会明确保留，绝不会转换为零。")).toBeVisible();
   await page.getByLabel("对比场景").selectOption("2");
   await expect(page.getByText("formal-2")).toBeVisible();
   await expect(page.getByText("formal-1")).not.toBeVisible();
@@ -613,6 +922,95 @@ test("judge can inspect sealed run comparison, history, and scene provenance", a
   await expect(page.getByText("scene.net.xml")).toBeVisible();
   await expect(page.getByText("data/intersection_data", { exact: true })).not.toBeVisible();
   await expect(page.getByText("fixture warning")).toBeVisible();
+});
+
+test("history prioritizes canonical metrics and hides duplicate aliases", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.unroute("**/api/results");
+  await page.route("**/api/results", (route) => route.fulfill({
+    status: 200,
+    json: {
+      items: [{
+        run_id: "formal-aliases",
+        status: "completed",
+        reason: "",
+        algorithm: "fixed_time",
+        scene_id: "1",
+        run_dir: "hidden",
+        summary: {
+          metrics: {
+            avg_delay_seconds: 12.5,
+            avg_delay: 12.5,
+            avg_queue_length: 3.25,
+            max_queue_length: 9.5,
+            throughput: 18,
+          },
+        },
+      }],
+      count: 1,
+    },
+  }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "运行历史" }).click();
+  const summary = page.locator(".history-summary");
+  await expect(summary).toContainText("平均延误");
+  await expect(summary).toContainText("平均排队长度");
+  await expect(summary).toContainText("通行量");
+  await expect(summary).not.toContainText("最大排队长度");
+  await expect(summary).not.toContainText("avg delay seconds");
+});
+
+test("scene source warnings are displayed in Chinese", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.unroute("**/api/scenes");
+  await page.route("**/api/scenes", (route) => route.fulfill({
+    json: [{
+      ...scene,
+      warnings: [
+        "source warning: sumocfg does not explicitly reference flow input",
+        "source warning: sumocfg does not explicitly reference turn input",
+      ],
+    }],
+  }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "场景清单" }).click();
+
+  await expect(page.getByText("源配置未显式引用流量输入文件")).toBeVisible();
+  await expect(page.getByText("源配置未显式引用转向输入文件")).toBeVisible();
+  await expect(page.getByText(/source warning:/)).toHaveCount(0);
+});
+
+test("verified route generation is shown as provenance instead of a warning", async ({ page }) => {
+  await mockJudgeApi(page);
+  await page.unroute("**/api/scenes");
+  await page.route("**/api/scenes", (route) => route.fulfill({
+    json: [{
+      ...scene,
+      source_files: {
+        flow: "data/intersection_data/1/sumo工程/demo_1.flow.xml",
+        turn: "data/intersection_data/1/sumo工程/demo_1.turn.xml",
+        route: "data/intersection_data/1/sumo工程/demo_1.rou.xml",
+      },
+      sha256: {
+        flow: "a".repeat(64),
+        turn: "b".repeat(64),
+        route: "c".repeat(64),
+      },
+      route_generation_verified: true,
+      warnings: [],
+    }],
+  }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "场景清单" }).click();
+
+  await expect(page.getByRole("region", { name: "路由生成来源" })).toContainText(
+    "demo_1.flow.xml + demo_1.turn.xml → demo_1.rou.xml",
+  );
+  await expect(page.getByText("jtrrouter 生成链路已验证")).toBeVisible();
+  await expect(page.getByRole("region", { name: "场景警告" })).toHaveCount(0);
 });
 
 test("failed scene manifests are never labeled as verified", async ({ page }) => {

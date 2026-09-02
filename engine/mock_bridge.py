@@ -48,6 +48,7 @@ class MockBridge:
         self._started: bool = False
         self._applied_actions: List[ControlAction] = []
         self._arrivals: List[int] = []  # 最近 3000 步（= 300 秒）每步进入路网车辆数
+        self._completed_vehicle_count = 0
         self.lane_directions: dict[str, str] = {}  # 与 TraCIBridge 接口对齐（Mock 无方位映射）
 
     def start(self) -> None:
@@ -71,6 +72,10 @@ class MockBridge:
     def is_exhausted(self) -> bool:
         """Mock simulations continue until the requested runner step count."""
         return False
+
+    @property
+    def completed_vehicle_count(self) -> int:
+        return self._completed_vehicle_count
 
     def get_state(self) -> JointState:
         """返回确定性的模拟联合状态。"""
@@ -106,6 +111,7 @@ class MockBridge:
             detector_values={},
             vehicles=self._mock_vehicles(),
             arrival_history=list(self._arrivals),
+            completed_vehicle_count=self._completed_vehicle_count,
         )
 
     def _mock_vehicles(self) -> List[VehicleState]:

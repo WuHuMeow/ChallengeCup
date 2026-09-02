@@ -1315,6 +1315,7 @@ class _FakeUser32:
         self.restored: list[int] = []
         self.raised: list[int] = []
         self.foreground: list[int] = []
+        self.current_foreground: int | None = None
 
     def EnumWindows(self, callback, lparam):
         for hwnd in self.windows:
@@ -1338,7 +1339,11 @@ class _FakeUser32:
 
     def SetForegroundWindow(self, hwnd):
         self.foreground.append(hwnd)
+        self.current_foreground = hwnd
         return True
+
+    def GetForegroundWindow(self):
+        return self.current_foreground or 0
 
 
 def test_focus_window_enumerates_exact_pid_and_restores_only_that_window() -> None:
@@ -1361,7 +1366,7 @@ def test_focus_window_enumerates_exact_pid_and_restores_only_that_window() -> No
     assert user32.foreground == [101]
 
 
-def test_focus_window_succeeds_when_windows_refuses_keyboard_focus() -> None:
+def test_focus_window_reports_when_windows_refuses_keyboard_focus() -> None:
     class _ForegroundRestrictedUser32(_FakeUser32):
         def SetForegroundWindow(self, hwnd):
             self.foreground.append(hwnd)
@@ -1377,8 +1382,8 @@ def test_focus_window_succeeds_when_windows_refuses_keyboard_focus() -> None:
         user32=user32,
     )
 
-    assert shown is True
-    assert reason == "raised SUMO process 41005"
+    assert shown is False
+    assert reason == "could not foreground SUMO process 41005"
     assert user32.restored == [101]
     assert user32.raised == [101]
     assert user32.foreground == [101]

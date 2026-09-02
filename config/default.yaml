@@ -102,6 +102,8 @@ algorithms:
 metrics:
   # 每 600 步（= 60 仿真秒）记录一次快照，降低 CSV 体积。
   snapshot_interval: 600
+  # 网页实时指标按仿真时间发布，不改变封存证据的 CSV 快照频率。
+  realtime_interval_seconds: 1
 
 logging:
   level: "INFO"

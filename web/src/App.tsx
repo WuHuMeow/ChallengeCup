@@ -80,13 +80,21 @@ export default function App() {
     if (subscriptionRef.current === subscription) subscriptionRef.current = null;
   };
 
+  const updateActiveRun = (runId: string, update: () => void) => {
+    if (mounted.current && runStore.getSnapshot().activeRun?.run_id === runId) update();
+  };
+
   useEffect(() => {
     let cancelled = false;
     void Promise.all([api.listScenes(), api.listAlgorithms()])
       .then(([sceneRows, algorithmRows]) => {
         if (cancelled) return;
         setScenes(sceneRows);
-        setAlgorithms(algorithmRows.formal);
+        setAlgorithms(
+          [...algorithmRows.formal, ...algorithmRows.optional].filter(
+            (algorithm) => algorithm.available,
+          ),
+        );
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -184,7 +192,14 @@ export default function App() {
         if (nativeGuiAutofocusRun.current === runId) nativeGuiAutofocusRun.current = null;
         closeSubscription(runId);
         void loadResults();
-        void api.getSafety(runId).then((safety) => runStore.setSafety(safety)).catch(() => undefined);
+        if (event.status === "completed" || event.status === "ended_early") {
+          void api.getMetrics(runId)
+            .then((metrics) => updateActiveRun(runId, () => runStore.setMetrics(metrics)))
+            .catch(() => undefined);
+          void api.getSafety(runId)
+            .then((safety) => updateActiveRun(runId, () => runStore.setSafety(safety)))
+            .catch(() => undefined);
+        }
       }
     }
   };

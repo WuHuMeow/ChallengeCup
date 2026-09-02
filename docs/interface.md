@@ -65,8 +65,11 @@ CA-MP 参数只允许：
 
 `SceneValidator.validate(scene_root)` 使用 XML 和 Excel 的结构化解析预检 net、flow、
 route、turn、sumocfg 和配时输入。不存在合法受控 movement、无效步长、断开的路线或
-引用不存在的车道/边/信号程序时返回 `fail`。官方源已知的 `.sumocfg` 未直接引用
-flow/turn 输入会保留为 `source warning`，不作为没有告警的成功声明。
+引用不存在的车道/边/信号程序时返回 `fail`。当 `.sumocfg` 通过 route 文件运行时，
+校验器会继续核对该 `.rou.xml` 内嵌的 `jtrrouterConfiguration`：只有 net、flow、turn
+和输出 route 文件名全部与当前场景一致，才将 `route_generation_verified` 标记为
+`true`，并把这条链路作为来源证据，不再产生“未直接引用 flow/turn”的警告。缺少或
+不匹配生成配方时仍保留 `source warning`，不会靠界面过滤掩盖来源缺口。
 
 `SceneImporter.import_scene(source_root, destination_root)` 先完成验证，只有 `pass` 时才
 将完整场景树复制为 `<destination_root>/<scene_id>/`；失败时抛出

@@ -12094,6 +12094,10 @@ def test_task19c_f08_gui_probe_observes_active_run_before_first_frame(
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(
+        "sys.argv",
+        ["gui-probe", "test-container", "test-image"],
+    )
+    monkeypatch.setattr(
         docker_verify,
         "_read_observed_completion",
         lambda *_args, **_kwargs: {
@@ -12868,6 +12872,10 @@ def test_task19c_ext_f08b_gui_active_state_has_explicit_nonterminal_grammar(
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["gui-probe", "test-container", "test-image"],
+    )
     monkeypatch.setattr(
         docker_verify,
         "_read_observed_completion",

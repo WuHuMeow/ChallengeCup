@@ -216,6 +216,7 @@ class JointState:
     detector_values: Dict[str, float] = field(default_factory=dict)
     vehicles: List[VehicleState] = field(default_factory=list)  # 采样后的车辆快照
     arrival_history: List[int] = field(default_factory=list)  # 最近 300 步每步进入路网车辆数
+    completed_vehicle_count: int = 0  # 本次运行累计完成行程的车辆数
     phase_states: List[PhaseTrafficState] = field(default_factory=list)
     phase_movements: tuple[PhaseMovementState, ...] = ()
     legal_phase_transitions: tuple[tuple[int, int], ...] = ()
@@ -231,6 +232,11 @@ class JointState:
         _require_number("timestamp", self.timestamp, minimum=0)
         _require_number("current_phase", self.current_phase, minimum=0)
         _require_number("elapsed_phase_time", self.elapsed_phase_time, minimum=0)
+        _require_number(
+            "completed_vehicle_count",
+            self.completed_vehicle_count,
+            minimum=0,
+        )
         from core.movements import PhaseMovementState
 
         try:

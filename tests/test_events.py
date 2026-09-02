@@ -227,3 +227,43 @@ def test_simulation_runner_flushes_safety_from_the_final_step(tmp_path):
     collision = next(row for row in rows if row["type"] == "collision")
     assert collision["simulation_seconds"] == "1.0"
     assert collision["entity_ids"] == '["veh-final"]'
+
+
+class _CompletedVehicleBridge(MockBridge):
+    @property
+    def completed_vehicle_count(self) -> int:
+        return self._current_step
+
+
+def test_runtime_metrics_are_published_every_simulation_second(tmp_path):
+    published: list[dict[str, object]] = []
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        output_csv=tmp_path / "metrics.csv",
+        bridge=MockBridge(step_length=1.0),
+        snapshot_interval=600,
+        event_sink=published.append,
+    )
+
+    runner.run(3)
+
+    metric_events = [event for event in published if event["type"] == "metrics"]
+    assert [event["simulation_time"] for event in metric_events] == [1.0, 2.0, 3.0]
+
+
+def test_runtime_throughput_uses_cumulative_completed_vehicle_count(tmp_path):
+    published: list[dict[str, object]] = []
+    runner = SimulationRunner(
+        _scene(),
+        FixedTimeAlgorithm(),
+        output_csv=tmp_path / "metrics.csv",
+        bridge=_CompletedVehicleBridge(step_length=1.0),
+        snapshot_interval=600,
+        event_sink=published.append,
+    )
+
+    runner.run(3)
+
+    metric_events = [event for event in published if event["type"] == "metrics"]
+    assert [event["metrics"]["total_throughput"] for event in metric_events] == [1, 2, 3]

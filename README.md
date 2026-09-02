@@ -39,7 +39,7 @@ Web 控制台，诊断写入 `output/evidence/judge-launch/launcher.json`。完�
 # 600 秒 quick 演示（路口 1 / 11 / 16）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
 
-# 540-run 形式矩阵（Task 22 执行并冻结前保持 not_run）
+# 540-run 形式矩阵（已完成；--resume 可校验并复用封存运行）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile formal `
   --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal
 
@@ -65,8 +65,8 @@ docker compose --profile gui up --build   # container-gui，127.0.0.1:8001
 | Canonical ID | 说明 |
 | --- | --- |
 | `fixed_time` | 固定配时基线 |
-| `classic_max_pressure` | 经典 MaxPressure 基线 |
-| `capacity_aware_max_pressure` | CA-MP：容量归一化压力 + 下游溢出门控 + 云端动态绿灯 |
+| `classic_maxpressure` | 经典 MaxPressure 基线 |
+| `capacity_aware_maxpressure` | CA-MP：容量归一化压力 + 下游溢出门控 + 云端动态绿灯 |
 
 扩展新算法的接口与契约见
 [`docs/release/algorithm-extension.md`](docs/release/algorithm-extension.md)。
@@ -78,11 +78,11 @@ docker compose --profile gui up --build   # container-gui，127.0.0.1:8001
 
 | 证据轴 | 状态 |
 | --- | --- |
-| 全量 Python 测试（`pytest tests`） | pass（1889 passed, 1 skipped） |
-| Web typecheck / build / Playwright judge-flow | pass / pass / pass（15 用例） |
+| 全量 Python 测试（`pytest tests`） | pass（1967 passed, 1 skipped） |
+| Web typecheck / build / Playwright judge-flow | pass / pass / pass（24 用例） |
 | 静态 Docker 契约（Dockerfile/Compose/lock） | pass |
 | 原生 smoke/quick 真实 SUMO 运行 | pass（本机可复现，见上命令） |
-| 540-run 形式矩阵（Task 22） | not_run |
+| 540-run 形式矩阵（Task 22） | pass（540/540 completed；冻结矩阵 SHA-256 `30344ecb…d48a`） |
 | Docker live build/health/smoke/save-load/GUI frames/cleanup | not_run |
 | 第二环境复现（Task 23） | not_run |
 

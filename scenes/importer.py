@@ -40,6 +40,7 @@ class SceneImporter:
                 lane_ids=manifest.lane_ids,
                 movement_count=manifest.movement_count,
                 validation_status=manifest.validation_status,
+                route_generation_verified=manifest.route_generation_verified,
                 warnings=manifest.warnings,
             )
             (destination / "manifest.json").write_text(
@@ -53,6 +54,7 @@ class SceneImporter:
                         "lane_ids": list(package_manifest.lane_ids),
                         "movement_count": package_manifest.movement_count,
                         "validation_status": package_manifest.validation_status,
+                        "route_generation_verified": package_manifest.route_generation_verified,
                         "warnings": list(package_manifest.warnings),
                         "source_provenance": dict(manifest.source_files),
                     },

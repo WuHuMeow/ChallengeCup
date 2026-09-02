@@ -149,12 +149,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .scene-facts > div { background: #f4f7f8; border-radius: 4px; padding: .6rem .7rem; }
 .scene-facts dt { color: #557080; font-size: .72rem; }
 .scene-facts dd { font-weight: 700; margin: .15rem 0 0; }
-.provenance, .scene-warnings { border-top: 1px solid #e5ecef; padding-top: .8rem; }
-.provenance h4, .scene-warnings h4 { font-size: .88rem; margin: 0 0 .5rem; }
+.provenance, .route-provenance, .scene-warnings { border-top: 1px solid #e5ecef; padding-top: .8rem; }
+.provenance h4, .route-provenance h4, .scene-warnings h4 { font-size: .88rem; margin: 0 0 .5rem; }
 .provenance ul, .scene-warnings ul { list-style: none; margin: 0; padding: 0; }
 .provenance li { align-items: baseline; display: grid; gap: .5rem; grid-template-columns: 7rem minmax(10rem, 1fr) minmax(12rem, 2fr); padding: .35rem 0; }
 .provenance li span { color: #557080; font-size: .75rem; }
 .provenance code { font-size: .72rem; overflow-wrap: anywhere; }
+.route-provenance { color: #146453; }
+.route-provenance p { margin: .35rem 0; }
+.route-provenance span { font-size: .8rem; font-weight: 700; }
 .scene-warnings { color: #885400; }
 .scene-warnings li { font-size: .8rem; list-style: disc; margin-left: 1.25rem; }
 

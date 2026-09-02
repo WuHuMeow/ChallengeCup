@@ -190,6 +190,7 @@ class SceneManifestModel(BaseModel):
     lane_ids: list[str]
     movement_count: int = Field(ge=0)
     validation_status: str
+    route_generation_verified: bool
     warnings: list[str]
 
 

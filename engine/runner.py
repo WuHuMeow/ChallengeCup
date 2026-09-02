@@ -71,6 +71,16 @@ class SimulationRunner:
         self.snapshot_interval = snapshot_interval or get_config().get(
             "metrics.snapshot_interval", 60
         )
+        self.realtime_interval_seconds = float(
+            get_config().get("metrics.realtime_interval_seconds", 1.0)
+        )
+        if (
+            not math.isfinite(self.realtime_interval_seconds)
+            or self.realtime_interval_seconds <= 0
+        ):
+            raise ValueError(
+                "metrics.realtime_interval_seconds must be finite and > 0"
+            )
         self.additional_files = additional_files or []
         self.artifacts = artifacts
         self.state_channel = state_channel
@@ -813,9 +823,40 @@ class SimulationRunner:
 
         if self.step_logger:
             self.step_logger.record(step, raw_state)
-        if step % self.snapshot_interval == 0:
-            metrics = compute_metrics(step, raw_state)
+        snapshot_due = step % self.snapshot_interval == 0
+        realtime_interval_steps = max(
+            1,
+            steps_for_seconds(
+                self.realtime_interval_seconds,
+                self._effective_step_length(),
+            ),
+        )
+        realtime_due = step % realtime_interval_steps == 0
+        if snapshot_due or realtime_due:
+            completed_vehicle_count = int(
+                getattr(
+                    self.bridge,
+                    "completed_vehicle_count",
+                    raw_state.completed_vehicle_count,
+                )
+            )
+            metrics = compute_metrics(
+                step,
+                raw_state,
+                arrived=completed_vehicle_count,
+            )
+        if snapshot_due:
             self.collector.record(step, raw_state, metrics)
+            self.metrics_history.append(
+                {
+                    "step": step,
+                    "avg_queue_length": metrics.avg_queue_length,
+                    "max_queue_length": metrics.max_queue_length,
+                    "avg_delay": metrics.avg_delay,
+                    "total_throughput": metrics.total_throughput,
+                }
+            )
+        if realtime_due:
             self._publish_event({
                 "type": "metrics",
                 "step": step,
@@ -830,15 +871,6 @@ class SimulationRunner:
                     "elapsed_phase_time": raw_state.elapsed_phase_time,
                 },
             })
-            self.metrics_history.append(
-                {
-                    "step": step,
-                    "avg_queue_length": metrics.avg_queue_length,
-                    "max_queue_length": metrics.max_queue_length,
-                    "avg_delay": metrics.avg_delay,
-                    "total_throughput": metrics.total_throughput,
-                }
-            )
         if self.bridge.is_exhausted():
             configured_end = getattr(self.bridge, "configured_end_time", None)
             if configured_end is not None:

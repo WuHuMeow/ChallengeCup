@@ -28,6 +28,7 @@ export interface SceneManifest {
   lane_ids: string[];
   movement_count: number;
   validation_status: string;
+  route_generation_verified: boolean;
   warnings: string[];
 }
 

@@ -1,4 +1,5 @@
 import { metricName } from "../localization";
+import { selectDisplayMetrics } from "../metricDisplay";
 
 interface MetricPanelProps {
   metrics: Record<string, unknown>;
@@ -12,7 +13,7 @@ function displayValue(value: unknown): string {
 }
 
 export function MetricPanel({ metrics }: MetricPanelProps) {
-  const rows = Object.entries(metrics).slice(0, 8);
+  const rows = selectDisplayMetrics(metrics).slice(0, 8);
   return (
     <section aria-labelledby="metric-panel-title" className="metric-panel">
       <h2 id="metric-panel-title">实时指标</h2>

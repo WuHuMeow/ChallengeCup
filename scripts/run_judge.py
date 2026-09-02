@@ -708,11 +708,13 @@ def focus_window_for_pid(
     platform_name: str = sys.platform,
     user32: object | None = None,
 ) -> tuple[bool, str]:
-    """Restore and foreground the first visible window owned by one exact PID."""
+    """Restore and verify the foreground window owned by one exact PID."""
     if platform_name != "win32":
         return False, "native GUI is supported only on Windows"
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
         return False, "invalid SUMO process id"
+    native_user32 = user32 is None
+    attached_threads: list[tuple[int, int]] = []
     try:
         import ctypes
 
@@ -741,16 +743,52 @@ def focus_window_for_pid(
         return False, f"no visible window for SUMO process {pid}"
     hwnd = matches[0]
     try:
+        if native_user32:
+            kernel32 = ctypes.windll.kernel32
+            user32.GetForegroundWindow.restype = ctypes.c_void_p
+            current_thread = int(kernel32.GetCurrentThreadId())
+            foreground_window = user32.GetForegroundWindow()
+            foreground_thread = (
+                int(user32.GetWindowThreadProcessId(foreground_window, None))
+                if foreground_window
+                else 0
+            )
+            target_thread = int(user32.GetWindowThreadProcessId(hwnd, None))
+            for other_thread in (foreground_thread, target_thread):
+                if (
+                    other_thread
+                    and other_thread != current_thread
+                    and bool(user32.AttachThreadInput(current_thread, other_thread, True))
+                ):
+                    attached_threads.append((current_thread, other_thread))
+        show_async = getattr(user32, "ShowWindowAsync", None)
+        if callable(show_async):
+            show_async(hwnd, 9)  # SW_RESTORE
         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
         raised = bool(user32.BringWindowToTop(hwnd))
         focused = bool(user32.SetForegroundWindow(hwnd))
-        if not focused and not raised:
-            return False, f"could not focus SUMO process {pid}"
-    except (OSError, TypeError, ValueError):
-        return False, f"could not focus SUMO process {pid}"
-    if focused:
+        set_window_pos = getattr(user32, "SetWindowPos", None)
+        if callable(set_window_pos):
+            flags = 0x0001 | 0x0002 | 0x0040  # NOMOVE | NOSIZE | SHOWWINDOW
+            set_window_pos(hwnd, -1, 0, 0, 0, 0, flags)  # HWND_TOPMOST
+            set_window_pos(hwnd, -2, 0, 0, 0, 0, flags)  # HWND_NOTOPMOST
+        if native_user32:
+            time.sleep(0.05)
+        foreground_window = user32.GetForegroundWindow()
+        if not focused or int(foreground_window or 0) != int(hwnd):
+            return False, f"could not foreground SUMO process {pid}"
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False, f"could not foreground SUMO process {pid}"
+    finally:
+        if native_user32:
+            for current_thread, other_thread in reversed(attached_threads):
+                try:
+                    user32.AttachThreadInput(current_thread, other_thread, False)
+                except (AttributeError, OSError, TypeError, ValueError):
+                    pass
+    if focused and raised:
         return True, f"focused SUMO process {pid}"
-    return True, f"raised SUMO process {pid}"
+    return True, f"foregrounded SUMO process {pid}"
 
 
 class RunnerRegistry:

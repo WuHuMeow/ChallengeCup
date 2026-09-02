@@ -228,14 +228,45 @@ def test_validation_turns_unexpected_timing_parser_error_into_fail_manifest(
     assert any("invalid timing workbook" in warning for warning in manifest.warnings)
 
 
-def test_official_source_warnings_are_preserved_exactly(official_scene_root):
-    """Known source omissions remain visible rather than being silently normalized."""
+def test_official_route_generation_provenance_clears_source_warnings(
+    official_scene_root,
+):
+    """The embedded jtrrouter recipe proves how flow and turn produced rou.xml."""
     manifest = SceneValidator().validate(official_scene_root)
 
-    assert manifest.warnings == (
-        "source warning: sumocfg does not explicitly reference flow input",
-        "source warning: sumocfg does not explicitly reference turn input",
+    assert manifest.route_generation_verified is True
+    assert manifest.warnings == ()
+
+
+def test_missing_route_generation_provenance_keeps_source_warning(
+    official_scene_root, tmp_path
+):
+    copied_root = _copy_official_scene(official_scene_root, tmp_path)
+    route_path = copied_root / "sumo工程" / "demo_1.rou.xml"
+    route_text = route_path.read_text(encoding="utf-8")
+    route_path.write_text(
+        route_text.replace(
+            '<turn-ratio-files value="demo_1.turn.xml"/>',
+            '<turn-ratio-files value="unverified.turn.xml"/>',
+        ),
+        encoding="utf-8",
     )
+
+    manifest = SceneValidator(repository_root=tmp_path).validate(copied_root)
+
+    assert manifest.route_generation_verified is False
+    assert (
+        "source warning: sumocfg does not explicitly reference turn input"
+        in manifest.warnings
+    )
+
+
+def test_all_official_scenes_have_verified_route_generation():
+    manifests = SceneRegistry().list_scenes(formal_only=True)
+
+    assert len(manifests) == 20
+    assert all(manifest.route_generation_verified for manifest in manifests)
+    assert all(manifest.warnings == () for manifest in manifests)
 
 
 def test_registry_lists_immutable_manifests_without_breaking_runtime_scene():

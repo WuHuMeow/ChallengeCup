@@ -214,6 +214,7 @@ class TraCIBridge:
         self.event_callback = event_callback or (lambda event_type, detail: None)
         self._process_factory = process_factory or subprocess.Popen
         self._arrival_window: deque[int] = deque(maxlen=3000)  # 滚动 3000 步（= 300 秒）到达历史
+        self._completed_vehicle_count = 0
         self._movement_state_builder: MovementStateBuilder | None = None
         self._turn_ratios: dict[tuple[str, str], float] = {}
         self._observed_turn_counts: Counter[tuple[str, str]] = Counter()
@@ -319,6 +320,8 @@ class TraCIBridge:
         self._approach_lanes_by_vehicle.clear()
         self._conflict_definitions = ()
         self._pending_startup_actions = ()
+        self._arrival_window.clear()
+        self._completed_vehicle_count = 0
 
         with _TRACI_LIFECYCLE_LOCK:
             if not self.sumo_cfg.exists():
@@ -440,7 +443,9 @@ class TraCIBridge:
         current_phase = int(traci.trafficlight.getPhase(tls_id))
         program = self.get_signal_program(tls_id)
         phase_obj = program.phases[current_phase]
-        phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
+        phase_name = str(
+            getattr(phase_obj, "name", "") or f"phase_{current_phase}"
+        )
         return JointState(
             step=int(round(simulation_time / self.step_length)),
             timestamp=simulation_time,
@@ -1008,6 +1013,11 @@ class TraCIBridge:
         """Return the exact SUMO child PID most recently owned by this bridge."""
         return self._owned_pid
 
+    @property
+    def completed_vehicle_count(self) -> int:
+        """Return the cumulative trips completed by the current SUMO process."""
+        return self._completed_vehicle_count
+
     def close(self) -> None:
         """Close TraCI and reap only this bridge's recorded SUMO child."""
         with _TRACI_LIFECYCLE_LOCK:
@@ -1056,6 +1066,9 @@ class TraCIBridge:
         try:
             traci.simulationStep()
             self._arrival_window.append(traci.simulation.getDepartedNumber())
+            self._completed_vehicle_count += int(
+                traci.simulation.getArrivedNumber()
+            )
             return traci.simulation.getTime()
         except traci.exceptions.FatalTraCIError as exc:
             logger.error("TraCI 连接断开: %s; closing gracefully", exc)
@@ -1100,7 +1113,9 @@ class TraCIBridge:
         current_phase = traci.trafficlight.getPhase(self.tls_id)
         program = self.get_signal_program(self.tls_id)
         phase_obj = program.phases[current_phase]
-        phase_name = getattr(phase_obj, "name", f"phase_{current_phase}")
+        phase_name = str(
+            getattr(phase_obj, "name", "") or f"phase_{current_phase}"
+        )
         elapsed = traci.trafficlight.getSpentDuration(self.tls_id)
 
         queues: List[QueueState] = []
@@ -1152,6 +1167,7 @@ class TraCIBridge:
             detector_values={},
             vehicles=self._collect_vehicles(vehicle_ids),
             arrival_history=list(self._arrival_window),
+            completed_vehicle_count=self._completed_vehicle_count,
             phase_states=self._build_phase_states(program, controlled_links),
             phase_movements=phase_movements,
             legal_phase_transitions=self._legal_phase_transitions(program),

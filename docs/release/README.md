@@ -21,7 +21,7 @@
 # 600 秒 quick 演示（路口 1 / 11 / 16）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile quick --output-root output/runs/matrix-quick
 
-# 540-run 形式矩阵（Task 22 执行并冻结前保持 not_run）
+# 540-run 形式矩阵（已完成；--resume 可校验并复用封存运行）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile formal `
   --duration-seconds 3600 --warmup-seconds 600 --resume --output-root output/runs/formal
 ```
@@ -30,6 +30,6 @@
 
 - `pass`：对应命令在当前代码上真实执行且门禁通过。
 - `fail`：执行过但门禁未通过，保留失败证据。
-- `not_run`：未执行（如 Docker live、第二环境、形式矩阵）。
+- `not_run`：未执行（如 Docker live、第二环境）。
 
 禁止把静态检查或计划表述为 `pass`；每个证据数字都能回链到具体 run 目录。

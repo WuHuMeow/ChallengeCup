@@ -119,6 +119,7 @@ def create_app(
                 lane_ids=list(meta.lane_ids),
                 movement_count=meta.movement_count,
                 validation_status=meta.validation_status,
+                route_generation_verified=meta.route_generation_verified,
                 warnings=list(meta.warnings),
             )
             for meta in service.registry.list_scenes()

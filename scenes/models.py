@@ -23,6 +23,7 @@ class SceneManifest:
     lane_ids: tuple[str, ...] = ()
     movement_count: int = 0
     validation_status: str = "fail"
+    route_generation_verified: bool = False
     warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
