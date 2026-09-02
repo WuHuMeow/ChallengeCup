@@ -4,19 +4,20 @@
 `output/` 下的独立目录。仓库当前不保留完整矩阵、验收输出或压缩包；下列命令会在本机
 重新创建一次性运行目录。
 
-## 评委一键启动
+## 一键启动
 
-Windows 评委入口会选择仓库内的 `.venv` Python，执行原生 SUMO/FastAPI/Web 控制台预检，
+Windows 根目录入口会选择仓库内的 `.venv` Python，执行原生 SUMO/FastAPI/Web 控制台预检，
 在 `/api/health` 返回 `{"status":"ok"}` 后才打开浏览器。请求端口被占用时，启动器只在
 连续十个端口内选择并把冲突写入诊断文件，不会静默改用不可追踪的端口。
 
 ```powershell
-.\scripts\start_judge.ps1
-.\scripts\start_judge.ps1 --gui-mode headless --no-browser
-.\scripts\start_judge.ps1 --gui-mode native --port 8765
+.\start_frontend.ps1
+.\start_frontend.ps1 --gui-mode headless --no-browser
+.\start_frontend.ps1 --gui-mode native --port 8765
 ```
 
-也可以双击或从命令提示符运行 `scripts\start_judge.bat`。启动状态写入
+也可以双击或从命令提示符运行根目录的 `start_frontend.bat`。两个根目录入口均调用
+`scripts/start_judge.ps1`，因此不会产生第二套启动逻辑。启动状态写入
 `output/evidence/judge-launch/launcher.json`，其中包含所选端口、Python/FastAPI/Uvicorn/
 TraCI/SUMO 版本、静态资产、健康检查、浏览器动作和退出原因。`--gui-mode auto` 在本机
 Windows 优先选择 `sumo-gui`；`headless` 强制使用 `sumo`；`native` 在缺少 Windows

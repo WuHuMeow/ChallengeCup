@@ -12,8 +12,8 @@
 ## 命令速查
 
 ```powershell
-# 评委一键启动（原生，健康检查通过后打开 Web 控制台）
-.\scripts\start_judge.ps1
+# 一键启动（原生，健康检查通过后打开 Web 控制台）
+.\start_frontend.ps1
 
 # 100 秒演示（路口 1）
 .\.venv\Scripts\python.exe scripts/run_pdf_matrix.py --profile smoke --output-root output/runs/matrix-smoke

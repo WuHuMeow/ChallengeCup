@@ -18,17 +18,19 @@ MaxPressure 对比验证，形成可复现的车路云协同算法优化平台�
 环境要求：Python 3.12（3.10+ 可运行）、SUMO 1.27.1（安装与校验见
 [`docs/sumo_env_setup.md`](docs/sumo_env_setup.md)）。
 
-### 1. 一键启动（原生）
+### 1. 一键启动（Windows）
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\scripts\start_judge.ps1
+.\start_frontend.ps1
 ```
 
-启动器使用仓库 `.venv`、预检 SUMO/FastAPI/Web 资产、`/api/health` 通过后打开
-Web 控制台，诊断写入 `output/evidence/judge-launch/launcher.json`。完整选项与
-故障处理见 [`docs/deployment.md`](docs/deployment.md)。
+也可以直接双击根目录的 `start_frontend.bat`。这个入口会使用仓库 `.venv`，依次
+预检 SUMO、FastAPI 和已构建 Web 资产，在 `/api/health` 通过后打开前端控制台；
+诊断写入 `output/evidence/judge-launch/launcher.json`。脚本接受并透传
+`--gui-mode`、`--port`、`--no-browser` 等启动参数。完整选项与故障处理见
+[`docs/deployment.md`](docs/deployment.md)。
 
 ### 2. 演示与矩阵命令（秒数口径）
 
@@ -67,6 +69,7 @@ docker compose --profile gui up --build   # container-gui，127.0.0.1:8001
 | `fixed_time` | 固定配时基线 |
 | `classic_maxpressure` | 经典 MaxPressure 基线 |
 | `capacity_aware_maxpressure` | CA-MP：容量归一化压力 + 下游溢出门控 + 云端动态绿灯 |
+| `actuated` | 感应控制基线（可选快速演示，不纳入正式实验矩阵） |
 
 扩展新算法的接口与契约见
 [`docs/release/algorithm-extension.md`](docs/release/algorithm-extension.md)。
@@ -78,8 +81,8 @@ docker compose --profile gui up --build   # container-gui，127.0.0.1:8001
 
 | 证据轴 | 状态 |
 | --- | --- |
-| 全量 Python 测试（`pytest tests`） | pass（1967 passed, 1 skipped） |
-| Web typecheck / build / Playwright judge-flow | pass / pass / pass（24 用例） |
+| 全量 Python 测试（`pytest tests`） | pass（1971 passed, 1 skipped） |
+| Web typecheck / build / Playwright judge-flow | pass / pass / pass（26 用例） |
 | 静态 Docker 契约（Dockerfile/Compose/lock） | pass |
 | 原生 smoke/quick 真实 SUMO 运行 | pass（本机可复现，见上命令） |
 | 540-run 形式矩阵（Task 22） | pass（540/540 completed；冻结矩阵 SHA-256 `30344ecb…d48a`） |
@@ -111,7 +114,7 @@ cloud/           云端策略（动态绿灯信封）
 api/             FastAPI REST + WebSocket + 内置 Web 控制台
 experiments/     矩阵、密封证据、配对统计
 scripts/         run_pdf_matrix / analyze_matrix / release 工具 / 启动器
-web/             React 控制台源码（构建产物经镜像内构建，不入库）
+web/             React 控制台源码（生产构建同步到 api/static/dist）
 docker/          三阶段镜像 + GUI 派生 + 依赖锁
 tests/           全量测试套件
 docs/release/    评委向发布文档（协议/证据合同/算法扩展）

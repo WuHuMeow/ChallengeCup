@@ -1460,3 +1460,48 @@ def test_batch_wrapper_preserves_nonzero_launcher_exit_code(tmp_path: Path) -> N
     )
 
     assert result.returncode == 7
+
+
+def test_root_powershell_frontend_launcher_runs_from_any_working_directory(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    wrapper = repo_root / "start_frontend.ps1"
+
+    result = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(wrapper),
+            "--help",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0
+    assert "--gui-mode" in result.stdout
+    assert "--no-browser" in result.stdout
+
+
+def test_root_batch_frontend_launcher_runs_from_any_working_directory(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    wrapper = repo_root / "start_frontend.bat"
+
+    result = subprocess.run(
+        ["cmd.exe", "/d", "/c", str(wrapper), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode == 0
+    assert "--gui-mode" in result.stdout
