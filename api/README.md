@@ -12,9 +12,19 @@
 
 ## 命令与接口
 
+前端演示请从仓库根目录启动统一入口（Windows 默认使用 `sumo-gui.exe`）：
+
+```powershell
+..\start_frontend.ps1
+```
+
+仅调试 REST API 时才直接启动 Uvicorn：
+
 ```powershell
 uvicorn api.server:app --reload
 ```
+
+直接启动 Uvicorn 不会配置 native SUMO-GUI 或前端演示所需的 GUI 事件链。
 
 | 路由 | 当前行为 |
 | --- | --- |

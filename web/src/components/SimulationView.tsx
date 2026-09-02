@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MonitorPlay, Play, Square } from "lucide-react";
+import { Play, Square } from "lucide-react";
 import type { AlgorithmSpec, JudgeApiClient, SceneManifest } from "../api/client";
 import { algorithmName, connectionName, localizeMessage, statusName } from "../localization";
 import type { RunStoreSnapshot } from "../state/runStore";
@@ -15,7 +15,6 @@ interface SimulationViewProps {
   guiDelayPending: boolean;
   onStart: () => void;
   onStop: () => void;
-  onNativeGui: () => void;
   onGuiDelayChange: (delayMs: number) => void;
   onSceneChange: (sceneId: string) => void;
   onAlgorithmChange: (algorithm: string) => void;
@@ -32,7 +31,6 @@ export function SimulationView({
   guiDelayPending,
   onStart,
   onStop,
-  onNativeGui,
   onGuiDelayChange,
   onSceneChange,
   onAlgorithmChange,
@@ -204,9 +202,6 @@ export function SimulationView({
           </button>
           <button type="button" onClick={onStop} disabled={!hasLiveRun}>
             <Square size={16} aria-hidden="true" /> 停止运行
-          </button>
-          <button type="button" onClick={onNativeGui} disabled={!hasLiveRun} title="显示原生 SUMO 界面">
-            <MonitorPlay size={16} aria-hidden="true" /> 显示原生 SUMO 界面
           </button>
         </div>
       </section>

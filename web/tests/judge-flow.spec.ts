@@ -193,7 +193,7 @@ test("judge can configure a quick demo without the legacy browser viewers", asyn
   });
 });
 
-test("quick demo retries until the native SUMO window is ready", async ({ page }) => {
+test("quick demo automatically retries until the native SUMO window is ready", async ({ page }) => {
   await mockJudgeApi(page);
   await page.unroute("**/api/runs/run-quick/native-gui");
   let attempts = 0;
@@ -225,6 +225,7 @@ test("quick demo retries until the native SUMO window is ready", async ({ page }
   });
 
   await page.goto("/");
+  await expect(page.getByRole("button", { name: "显示原生 SUMO 界面" })).toHaveCount(0);
   await page.getByRole("button", { name: "开始快速演示" }).click();
   await expect.poll(() => attempts).toBe(2);
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -520,7 +521,7 @@ test("late sealed metrics from a previous run cannot replace the current run", a
   await expect(metricPanel).not.toContainText("99.00");
 });
 
-test("completed run disables controls that require a live SUMO process", async ({ page }) => {
+test("completed run disables stop while allowing a new quick demo", async ({ page }) => {
   await mockJudgeApi(page);
   await page.addInitScript(() => {
     class MockSocket extends EventTarget {
@@ -545,7 +546,6 @@ test("completed run disables controls that require a live SUMO process", async (
   await page.getByRole("button", { name: "开始快速演示" }).click();
   await expect(page.getByText("状态：已完成")).toBeVisible();
   await expect(page.getByRole("button", { name: "停止运行" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "显示原生 SUMO 界面" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "开始快速演示" })).toBeEnabled();
 });
 
@@ -849,7 +849,7 @@ test("late websocket events cannot mutate a replacement run", async ({ page }) =
   expect(startCount).toBe(2);
 });
 
-test("simulation exposes stop and native GUI errors", async ({ page }) => {
+test("simulation exposes automatic native GUI errors and remains stoppable", async ({ page }) => {
   await mockJudgeApi(page);
   let stopCalled = false;
   await page.route("**/api/runs/run-quick/stop", async (route) => {
@@ -869,10 +869,27 @@ test("simulation exposes stop and native GUI errors", async ({ page }) => {
   await page.route("**/api/runs/run-quick/native-gui", (route) =>
     route.fulfill({ status: 409, json: { detail: "display unavailable" } }),
   );
+  await page.addInitScript(() => {
+    class MockSocket extends EventTarget {
+      readyState = 1;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
+        window.setTimeout(() => this.dispatchEvent(new MessageEvent("message", {
+          data: JSON.stringify({ run_id: "run-quick", type: "status", status: "running" }),
+        })), 20);
+      }
+
+      close() {
+        this.readyState = 3;
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { configurable: true, value: MockSocket });
+  });
 
   await page.goto("/");
   await page.getByRole("button", { name: "开始快速演示" }).click();
-  await page.getByRole("button", { name: "显示原生 SUMO 界面" }).click();
   await expect(page.getByRole("alert")).toContainText("显示环境不可用");
   await page.getByRole("button", { name: "停止运行" }).click();
   await expect.poll(() => stopCalled).toBe(true);

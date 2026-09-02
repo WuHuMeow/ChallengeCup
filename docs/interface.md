@@ -266,11 +266,21 @@ and action fields. Lifecycle events use `status`/`reason`; action rows use
 
 ## 6. REST API
 
-启动：
+前端评审推荐从仓库根目录启动统一入口；Windows 默认使用 `sumo-gui.exe`，并同时管理
+FastAPI、WebSocket 和已构建的控制台：
+
+```powershell
+.\start_frontend.ps1
+```
+
+如果只需要调试 REST API，可以直接启动 Uvicorn：
 
 ```powershell
 uvicorn api.server:app --host 127.0.0.1 --port 8000
 ```
+
+直接启动 Uvicorn 是 API-only/headless 路径，不保证前端快速演示能够显示 SUMO-GUI
+画面。
 
 规范端点：
 

@@ -19,13 +19,15 @@ Windows 根目录入口会选择仓库内的 `.venv` Python，执行原生 SUMO/
 也可以双击或从命令提示符运行根目录的 `start_frontend.bat`。两个根目录入口均调用
 `scripts/start_judge.ps1`，因此不会产生第二套启动逻辑。启动状态写入
 `output/evidence/judge-launch/launcher.json`，其中包含所选端口、Python/FastAPI/Uvicorn/
-TraCI/SUMO 版本、静态资产、健康检查、浏览器动作和退出原因。`--gui-mode auto` 在本机
-Windows 优先选择 `sumo-gui`；`headless` 强制使用 `sumo`；`native` 在缺少 Windows
-`sumo-gui` 时明确失败，不会伪造 GUI 成功。启动器会打印最终选择的控制台 URL；若
-native 窗口在运行后不可聚焦，`/api/runs/{run_id}/native-gui` 会返回明确的失败状态。
+TraCI/SUMO 版本、静态资产、健康检查、浏览器动作和退出原因。Windows 本地默认使用
+`native`（`sumo-gui.exe`），确保“开始快速演示”可以连接 GUI 和发布画面；非 Windows
+默认使用 `headless`。`--gui-mode auto` 仍可显式用于兼容旧流程，但不建议作为评审入口；
+`headless` 强制使用 `sumo`；`native` 在缺少 Windows `sumo-gui` 时明确失败，不会伪造
+GUI 成功。启动器会打印最终选择的控制台 URL；若 native 窗口在运行后不可聚焦，
+`/api/runs/{run_id}/native-gui` 会返回明确的失败状态。
 
 稳定 CLI 选项包括：`--host`、`--port`、`--port-attempts`（最多连续十个端口）、
-`--gui-mode auto|native|headless`、`--open-browser/--no-browser`、`--health-timeout`
+`--gui-mode auto|native|headless|container-gui`、`--open-browser/--no-browser`、`--health-timeout`
 以及 `--diagnostics`。
 
 常见故障处理：
@@ -42,6 +44,10 @@ native 窗口在运行后不可聚焦，`/api/runs/{run_id}/native-gui` 会返�
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn api.server:app --host 127.0.0.1 --port 8000
 ```
+
+上面的命令只启动 API 进程，使用默认 `sumo`，不负责 native SUMO-GUI、WebSocket
+事件链和前端控制台；它适合 API/headless 调试，不适合作为“开始快速演示”的启动方式。
+需要打开评审前端时请使用根目录的 `start_frontend.ps1` 或 `start_frontend.bat`。
 
 ## 1. 本地环境
 
@@ -90,7 +96,7 @@ smoke/quick 档（秒数窗口）：
 `stats.xml`、`traj.xml`、`summary.json`、`run_metadata.json`、`manifest.json`、
 `provenance.json`、`status.json` 和 `variants/`。
 
-## 3. REST API
+## 3. REST API（API-only 调试）
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn api.server:app `

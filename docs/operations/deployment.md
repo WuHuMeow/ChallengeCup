@@ -17,11 +17,25 @@
 <root>/i{id}/{algorithm}/x{flow}/s{seed}/{run_id}/
 ```
 
-## API
+## 前端评审启动（Windows）
+
+```powershell
+.\start_frontend.ps1
+# 无浏览器时用于脚本化验证
+.\start_frontend.ps1 --no-browser
+```
+
+根目录入口会选择仓库 `.venv`，预检 SUMO/FastAPI/静态前端后再打开控制台；Windows
+默认启动 `sumo-gui.exe`。需要强制无界面运行时显式加上
+`--gui-mode headless`。
+
+## API-only 调试
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn api.server:app --port 8000
 ```
+
+该命令只用于 REST API/headless 调试，不是前端快速演示的启动入口。
 
 规范端点是 `/api/*`；静态契约为：
 

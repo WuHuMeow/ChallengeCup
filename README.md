@@ -28,7 +28,8 @@ python -m venv .venv
 
 也可以直接双击根目录的 `start_frontend.bat`。这个入口会使用仓库 `.venv`，依次
 预检 SUMO、FastAPI 和已构建 Web 资产，在 `/api/health` 通过后打开前端控制台；
-诊断写入 `output/evidence/judge-launch/launcher.json`。脚本接受并透传
+Windows 默认使用 `sumo-gui.exe`；需要无界面调试时显式传入
+`--gui-mode headless`。诊断写入 `output/evidence/judge-launch/launcher.json`。脚本接受并透传
 `--gui-mode`、`--port`、`--no-browser` 等启动参数。完整选项与故障处理见
 [`docs/deployment.md`](docs/deployment.md)。
 

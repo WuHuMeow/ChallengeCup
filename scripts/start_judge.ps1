@@ -14,7 +14,14 @@ $previous = Get-Location
 $exitCode = 2
 try {
   Set-Location -LiteralPath $repoRoot
-  & $python (Join-Path $PSScriptRoot "run_judge.py") @args
+  $launcherArgs = @($args)
+  $guiModeSpecified = $launcherArgs | Where-Object {
+    "$_" -eq "--gui-mode" -or "$_" -like "--gui-mode=*"
+  }
+  if (($env:OS -eq "Windows_NT") -and (-not $guiModeSpecified)) {
+    $launcherArgs = @("--gui-mode", "native") + $launcherArgs
+  }
+  & $python (Join-Path $PSScriptRoot "run_judge.py") @launcherArgs
   $exitCode = $LASTEXITCODE
 } finally {
   Set-Location -LiteralPath $previous

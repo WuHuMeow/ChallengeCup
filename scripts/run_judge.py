@@ -116,6 +116,12 @@ def _positive_finite(value: str) -> float:
     return number
 
 
+def default_gui_mode(platform_name: str | None = None) -> str:
+    """Choose a safe local default for the judge console runtime."""
+    platform_name = platform_name or sys.platform
+    return "native" if platform_name == "win32" else "headless"
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse the stable judge-launcher command contract."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -137,7 +143,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--gui-mode",
         choices=("auto", "native", "headless", "container-gui"),
-        default="auto",
+        default=default_gui_mode(),
     )
     parser.add_argument("--health-timeout", type=_positive_finite, default=30.0)
     parser.add_argument(
@@ -707,36 +713,54 @@ def focus_window_for_pid(
     *,
     platform_name: str = sys.platform,
     user32: object | None = None,
+    window_timeout: float = 0.0,
+    poll_interval: float = 0.05,
 ) -> tuple[bool, str]:
     """Restore and verify the foreground window owned by one exact PID."""
     if platform_name != "win32":
         return False, "native GUI is supported only on Windows"
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
         return False, "invalid SUMO process id"
+    try:
+        window_timeout = max(0.0, float(window_timeout))
+        poll_interval = max(0.001, float(poll_interval))
+    except (TypeError, ValueError):
+        return False, "invalid native GUI window wait settings"
     native_user32 = user32 is None
     attached_threads: list[tuple[int, int]] = []
     try:
         import ctypes
 
         user32 = user32 or ctypes.windll.user32
-        pid_value = ctypes.c_ulong()
-        matches: list[object] = []
+        deadline = time.monotonic() + window_timeout
+        while True:
+            pid_value = ctypes.c_ulong()
+            matches: list[object] = []
 
-        def callback(hwnd, _lparam):
-            if not bool(user32.IsWindowVisible(hwnd)):
+            def callback(hwnd, _lparam):
+                if not bool(user32.IsWindowVisible(hwnd)):
+                    return True
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
+                if int(pid_value.value) == pid:
+                    matches.append(hwnd)
+                    return False
                 return True
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid_value))
-            if int(pid_value.value) == pid:
-                matches.append(hwnd)
-                return False
-            return True
 
-        callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
-        callback_pointer = callback_type(ctypes.c_bool, ctypes.c_void_p, ctypes.c_long)(
-            callback
-        )
-        if not bool(user32.EnumWindows(callback_pointer, 0)) and not matches:
-            return False, f"no visible window for SUMO process {pid}"
+            callback_type = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+            callback_pointer = callback_type(
+                ctypes.c_bool,
+                ctypes.c_void_p,
+                ctypes.c_long,
+            )(callback)
+            enumerated = bool(user32.EnumWindows(callback_pointer, 0))
+            if matches:
+                break
+            if enumerated and time.monotonic() >= deadline:
+                return False, f"no visible window for SUMO process {pid}"
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False, f"no visible window for SUMO process {pid}"
+            time.sleep(min(poll_interval, remaining))
     except (AttributeError, OSError, TypeError, ValueError):
         return False, f"no visible window for SUMO process {pid}"
     if not matches:
@@ -768,14 +792,25 @@ def focus_window_for_pid(
         raised = bool(user32.BringWindowToTop(hwnd))
         focused = bool(user32.SetForegroundWindow(hwnd))
         set_window_pos = getattr(user32, "SetWindowPos", None)
-        if callable(set_window_pos):
-            flags = 0x0001 | 0x0002 | 0x0040  # NOMOVE | NOSIZE | SHOWWINDOW
-            set_window_pos(hwnd, -1, 0, 0, 0, 0, flags)  # HWND_TOPMOST
-            set_window_pos(hwnd, -2, 0, 0, 0, 0, flags)  # HWND_NOTOPMOST
+        flags = 0x0001 | 0x0002 | 0x0040  # NOMOVE | NOSIZE | SHOWWINDOW
+        # ctypes otherwise converts the negative HWND_* sentinel through its
+        # default 32-bit integer path. On 64-bit Windows that becomes
+        # 0x00000000FFFFFFFF instead of the pointer-sized HWND_TOPMOST value,
+        # so SetWindowPos fails with an invalid insert-after handle.
+        topmost_after = ctypes.c_void_p(-1) if native_user32 else -1
+        topmost = bool(
+            set_window_pos(hwnd, topmost_after, 0, 0, 0, 0, flags)
+        ) if callable(set_window_pos) else False
         if native_user32:
             time.sleep(0.05)
         foreground_window = user32.GetForegroundWindow()
-        if not focused or int(foreground_window or 0) != int(hwnd):
+        if focused and int(foreground_window or 0) == int(hwnd):
+            if topmost:
+                not_topmost_after = ctypes.c_void_p(-2) if native_user32 else -2
+                set_window_pos(hwnd, not_topmost_after, 0, 0, 0, 0, flags)
+        elif topmost and bool(user32.IsWindowVisible(hwnd)):
+            return True, f"displayed SUMO process {pid} as topmost window"
+        else:
             return False, f"could not foreground SUMO process {pid}"
     except (AttributeError, OSError, TypeError, ValueError):
         return False, f"could not foreground SUMO process {pid}"
@@ -842,7 +877,7 @@ class RunnerRegistry:
         if isinstance(owned_pid, int) and owned_pid != pid:
             return False, "SUMO process is not ready"
         try:
-            return focus_window_for_pid(pid)
+            return focus_window_for_pid(pid, window_timeout=5.0)
         except Exception as exc:
             return False, f"could not focus SUMO process {pid}: {type(exc).__name__}"
 

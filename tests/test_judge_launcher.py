@@ -61,6 +61,18 @@ def test_parse_args_accepts_no_browser_and_validates_port() -> None:
         run_judge.parse_args(["--port", "0"])
 
 
+def test_parse_args_defaults_to_native_gui_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_judge.sys, "platform", "win32")
+
+    assert run_judge.parse_args([]).gui_mode == "native"
+
+
+def test_parse_args_defaults_to_headless_off_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_judge.sys, "platform", "linux")
+
+    assert run_judge.parse_args([]).gui_mode == "headless"
+
+
 def test_project_interpreter_prefers_repository_venv_on_windows(tmp_path: Path) -> None:
     python = tmp_path / ".venv" / "Scripts" / "python.exe"
     python.parent.mkdir(parents=True)
@@ -1387,6 +1399,71 @@ def test_focus_window_reports_when_windows_refuses_keyboard_focus() -> None:
     assert user32.restored == [101]
     assert user32.raised == [101]
     assert user32.foreground == [101]
+
+
+def test_focus_window_waits_for_a_late_created_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _LateWindowUser32(_FakeUser32):
+        def __init__(self) -> None:
+            super().__init__({101: {"pid": 41005, "visible": False}})
+            self.enum_calls = 0
+
+        def EnumWindows(self, callback, lparam):
+            self.enum_calls += 1
+            if self.enum_calls == 3:
+                self.windows[101]["visible"] = True
+            return super().EnumWindows(callback, lparam)
+
+    clock = [0.0]
+    user32 = _LateWindowUser32()
+    monkeypatch.setattr(run_judge.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        run_judge.time,
+        "sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+
+    shown, reason = run_judge.focus_window_for_pid(
+        41005,
+        platform_name="win32",
+        user32=user32,
+        window_timeout=0.2,
+        poll_interval=0.05,
+    )
+
+    assert shown is True
+    assert reason == "focused SUMO process 41005"
+    assert user32.enum_calls == 3
+
+
+def test_focus_window_keeps_gui_topmost_when_windows_refuses_keyboard_focus() -> None:
+    class _TopmostFallbackUser32(_FakeUser32):
+        def __init__(self, windows: dict[int, dict[str, object]]) -> None:
+            super().__init__(windows)
+            self.positions: list[tuple[int, int]] = []
+
+        def SetForegroundWindow(self, hwnd):
+            self.foreground.append(hwnd)
+            return False
+
+        def SetWindowPos(self, hwnd, insert_after, _x, _y, _cx, _cy, _flags):
+            self.positions.append((hwnd, insert_after))
+            return True
+
+    user32 = _TopmostFallbackUser32(
+        {101: {"pid": 41005, "visible": True}}
+    )
+
+    shown, reason = run_judge.focus_window_for_pid(
+        41005,
+        platform_name="win32",
+        user32=user32,
+    )
+
+    assert shown is True
+    assert reason == "displayed SUMO process 41005 as topmost window"
+    assert user32.positions == [(101, -1)]
 
 
 def test_focus_window_reports_headless_and_unknown_windows() -> None:

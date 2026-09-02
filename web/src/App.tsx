@@ -322,17 +322,6 @@ export default function App() {
     }
   };
 
-  const showNativeGui = async () => {
-    const runId = runStore.getSnapshot().activeRun?.run_id;
-    if (!runId) return;
-    try {
-      await api.openNativeGui(runId);
-    } catch (error: unknown) {
-      const typed = error as { message?: string; status?: number };
-      runStore.setError({ kind: "http", message: localizeMessage(typed.message ?? "Native SUMO GUI unavailable"), status: typed.status });
-    }
-  };
-
   const changeGuiDelay = async (requestedDelayMs: number) => {
     if (guiDelayPending) return;
     const delayMs = Math.round(boundedNumber(requestedDelayMs, 0, 2000, 100));
@@ -396,7 +385,6 @@ export default function App() {
           guiDelayPending={guiDelayPending}
           onStart={() => void startQuickDemo()}
           onStop={() => void stopRun()}
-          onNativeGui={() => void showNativeGui()}
           onGuiDelayChange={(delayMs) => void changeGuiDelay(delayMs)}
           onSceneChange={(selectedScene) => runStore.setSelection({ selectedScene })}
           onAlgorithmChange={(selectedAlgorithm) => runStore.setSelection({ selectedAlgorithm: selectedAlgorithm as RunStoreSnapshot["selectedAlgorithm"] })}
